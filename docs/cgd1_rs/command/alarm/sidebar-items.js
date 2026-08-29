@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["day_mask","entry","slot","slot_index"]};

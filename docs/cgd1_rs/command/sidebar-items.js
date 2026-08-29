@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["ack","ack_status","command_id","commands","frame"]};
+window.SIDEBAR_ITEMS = {"mod":["ack","ack_status","alarm","command_id","commands","frame"]};
