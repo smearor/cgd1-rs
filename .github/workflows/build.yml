@@ -112,7 +112,7 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.11
       - name: Build (Release Mode)
-        run: cargo build --release --verbose -p dice-rs -p dice-rs-cli -p dice-rs-ws
+        run: cargo build --release --verbose -p cgd1-rs -p cgd1-rs-cli -p cgd1-rs-ws
   test:
     name: Tests
     needs: [ lint ]
@@ -165,4 +165,4 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.11
       - name: Test (Release Mode)
-        run: cargo test --release --verbose -p dice-rs -p dice-rs-cli -p dice-rs-ws
+        run: cargo test --release --verbose -p cgd1-rs -p cgd1-rs-cli -p cgd1-rs-ws

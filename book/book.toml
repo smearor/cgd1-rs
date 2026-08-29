@@ -1,5 +1,5 @@
 [book]
-title = "dice-rs Documentation"
+title = "cgd1-rs Documentation"
 authors = ["Andreas Schaeffer <hanack@nooblounge.net>"]
 language = "en"
 src = "src"
@@ -8,5 +8,5 @@ src = "src"
 command = "mdbook-mermaid"
 
 [output.html]
-git-repository-url = "https://github.com/smearor/dice-rs"
+git-repository-url = "https://github.com/smearor/cgd1-rs"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]

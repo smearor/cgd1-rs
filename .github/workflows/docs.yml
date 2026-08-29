@@ -4,14 +4,14 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "dice-rs*/src/**/*.rs"
+      - "cgd1-rs*/src/**/*.rs"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/docs.yml"
   pull_request:
     branches: [ main ]
     paths:
-      - "dice-rs*/src/**/*.rs"
+      - "cgd1-rs*/src/**/*.rs"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/docs.yml"

@@ -1,0 +1,19 @@
+[package]
+name = "cgd1-rs-ws"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebSocket and REST server for the Qingping CGD1 Bluetooth alarm clock"
+
+[[bin]]
+name = "cgd1-ws"
+path = "src/main.rs"
+
+[dependencies]
+cgd1-rs = { path = "../cgd1-rs" }
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

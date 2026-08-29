@@ -1,0 +1,16 @@
+[package]
+name = "cgd1-rs-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line tool for the Qingping CGD1 Bluetooth alarm clock"
+
+[[bin]]
+name = "cgd1"
+path = "src/main.rs"
+
+[dependencies]
+cgd1-rs = { path = "../cgd1-rs" }
+tokio.workspace = true
+tracing.workspace = true

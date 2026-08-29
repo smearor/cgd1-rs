@@ -9,7 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 0 - Project Setup: Cargo workspace with 4 members (`cgd1-rs`,
+  `cgd1-rs-cli`, `cgd1-rs-controller`, `cgd1-rs-ws`)
+- Scaffolded entry points for all crates
+- mdBook `SUMMARY.md` with 14 chapter outline and stub chapters
+- README.md with project description and crate overview
+
 ### Changed
+
+- Adapted GitHub Actions workflows from `dice-rs` to `cgd1-rs` crate
+  references (`build.yml`, `audit.yml`, `docs.yml`, `msrv.yml`,
+  `release.yml`)
+- Updated `book/book.toml` title and repository URL to `cgd1-rs`
 
 ### Fixed
 

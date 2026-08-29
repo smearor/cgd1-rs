@@ -5,16 +5,16 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "dice-rs*/src/**/*.rs"
-      - "dice-rs*/Cargo.toml"
+      - "cgd1-rs*/src/**/*.rs"
+      - "cgd1-rs*/Cargo.toml"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/msrv.yml"
   pull_request:
     branches: [ main ]
     paths:
-      - "dice-rs*/src/**/*.rs"
-      - "dice-rs*/Cargo.toml"
+      - "cgd1-rs*/src/**/*.rs"
+      - "cgd1-rs*/Cargo.toml"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/msrv.yml"
@@ -43,15 +43,15 @@ jobs:
           tool: cargo-msrv@0.19.3
       - name: Version of cargo msrv
         run: cargo msrv --version
-      - name: Verify MSRV dice-rs
-        run: cargo msrv --output-format json verify --path dice-rs
-      - name: Verify MSRV dice-rs-cli
-        run: cargo msrv --output-format json verify --path dice-rs-cli
-      - name: Verify MSRV dice-rs-ws
-        run: cargo msrv --output-format json verify --path dice-rs-ws
+      - name: Verify MSRV cgd1-rs
+        run: cargo msrv --output-format json verify --path cgd1-rs
+      - name: Verify MSRV cgd1-rs-cli
+        run: cargo msrv --output-format json verify --path cgd1-rs-cli
+      - name: Verify MSRV cgd1-rs-ws
+        run: cargo msrv --output-format json verify --path cgd1-rs-ws
       - name: Find MSRV on verify failure
         if: ${{ failure() }}
         run: |
-          cargo msrv find --output-format json --path dice-rs || true
-          cargo msrv find --output-format json --path dice-rs-cli || true
-          cargo msrv find --output-format json --path dice-rs-ws || true
+          cargo msrv find --output-format json --path cgd1-rs || true
+          cargo msrv find --output-format json --path cgd1-rs-cli || true
+          cargo msrv find --output-format json --path cgd1-rs-ws || true

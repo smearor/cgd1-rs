@@ -1,0 +1,19 @@
+[package]
+name = "cgd1-rs-controller"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "GTK 4 desktop application for the Qingping CGD1 Bluetooth alarm clock"
+
+[[bin]]
+name = "cgd1-controller"
+path = "src/main.rs"
+
+[dependencies]
+cgd1-rs = { path = "../cgd1-rs" }
+gtk4.workspace = true
+gio.workspace = true
+glib.workspace = true
+tokio.workspace = true
+tracing.workspace = true
