@@ -1,0 +1,12 @@
+[book]
+title = "dice-rs Documentation"
+authors = ["Andreas Schaeffer <hanack@nooblounge.net>"]
+language = "en"
+src = "src"
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+git-repository-url = "https://github.com/smearor/dice-rs"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
