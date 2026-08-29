@@ -224,8 +224,11 @@ gantt
     dateFormat YYYY-MM-DD
     axisFormat %b %d
 
+    section Setup
+    Phase 0 - Project Setup          :p0, 2026-08-30, 3d
+
     section Core Library
-    Phase 1 - BLE Transport          :p1, 2026-08-30, 7d
+    Phase 1 - BLE Transport          :p1, after p0, 7d
     Phase 2 - Auth & Time Sync       :p2, after p1, 5d
     Phase 3 - Alarm Management       :p3, after p2, 5d
     Phase 4 - Device Settings        :p4, after p3, 4d
@@ -240,6 +243,133 @@ gantt
     section Documentation
     Phase 10 - Documentation         :p10, after p8, 5d
 ```
+
+### Phase 0 - Project Setup
+
+Phase 0 creates the Cargo workspace, scaffolds all crate entry points,
+populates the mdBook table of contents, and adapts the existing GitHub
+Actions workflows to the `cgd1-rs` project.
+
+#### Workspace Cargo.toml
+
+```toml
+[workspace]
+resolver = "2"
+members = [
+    "cgd1-rs",
+    "cgd1-rs-cli",
+    "cgd1-rs-controller",
+    "cgd1-rs-ws",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/smearor/cgd1-rs"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+btleplug = "0.11"
+```
+
+#### Scaffolded Entry Points
+
+Each crate gets a minimal entry point so the workspace compiles from
+the start:
+
+```rust
+// cgd1-rs/src/lib.rs
+// Module declarations will be added in Phase 1.
+```
+
+```rust
+// cgd1-rs-cli/src/main.rs
+fn main() {
+    println!("cgd1-rs-cli: not yet implemented");
+}
+```
+
+```rust
+// cgd1-rs-controller/src/main.rs
+fn main() {
+    println!("cgd1-rs-controller: not yet implemented");
+}
+```
+
+```rust
+// cgd1-rs-ws/src/main.rs
+fn main() {
+    println!("cgd1-rs-ws: not yet implemented");
+}
+```
+
+#### mdBook Summary
+
+`book/src/SUMMARY.md` is populated with the chapter outline so the book
+builds from the start. Chapter files are created as stubs and filled in
+during their respective phases.
+
+```markdown
+# Summary
+
+- [Introduction](./introduction.md)
+- [Getting Started](./getting-started.md)
+- [Architecture](./architecture.md)
+- [BLE Protocol](./ble-protocol.md)
+- [Scanning & Connecting](./connecting.md)
+- [Authentication](./authentication.md)
+- [Alarms](./alarms.md)
+- [Device Settings](./settings.md)
+- [Sensors & Battery](./sensors.md)
+- [Audio Upload](./audio.md)
+- [CLI Tool](./cli.md)
+- [Controller](./controller.md)
+- [WebSocket Server](./websocket.md)
+- [Platform Notes](./platform-notes.md)
+```
+
+#### GitHub Actions Adaptation
+
+The repository inherits generic workflow files from the template. Phase 0
+adapts them to the `cgd1-rs` workspace:
+
+| Workflow | Change |
+|---|---|
+| `build.yml` | Replace `dice-rs` crate references with `cgd1-rs` equivalents in `build_cross_platform` and `test_cross_platform` jobs |
+| `audit.yml` | Update path filters from `dice-rs*/Cargo.toml` to `cgd1-rs*/Cargo.toml` |
+| `book.yml` | No changes needed — already generic (builds `book/` directory) |
+| `docs.yml` | No changes needed — already generic |
+| `msrv.yml` | Update crate references if present |
+
+**Verification commands** (run locally before committing):
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all
+cargo audit
+mdbook build book/
+```
+
+#### Deliverables
+
+| Artifact | Location | Description |
+|---|---|---|
+| `Cargo.toml` | workspace root | Workspace definition with 4 members |
+| `cgd1-rs/src/lib.rs` | `cgd1-rs/` | Library crate entry point (stub) |
+| `cgd1-rs-cli/src/main.rs` | `cgd1-rs-cli/` | CLI binary entry point (stub) |
+| `cgd1-rs-controller/src/main.rs` | `cgd1-rs-controller/` | GTK 4 binary entry point (stub) |
+| `cgd1-rs-ws/src/main.rs` | `cgd1-rs-ws/` | WebSocket server binary entry point (stub) |
+| `SUMMARY.md` | `book/src/` | mdBook table of contents (14 chapters) |
+| Adapted workflows | `.github/workflows/` | `build.yml`, `audit.yml`, `msrv.yml` updated |
+
+---
 
 ### Phase 1 - BLE Transport
 
