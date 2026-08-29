@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["battery_level","humidity","mac_address","temperature"]};

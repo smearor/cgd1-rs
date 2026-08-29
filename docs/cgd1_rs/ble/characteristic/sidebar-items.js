@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["BLE_BASE_UUID"],"enum":["CharacteristicUuid"]};
