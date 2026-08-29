@@ -2042,31 +2042,39 @@ The CGD1 provides sensor data through two channels:
 
 ```rust
 /// Parsed sensor notification from the Sensor Notify characteristic.
+///
+/// Format: `[0x00] [TempLo] [TempHi] [HumLo] [HumHi]` (5 bytes).
+/// Temperature is a signed 16-bit little-endian value, scaled by / 100.
+/// Humidity is an unsigned 16-bit little-endian value, scaled by / 100.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SensorNotification {
     /// Temperature in degrees Celsius.
-    pub temperature: f32,
+    pub temperature: Temperature,
     /// Relative humidity in percent.
-    pub humidity: f32,
+    pub humidity: Humidity,
 }
 
 impl SensorNotification {
     /// Parse a raw sensor notification payload.
     ///
-    /// Format: [00] [TempHigh] [TempLow] [HumHigh] [HumLow]
-    /// Temperature is a signed 16-bit big-endian value, scaled by / 10.
-    /// Humidity is an unsigned 16-bit big-endian value, scaled by / 10.
+    /// The first byte must be `0x00` (sensor data header).
     pub fn parse(payload: &[u8]) -> Result<Self> {
         if payload.len() < 5 {
             return Err(ClockError::Parse("sensor notification too short".into()));
         }
+        if payload[0] != 0x00 {
+            return Err(ClockError::Parse(format!(
+                "unexpected sensor header byte: 0x{:02X}",
+                payload[0]
+            )));
+        }
 
-        let temp_raw = i16::from_be_bytes([payload[1], payload[2]]);
-        let humidity_raw = u16::from_be_bytes([payload[3], payload[4]]);
+        let temp_raw = i16::from_le_bytes([payload[1], payload[2]]);
+        let humidity_raw = u16::from_le_bytes([payload[3], payload[4]]);
 
         Ok(Self {
-            temperature: temp_raw as f32 / 10.0,
-            humidity: humidity_raw as f32 / 10.0,
+            temperature: Temperature::new(temp_raw as f32 / 100.0),
+            humidity: Humidity::new(humidity_raw as f32 / 100.0),
         })
     }
 }
@@ -2190,7 +2198,15 @@ match notification_source {
 
 | Type | File | Description |
 |---|---|---|
-| `SensorNotification` | `ble/advertisement.rs` | Parsed sensor notify payload |
+| `SensorNotification` | `ble/sensor_notification.rs` | Parsed sensor notify payload (temp + humidity) |
+| `BatteryLevel` | `types/battery_level.rs` | Battery percentage newtype (0–100) |
+
+#### Methods Added in Phase 5
+
+| Method | Type | Description |
+|---|---|---|
+| `ClockDevice::read_battery()` | `async -> Result<BatteryLevel>` | Read battery via GATT Battery Service |
+| `SensorNotification::parse()` | `fn -> Result<Self>` | Parse 5-byte sensor notify payload |
 
 ---
 

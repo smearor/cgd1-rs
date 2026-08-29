@@ -16,6 +16,7 @@ use tracing::warn;
 
 use crate::BleTransport;
 use crate::CharacteristicUuid;
+use crate::SensorNotification;
 use crate::command::Ack;
 use crate::command::AckStatus;
 use crate::command::AlarmEntry;
@@ -31,9 +32,7 @@ use crate::event::ClockEvent;
 use crate::token::AuthToken;
 use crate::token_store::TokenStore;
 use crate::types::BatteryLevel;
-use crate::types::Humidity;
 use crate::types::MacAddress;
-use crate::types::Temperature;
 
 /// Response timeout in seconds.
 const RESPONSE_TIMEOUT_SECS: u64 = 10;
@@ -533,18 +532,17 @@ impl ClockDevice {
         let _ = self.event_sender.send(ClockEvent::Disconnected);
         Ok(())
     }
-}
 
-/// Parse sensor data from a Sensor Notify notification.
-///
-/// Format: `[00] [Temp L] [Temp H] [Hum L] [Hum H]` (5 bytes).
-fn parse_sensor_data(value: &[u8]) -> Option<(Temperature, Humidity)> {
-    if value.len() >= 5 {
-        let temp = i16::from_le_bytes([value[1], value[2]]) as f32 / 100.0;
-        let humidity = u16::from_le_bytes([value[3], value[4]]) as f32 / 100.0;
-        Some((Temperature::new(temp), Humidity::new(humidity)))
-    } else {
-        None
+    /// Read battery level via the standard GATT Battery Service.
+    ///
+    /// Reads the Battery Level characteristic (`0x2A19`).
+    /// Returns a percentage 0–100.
+    pub async fn read_battery(&self) -> Result<BatteryLevel> {
+        let data = self.transport.read(CharacteristicUuid::BatteryLevel).await?;
+        if data.is_empty() {
+            return Err(ClockError::Parse("battery response empty".to_string()));
+        }
+        Ok(BatteryLevel::new(data[0]))
     }
 }
 
@@ -572,8 +570,11 @@ async fn notification_task(
         match transport.next_notification().await {
             Some((uuid, value)) => {
                 if uuid == sensor_uuid {
-                    if let Some((temp, humidity)) = parse_sensor_data(&value) {
-                        let _ = event_sender.send(ClockEvent::SensorUpdate { temperature: temp, humidity });
+                    if let Ok(sensor) = SensorNotification::parse(&value) {
+                        let _ = event_sender.send(ClockEvent::SensorUpdate {
+                            temperature: sensor.temperature,
+                            humidity: sensor.humidity,
+                        });
                     }
                 } else if uuid == battery_uuid {
                     if let Some(&level) = value.first() {
@@ -725,28 +726,6 @@ mod tests {
     fn parse_ack_wrong_prefix() {
         let value = [0x05, 0xff, 0x01, 0x00, 0x06];
         assert!(Ack::parse(&value).is_none());
-    }
-
-    #[test]
-    fn parse_sensor_data_valid() {
-        let value = [0x00, 0x64, 0x00, 0xC8, 0x00];
-        let (temp, humidity) = parse_sensor_data(&value).unwrap();
-        assert_eq!(temp.value(), 1.0);
-        assert_eq!(humidity.value(), 2.0);
-    }
-
-    #[test]
-    fn parse_sensor_data_negative_temp() {
-        let value = [0x00, 0x9C, 0xFF, 0xC8, 0x00];
-        let (temp, humidity) = parse_sensor_data(&value).unwrap();
-        assert_eq!(temp.value(), -1.0);
-        assert_eq!(humidity.value(), 2.0);
-    }
-
-    #[test]
-    fn parse_sensor_data_too_short() {
-        let value = [0x00, 0x64, 0x00];
-        assert!(parse_sensor_data(&value).is_none());
     }
 
     #[tokio::test]
@@ -973,5 +952,30 @@ mod tests {
         assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
         // Frame: [length=0x02] [cmd=0x04] [volume=3]
         assert_eq!(writes[0].1, vec![0x02, 0x04, 0x03]);
+    }
+
+    #[tokio::test]
+    async fn read_battery_returns_level() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        mock.set_read_value(CharacteristicUuid::BatteryLevel, vec![85]).await;
+
+        let level = device.read_battery().await.unwrap();
+        assert_eq!(level.value(), 85);
+    }
+
+    #[tokio::test]
+    async fn read_battery_empty_response_errors() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        mock.set_read_value(CharacteristicUuid::BatteryLevel, vec![]).await;
+
+        assert!(device.read_battery().await.is_err());
     }
 }
