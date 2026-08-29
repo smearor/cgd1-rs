@@ -1,0 +1,2 @@
+createSrcSidebar('[["cgd1",["",[],["main.rs"]]],["cgd1_controller",["",[],["main.rs"]]],["cgd1_rs",["",[],["lib.rs"]]],["cgd1_ws",["",[],["main.rs"]]]]');
+//{"start":19,"fragment_lengths":[28,40,31,32]}
