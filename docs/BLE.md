@@ -202,11 +202,11 @@ Managed via a single comprehensive payload on **Data Write**.
 | 0      | Header      | 1     | `0x13` (length byte)                                   |
 | 1      | Command     | 1     | `0x01` (set) or `0x02` (read response)                 |
 | 2      | Volume      | 1     | Sound volume (1–5)                                     |
-| 3      | Hdr1        | 1     | Unknown, set to `0xFF`                                 |
-| 4      | Hdr2        | 1     | Unknown, set to `0xFF`                                 |
+| 3      | Hdr1        | 1     | Fixed, set to `0x58` (confirmed via clOwOck)           |
+| 4      | Hdr2        | 1     | Fixed, set to `0x02` (confirmed via clOwOck)           |
 | 5      | Flags       | 1     | Mode bitfield (see below)                              |
 | 6      | Timezone    | 1     | Timezone offset in 6-minute units (offset_minutes / 6) |
-| 7      | Duration    | 1     | Screen light duration in seconds (1–30)                |
+| 7      | Duration    | 1     | Screen light duration in seconds                       |
 | 8      | Brightness  | 1     | Packed brightness (see below)                          |
 | 9      | NightStartH | 1     | Night mode start hour (0–23)                           |
 | 10     | NightStartM | 1     | Night mode start minute (0–59)                         |
@@ -238,14 +238,15 @@ High nibble = daytime_brightness / 10
 Low nibble  = nighttime_brightness / 10
 ```
 
-Each brightness value must be 0–100 and a multiple of 10.
+Each brightness value must be 0–150 and a multiple of 10 (nibble 0–15).
+Typical range is 0–100 (nibble 0–10), but the firmware accepts up to 150.
 
 Example: Daytime 80%, Nighttime 30% → `(8 << 4) | 3 = 0x83`
 
 ### 6.6. Set Immediate Brightness (Preview)
 
 - **Command** (Data Write): `02 03 [Value]`
-- **Value**: Brightness level / 10 (0–10)
+- **Value**: Brightness level / 10 (0–15)
 - **Response** (Data Notify): `04 ff 03 00 00` (success)
 
 ### 6.7. Preview Ringtone

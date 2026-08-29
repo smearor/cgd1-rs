@@ -21,8 +21,10 @@ use crate::command::AckStatus;
 use crate::command::AlarmEntry;
 use crate::command::AlarmSlot;
 use crate::command::AlarmSlotIndex;
+use crate::command::Brightness;
 use crate::command::Command;
 use crate::command::CommandId;
+use crate::command::DeviceSettings;
 use crate::error::ClockError;
 use crate::error::Result;
 use crate::event::ClockEvent;
@@ -422,6 +424,108 @@ impl ClockDevice {
         Ok(slots)
     }
 
+    /// Read device settings.
+    ///
+    /// Sends: `01 02` to Data Write.
+    /// Expects response on Data Notify: `13 02 [18 bytes payload]`.
+    pub async fn read_settings(&self) -> Result<DeviceSettings> {
+        let _guard = self.command_mutex.lock().await;
+
+        let (sender, mut receiver) = mpsc::channel(16);
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = Some(sender);
+        }
+
+        self.transport.write_frame(Command::ReadSettings, &[]).await?;
+
+        let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver.recv()).await {
+            Ok(Some(data)) => data,
+            Ok(None) => return Err(ClockError::Transport("settings response canceled".into())),
+            Err(_) => {
+                let mut pending = self.pending_data_response.lock().await;
+                *pending = None;
+                return Err(ClockError::Timeout);
+            }
+        };
+
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = None;
+        }
+
+        if response.len() < 2 {
+            return Err(ClockError::Parse("settings response too short".into()));
+        }
+        DeviceSettings::decode(&response[2..])
+    }
+
+    /// Write device settings.
+    ///
+    /// Sends: `13 01 [18 bytes payload]` to Data Write.
+    /// Expects ACK: `04 ff 01 00 00`.
+    pub async fn write_settings(&self, settings: &DeviceSettings) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
+
+        let payload = settings.encode();
+        self.transport.write_frame(Command::SetSettings, &payload).await?;
+
+        let ack = self.wait_for_ack(Command::SetSettings).await?;
+        if let AckStatus::Failure(_) = ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x01,
+                status: ack.status,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Set immediate brightness (preview, 0–10).
+    ///
+    /// Sends: `02 03 [Value]` to Data Write.
+    /// This is a temporary preview and does not persist to settings.
+    pub async fn set_brightness(&self, value: Brightness) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
+
+        let payload = [value.nibble()];
+        self.transport.write_frame(Command::SetBrightness, &payload).await?;
+
+        let ack = self.wait_for_ack(Command::SetBrightness).await?;
+        if let AckStatus::Failure(_) = ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x03,
+                status: ack.status,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Preview ringtone at current or specified volume.
+    ///
+    /// Sends: `01 04` (current volume) or `02 04 [Volume]` (specific volume)
+    /// to Data Write.
+    pub async fn preview_ringtone(&self, volume: Option<u8>) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
+
+        let payload = match volume {
+            Some(v) => vec![v],
+            None => vec![],
+        };
+        self.transport.write_frame(Command::PreviewRingtone, &payload).await?;
+
+        let ack = self.wait_for_ack(Command::PreviewRingtone).await?;
+        if let AckStatus::Failure(_) = ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x04,
+                status: ack.status,
+            });
+        }
+
+        Ok(())
+    }
+
     /// Disconnect from the device.
     pub async fn disconnect(&self) -> Result<()> {
         self.transport.disconnect().await?;
@@ -730,5 +834,144 @@ mod tests {
         assert!(result.is_err());
         // Verify valid slot still works with the device
         let _ = device.set_alarm(&alarm, AlarmSlotIndex::new(0).unwrap()).await;
+    }
+
+    #[tokio::test]
+    async fn write_settings_sends_correct_frame() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        let settings = DeviceSettings::new(
+            3,
+            crate::TimeFormat::TwentyFourHour,
+            crate::TemperatureUnit::Celsius,
+            crate::Language::English,
+            crate::Timezone::from_hours(1).unwrap(),
+            10,
+            crate::Brightness::new(80).unwrap(),
+            crate::Brightness::new(30).unwrap(),
+            22,
+            0,
+            7,
+            0,
+            true,
+            true,
+            crate::RingtoneSignature::UNUSED,
+        )
+        .unwrap();
+
+        device.write_settings(&settings).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        // Frame: [length=0x13] [cmd=0x01] [18 bytes payload]
+        let frame = &writes[0].1;
+        assert_eq!(frame[0], 0x13);
+        assert_eq!(frame[1], 0x01);
+        assert_eq!(frame.len(), 20);
+        // Check some payload values
+        assert_eq!(frame[2], 3); // volume
+        assert_eq!(frame[3], 0x58); // hdr1
+        assert_eq!(frame[4], 0x02); // hdr2
+        assert_eq!(frame[5], 0x11); // flags: English | master_alarm_disable
+        assert_eq!(frame[8], 0x83); // packed brightness: day=8, night=3
+    }
+
+    #[tokio::test]
+    async fn read_settings_parses_response() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        // Push a settings response on Data Notify.
+        // Format: [length=0x13] [cmd=0x02] [18 bytes payload]
+        let data_notify = CharacteristicUuid::DataNotify.uuid();
+        let mut response = vec![0x13, 0x02];
+        // Payload: 18 bytes
+        response.extend_from_slice(&[
+            3,    // volume
+            0x58, // hdr1
+            0x02, // hdr2
+            0x11, // flags: English | master_alarm_disable
+            10,   // timezone: 60 min / 6 = 10
+            10,   // screen duration
+            0x83, // brightness: day=8, night=3
+            22,   // night start hour
+            0,    // night start minute
+            7,    // night end hour
+            0,    // night end minute
+            0x01, // timezone sign: positive
+            0x01, // night mode enabled
+            0xFF, // reserved
+            0xFF, 0xFF, 0xFF, 0xFF, // ringtone signature (unused)
+        ]);
+        mock.push_notification(data_notify, response);
+
+        let settings = device.read_settings().await.unwrap();
+        assert_eq!(settings.volume(), 3);
+        assert_eq!(settings.language(), crate::Language::English);
+        assert_eq!(settings.time_format(), crate::TimeFormat::TwentyFourHour);
+        assert_eq!(settings.temperature_unit(), crate::TemperatureUnit::Celsius);
+        assert_eq!(settings.timezone().minutes(), 60);
+        assert_eq!(settings.screen_duration(), 10);
+        assert_eq!(settings.brightness().value(), 80);
+        assert_eq!(settings.night_brightness().value(), 30);
+        assert_eq!(settings.night_start_hour(), 22);
+        assert_eq!(settings.night_end_hour(), 7);
+        assert!(settings.night_mode_enabled());
+        assert!(settings.master_alarm_disabled());
+        assert!(settings.ringtone_signature().is_unused());
+    }
+
+    #[tokio::test]
+    async fn set_brightness_sends_correct_frame() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        device.set_brightness(crate::Brightness::new(70).unwrap()).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        // Frame: [length=0x02] [cmd=0x03] [nibble=7]
+        assert_eq!(writes[0].1, vec![0x02, 0x03, 0x07]);
+    }
+
+    #[tokio::test]
+    async fn preview_ringtone_current_volume() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        device.preview_ringtone(None).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        // Frame: [length=0x01] [cmd=0x04]
+        assert_eq!(writes[0].1, vec![0x01, 0x04]);
+    }
+
+    #[tokio::test]
+    async fn preview_ringtone_specific_volume() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        device.preview_ringtone(Some(3)).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        // Frame: [length=0x02] [cmd=0x04] [volume=3]
+        assert_eq!(writes[0].1, vec![0x02, 0x04, 0x03]);
     }
 }

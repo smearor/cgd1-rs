@@ -406,9 +406,15 @@ cgd1-rs/
         │   ├── entry.rs       # AlarmEntry (hour, minute, repeat, enabled, snooze)
         │   ├── slot.rs        # AlarmSlot (entry + slot index)
         │   └── slot_index.rs  # AlarmSlotIndex newtype (validated 0–15)
-        ├── settings.rs        # ReadSettings, SetSettings commands
-        ├── brightness.rs      # SetBrightness command
-        ├── ringtone.rs        # PreviewRingtone command
+        ├── settings/          # Settings types (one struct per file)
+        │   ├── mod.rs         # Module declarations + re-exports
+        │   ├── brightness.rs       # Brightness newtype (0–100, multiple of 10)
+        │   ├── device_settings.rs  # DeviceSettings struct (18-byte payload)
+        │   ├── language.rs         # Language enum (Chinese, English)
+        │   ├── ringtone_signature.rs  # RingtoneSignature newtype (4 bytes)
+        │   ├── temperature_unit.rs # TemperatureUnit enum (Celsius, Fahrenheit)
+        │   ├── time_format.rs      # TimeFormat enum (12h, 24h)
+        │   └── timezone.rs         # Timezone newtype (6-minute unit encoding)
         ├── firmware.rs        # ReadFirmware command
         └── audio.rs           # AudioInit, AudioDataPacket commands
 ```
@@ -739,7 +745,7 @@ impl ClockDevice {
     pub async fn write_settings(&self, settings: &DeviceSettings) -> Result<()>;
 
     /// Set immediate brightness (preview, 0–10).
-    pub async fn set_brightness(&self, value: u8) -> Result<()>;
+    pub async fn set_brightness(&self, value: Brightness) -> Result<()>;
 
     /// Preview ringtone at current or specified volume.
     pub async fn preview_ringtone(&self, volume: Option<u8>) -> Result<()>;
@@ -1605,51 +1611,54 @@ BLE.
 
 The CGD1 exposes a settings structure that can be read via command `0x02`
 and written via command `0x01` on the Data Write characteristic. The settings
-frame is 19 bytes (`0x13` length) and packs multiple configuration values
-into a single payload.
+frame is 20 bytes (`0x13` length byte + `0x01`/`0x02` command byte + 18 bytes
+payload). The protocol is documented in `docs/BLE.md` §6.3.
 
-#### DeviceSettings
+The 18-byte payload packs multiple configuration values including a flags
+byte (language, time format, temperature unit), timezone in 6-minute units
+with a separate sign byte, packed brightness (day/night in nibbles), night
+mode schedule, screen duration, and a 4-byte ringtone signature.
+
+#### Module Structure
+
+Settings types are organized in `command/settings/` with one struct/enum
+per file, following the same modularization pattern as `command/alarm/`:
+
+```
+command/settings/
+├── mod.rs                  # Module declarations + re-exports
+├── brightness.rs           # Brightness newtype (0–150, multiple of 10)
+├── device_settings.rs      # DeviceSettings struct (18-byte payload)
+├── language.rs             # Language enum (Chinese, English)
+├── ringtone_signature.rs   # RingtoneSignature newtype (4 bytes)
+├── temperature_unit.rs     # TemperatureUnit enum (Celsius, Fahrenheit)
+├── time_format.rs          # TimeFormat enum (12h, 24h)
+└── timezone.rs             # Timezone newtype (6-minute unit encoding)
+```
+
+#### TimeFormat
 
 ```rust
-/// Device settings for the CGD1 alarm clock.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeviceSettings {
-    /// Volume level (0–30).
-    pub volume: u8,
-    /// Brightness level (0–10).
-    pub brightness: u8,
-    /// Night mode brightness level (0–10).
-    pub night_brightness: u8,
-    /// Night mode start hour (0–23).
-    pub night_start_hour: u8,
-    /// Night mode start minute (0–59).
-    pub night_start_minute: u8,
-    /// Night mode end hour (0–23).
-    pub night_end_hour: u8,
-    /// Night mode end minute (0–59).
-    pub night_end_minute: u8,
-    /// Timezone offset in hours (-12 to +14).
-    pub timezone: i8,
-    /// Time format: 12-hour or 24-hour.
-    pub time_format: TimeFormat,
-    /// Temperature unit: Celsius or Fahrenheit.
-    pub temperature_unit: TemperatureUnit,
-    /// Display language.
-    pub language: Language,
-    /// Currently selected ringtone (0–7).
-    pub ringtone: u8,
-}
-
-/// Time display format.
+/// Time display format for the CGD1.
+/// Encoded as bit 1 of the flags byte in the settings payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeFormat {
-    /// 12-hour format (AM/PM).
-    TwelveHour,
     /// 24-hour format.
     TwentyFourHour,
+    /// 12-hour format (AM/PM).
+    TwelveHour,
 }
+```
 
-/// Temperature display unit.
+`TimeFormat` provides `flag_bit()` (returns `0x00` or `0x02`) and
+`from_flags(u8)` for encoding/decoding from the packed flags byte. It also
+implements `TryFrom<u8>` and `From<TimeFormat> for u8`.
+
+#### TemperatureUnit
+
+```rust
+/// Temperature display unit for the CGD1.
+/// Encoded as bit 2 of the flags byte in the settings payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemperatureUnit {
     /// Degrees Celsius.
@@ -1657,97 +1666,194 @@ pub enum TemperatureUnit {
     /// Degrees Fahrenheit.
     Fahrenheit,
 }
+```
 
+`TemperatureUnit` provides `flag_bit()` (returns `0x00` or `0x04`) and
+`from_flags(u8)` for encoding/decoding from the packed flags byte.
+
+#### Language
+
+```rust
 /// Display language for the CGD1.
+/// Encoded as bit 0 of the flags byte in the settings payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
-    /// English.
-    English,
     /// Chinese (Simplified).
     Chinese,
-    /// German.
-    German,
-    /// Japanese.
-    Japanese,
+    /// English.
+    English,
 }
 ```
 
+`Language` provides `flag_bit()` (returns `0x00` or `0x01`) and
+`from_flags(u8)` for encoding/decoding from the packed flags byte.
+
+#### Brightness
+
+```rust
+/// Brightness level (0–150, must be a multiple of 10).
+/// Encoded as a nibble value (0–15) in the packed brightness byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Brightness(u8);
+```
+
+`Brightness` is a newtype that validates the value is 0–150 and a multiple
+of 10. It provides `new(u8) -> Result<Self>`, `value() -> u8`,
+`nibble() -> u8` (value / 10), and `from_nibble(u8) -> Result<Self>`.
+The device accepts nibble values 0–15, though the typical range is 0–10
+(0–100%).
+
+The packed brightness byte in the settings payload uses the high nibble for
+daytime brightness and the low nibble for nighttime brightness.
+
+#### Timezone
+
+```rust
+/// Timezone offset encoded in 6-minute units as used by the CGD1 protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Timezone {
+    /// Timezone offset in minutes (e.g., +60 for UTC+1, -300 for UTC-5).
+    offset_minutes: i16,
+}
+```
+
+`Timezone` is a newtype that stores the offset in minutes (range -720 to
++840). It provides:
+- `from_minutes(i16) -> Result<Self>` — validates range
+- `from_hours(i8) -> Result<Self>` — convenience constructor
+- `minutes() -> i16`, `hours() -> i8` — accessors
+- `encoded_units() -> u8` — returns `abs(offset_minutes) / 6`
+- `sign_byte() -> u8` — returns `0x01` for positive/zero, `0x00` for negative
+- `from_encoded(units: u8, sign: u8) -> Result<Self>` — decodes from protocol
+
+#### RingtoneSignature
+
+```rust
+/// 4-byte ringtone signature used in the settings payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RingtoneSignature([u8; 4]);
+```
+
+`RingtoneSignature` is a newtype wrapping a 4-byte array. It provides
+constants `UNUSED` (`0xFF`×4), `CUSTOM_SLOT_A` (`0xDEADDEAD`), and
+`CUSTOM_SLOT_B` (`0xBEEFBEEF`). It provides `new([u8; 4])`, `bytes() ->
+[u8; 4]`, and `is_unused() -> bool`.
+
+#### DeviceSettings
+
+```rust
+/// Device settings for the CGD1 alarm clock.
+/// Maps to the 18-byte settings payload documented in `docs/BLE.md` §6.3
+/// and cross-referenced against the clOwOck Android implementation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceSettings {
+    /// Sound volume (1–5).
+    volume: u8,
+    /// Flags byte (language, time format, temperature unit, master alarm disable).
+    flags: u8,
+    /// Timezone offset.
+    timezone: Timezone,
+    /// Screen light duration in seconds.
+    screen_duration: u8,
+    /// Daytime brightness (0–150, multiple of 10).
+    brightness: Brightness,
+    /// Nighttime brightness (0–150, multiple of 10).
+    night_brightness: Brightness,
+    /// Night mode start hour (0–23).
+    night_start_hour: u8,
+    /// Night mode start minute (0–59).
+    night_start_minute: u8,
+    /// Night mode end hour (0–23).
+    night_end_hour: u8,
+    /// Night mode end minute (0–59).
+    night_end_minute: u8,
+    /// Whether night mode is enabled.
+    night_mode_enabled: bool,
+    /// Whether the master alarm switch is disabled.
+    master_alarm_disabled: bool,
+    /// Ringtone signature (4 bytes, 0xFF when unused).
+    ringtone_signature: RingtoneSignature,
+}
+```
+
+Fields are private with getter methods, following the same encapsulation
+pattern as `AlarmEntry`. The `new()` constructor validates all invariants
+(volume 1–5, night hours 0–23, night minutes 0–59).
+
 #### Settings Encoding
+
+The 18-byte payload layout (offsets within the payload, after the
+`[length] [command]` header):
+
+| Offset | Field | Size | Description |
+|--------|-------|------|-------------|
+| 0 | Volume | 1 | Sound volume (1–5) |
+| 1 | Hdr1 | 1 | Header byte (`0x58`) |
+| 2 | Hdr2 | 1 | Header byte (`0x02`) |
+| 3 | Flags | 1 | Bit 0: Language, Bit 1: Time format, Bit 2: Temp unit, Bit 4: Master alarm disable |
+| 4 | Timezone | 1 | Timezone offset in 6-minute units (`abs(minutes) / 6`) |
+| 5 | Screen Duration | 1 | Screen light duration in seconds |
+| 6 | Brightness | 1 | High nibble = day brightness / 10, Low nibble = night / 10 |
+| 7 | Night Start Hour | 1 | Hour when night mode begins (0–23) |
+| 8 | Night Start Minute | 1 | Minute when night mode begins (0–59) |
+| 9 | Night End Hour | 1 | Hour when night mode ends (0–23) |
+| 10 | Night End Minute | 1 | Minute when night mode ends (0–59) |
+| 11 | Timezone Sign | 1 | `0x01` = positive/zero, `0x00` = negative |
+| 12 | Night Mode Enabled | 1 | `0x01` = enabled, `0x00` = disabled |
+| 13 | Reserved | 1 | Always `0xFF` |
+| 14–17 | Ringtone Signature | 4 | 4-byte signature, `0xFF`×4 when unused |
+
+When night mode is disabled, the night start/end values are overwritten to
+`00:00–00:01` in the encoded payload. This matches the firmware workaround
+used by clOwOck and the official app, since the device does not properly
+support disabling night mode via the enabled flag alone.
+
+Flags byte bit layout:
+
+| Bit | Mask | Field | 0 | 1 |
+|-----|------|-------|---|---|
+| 0 | `0x01` | Language | Chinese | English |
+| 1 | `0x02` | Time Format | 24-hour | 12-hour |
+| 2 | `0x04` | Temperature Unit | Celsius | Fahrenheit |
+| 4 | `0x10` | Master Alarm | Enabled | Disabled |
 
 ```rust
 impl DeviceSettings {
-    /// Encode settings into the 17-byte payload for command 0x01.
-    ///
-    /// The full frame is: `13 01 [17 bytes payload]`.
-    /// The payload packs all settings fields in a fixed order.
-    pub fn encode(&self) -> [u8; 17] {
-        let mut payload = [0u8; 17];
+    /// Encode settings into the 18-byte payload for the settings frame.
+    pub fn encode(&self) -> [u8; 18] {
+        let mut payload = [0u8; 18];
         payload[0] = self.volume;
-        payload[1] = self.brightness;
-        payload[2] = self.night_brightness;
-        payload[3] = self.night_start_hour;
-        payload[4] = self.night_start_minute;
-        payload[5] = self.night_end_hour;
-        payload[6] = self.night_end_minute;
-        payload[7] = self.timezone as u8;
-        payload[8] = match self.time_format {
-            TimeFormat::TwelveHour => 0x00,
-            TimeFormat::TwentyFourHour => 0x01,
-        };
-        payload[9] = match self.temperature_unit {
-            TemperatureUnit::Celsius => 0x00,
-            TemperatureUnit::Fahrenheit => 0x01,
-        };
-        payload[10] = match self.language {
-            Language::English => 0x00,
-            Language::Chinese => 0x01,
-            Language::German => 0x02,
-            Language::Japanese => 0x03,
-        };
-        payload[11] = self.ringtone;
-        // Remaining bytes are reserved/unused
+        payload[1] = Self::HDR_BYTE_1; // 0x58
+        payload[2] = Self::HDR_BYTE_2; // 0x02
+        payload[3] = self.flags;
+        payload[4] = self.timezone.encoded_units();
+        payload[5] = self.screen_duration;
+        payload[6] = (self.brightness.nibble() << 4) | self.night_brightness.nibble();
+        if self.night_mode_enabled {
+            payload[7] = self.night_start_hour;
+            payload[8] = self.night_start_minute;
+            payload[9] = self.night_end_hour;
+            payload[10] = self.night_end_minute;
+        } else {
+            // Firmware workaround: 1-minute night mode to effectively disable it.
+            payload[7] = 0;
+            payload[8] = 0;
+            payload[9] = 0;
+            payload[10] = 1;
+        }
+        payload[11] = self.timezone.sign_byte();
+        payload[12] = if self.night_mode_enabled { 0x01 } else { 0x00 };
+        payload[13] = 0xFF;
+        payload[14..18].copy_from_slice(&self.ringtone_signature.bytes());
         payload
     }
 
-    /// Decode settings from a raw payload read from the device.
+    /// Decode settings from a raw 18-byte payload read from the device.
     pub fn decode(payload: &[u8]) -> Result<Self> {
-        if payload.len() < 12 {
+        if payload.len() < 18 {
             return Err(ClockError::Parse("settings payload too short".into()));
         }
-
-        let timezone = payload[7] as i8;
-        let time_format = match payload[8] {
-            0x00 => TimeFormat::TwelveHour,
-            0x01 => TimeFormat::TwentyFourHour,
-            other => return Err(ClockError::Parse(format!("invalid time format: {:#04x}", other))),
-        };
-        let temperature_unit = match payload[9] {
-            0x00 => TemperatureUnit::Celsius,
-            0x01 => TemperatureUnit::Fahrenheit,
-            other => return Err(ClockError::Parse(format!("invalid temp unit: {:#04x}", other))),
-        };
-        let language = match payload[10] {
-            0x00 => Language::English,
-            0x01 => Language::Chinese,
-            0x02 => Language::German,
-            0x03 => Language::Japanese,
-            other => return Err(ClockError::Parse(format!("invalid language: {:#04x}", other))),
-        };
-
-        Ok(Self {
-            volume: payload[0],
-            brightness: payload[1],
-            night_brightness: payload[2],
-            night_start_hour: payload[3],
-            night_start_minute: payload[4],
-            night_end_hour: payload[5],
-            night_end_minute: payload[6],
-            timezone,
-            time_format,
-            temperature_unit,
-            language,
-            ringtone: payload[11],
-        })
+        // ... decode each field from the payload ...
     }
 }
 ```
@@ -1759,14 +1865,32 @@ impl ClockDevice {
     /// Read device settings.
     ///
     /// Sends: `01 02` to Data Write.
-    /// Expects response on Data Notify: `12 02 [17 bytes payload]`.
+    /// Expects response on Data Notify: `13 02 [18 bytes payload]`.
     pub async fn read_settings(&self) -> Result<DeviceSettings> {
-        let frame = [0x01, 0x02];
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+        let _guard = self.command_mutex.lock().await;
 
-        let response = self.wait_for_response(0x02, Duration::from_secs(RESPONSE_TIMEOUT_SECS)).await?;
+        let (sender, mut receiver) = mpsc::channel(16);
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = Some(sender);
+        }
 
-        // Skip length byte and command byte
+        self.transport.write_frame(Command::ReadSettings, &[]).await?;
+
+        let response = match timeout(
+            Duration::from_secs(RESPONSE_TIMEOUT_SECS),
+            receiver.recv(),
+        ).await {
+            Ok(Some(data)) => data,
+            Ok(None) => return Err(ClockError::Transport("settings response canceled".into())),
+            Err(_) => return Err(ClockError::Timeout),
+        };
+
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = None;
+        }
+
         if response.len() < 2 {
             return Err(ClockError::Parse("settings response too short".into()));
         }
@@ -1781,19 +1905,16 @@ impl ClockDevice {
 impl ClockDevice {
     /// Write device settings.
     ///
-    /// Sends: `13 01 [17 bytes payload]` to Data Write.
+    /// Sends: `13 01 [18 bytes payload]` to Data Write.
     /// Expects ACK: `04 ff 01 00 00`.
     pub async fn write_settings(&self, settings: &DeviceSettings) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
+
         let payload = settings.encode();
-        let mut frame = Vec::with_capacity(19);
-        frame.push(0x13); // Length
-        frame.push(0x01); // Command: Set Settings
-        frame.extend_from_slice(&payload);
+        self.transport.write_frame(Command::SetSettings, &payload).await?;
 
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
-
-        let ack = self.wait_for_ack(0x01).await?;
-        if ack.status != 0x00 {
+        let ack = self.wait_for_ack(Command::SetSettings).await?;
+        if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected { command: 0x01, status: ack.status });
         }
 
@@ -1813,16 +1934,14 @@ impl ClockDevice {
     ///
     /// Sends: `02 03 [Value]` to Data Write.
     /// This is a temporary preview and does not persist to settings.
-    pub async fn set_brightness(&self, value: u8) -> Result<()> {
-        if value > 10 {
-            return Err(ClockError::InvalidSettings(format!("brightness {value} out of range 0-10")));
-        }
+    pub async fn set_brightness(&self, value: Brightness) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
 
-        let frame = [0x02, 0x03, value];
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+        let payload = [value.nibble()];
+        self.transport.write_frame(Command::SetBrightness, &payload).await?;
 
-        let ack = self.wait_for_ack(0x03).await?;
-        if ack.status != 0x00 {
+        let ack = self.wait_for_ack(Command::SetBrightness).await?;
+        if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected { command: 0x03, status: ack.status });
         }
 
@@ -1840,15 +1959,16 @@ impl ClockDevice {
     /// Sends: `01 04` (current volume) or `02 04 [Volume]` (specific volume)
     /// to Data Write.
     pub async fn preview_ringtone(&self, volume: Option<u8>) -> Result<()> {
-        let frame = match volume {
-            Some(v) => vec![0x02, 0x04, v],
-            None => vec![0x01, 0x04],
+        let _guard = self.command_mutex.lock().await;
+
+        let payload = match volume {
+            Some(v) => vec![v],
+            None => vec![],
         };
+        self.transport.write_frame(Command::PreviewRingtone, &payload).await?;
 
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
-
-        let ack = self.wait_for_ack(0x04).await?;
-        if ack.status != 0x00 {
+        let ack = self.wait_for_ack(Command::PreviewRingtone).await?;
+        if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected { command: 0x04, status: ack.status });
         }
 
@@ -1861,35 +1981,42 @@ impl ClockDevice {
 
 | Field | Range | Notes |
 |---|---|---|
-| `volume` | 0–30 | 0 = silent |
-| `brightness` | 0–10 | 0 = off, 10 = max |
-| `night_brightness` | 0–10 | brightness during night mode |
-| `night_start_hour` | 0–23 | hour when night mode begins |
-| `night_start_minute` | 0–59 | minute when night mode begins |
-| `night_end_hour` | 0–23 | hour when night mode ends |
-| `night_end_minute` | 0–59 | minute when night mode ends |
-| `timezone` | -12 to +14 | signed byte |
-| `time_format` | 0 or 1 | 0 = 12h, 1 = 24h |
-| `temperature_unit` | 0 or 1 | 0 = C, 1 = F |
-| `language` | 0–3 | 0=EN, 1=ZH, 2=DE, 3=JA |
-| `ringtone` | 0–7 | built-in ringtones |
+| `volume` | 1–5 | Sound volume level |
+| `screen_duration` | 1–30 | Screen light duration in seconds |
+| `brightness` | 0–100 (multiple of 10) | Daytime brightness |
+| `night_brightness` | 0–100 (multiple of 10) | Nighttime brightness |
+| `night_start_hour` | 0–23 | Hour when night mode begins |
+| `night_start_minute` | 0–59 | Minute when night mode begins |
+| `night_end_hour` | 0–23 | Hour when night mode ends |
+| `night_end_minute` | 0–59 | Minute when night mode ends |
+| `timezone` | -720 to +840 minutes | Encoded in 6-minute units with sign byte |
+| `flags.language` | bit 0 | 0 = Chinese, 1 = English |
+| `flags.time_format` | bit 1 | 0 = 24h, 1 = 12h |
+| `flags.temperature_unit` | bit 2 | 0 = Celsius, 1 = Fahrenheit |
 
 #### Testing Strategy
 
-- **Unit tests**: `DeviceSettings::encode` / `DeviceSettings::decode`
-  round-trip. Validation of all enum variants. Out-of-range value rejection.
-- **Integration tests**: `MockBleTransport` verifying read/write frame
-  encoding and ACK handling. Brightness and ringtone preview commands.
+- **Unit tests**: Each newtype/enum has dedicated tests for construction,
+  validation, flag bit encoding, and nibble round-trips.
+  `DeviceSettings::encode`/`decode` round-trip and known-value encoding.
+  Rejection of invalid volume, screen duration, and night mode hours.
+- **Integration tests**: `MockBleTransport` verifying `write_settings` frame
+  encoding (`13 01 [18B]`), `read_settings` response parsing from Data
+  Notify, `set_brightness` frame (`02 03 [nibble]`), and `preview_ringtone`
+  frames (`01 04` and `02 04 [vol]`).
 - **Hardware tests**: Real device settings read/write, `#[ignore]`.
 
 #### Types Defined in Phase 4
 
 | Type | File | Description |
 |---|---|---|
-| `DeviceSettings` | `command/settings.rs` | Full settings struct |
-| `TimeFormat` | `command/settings.rs` | 12h/24h enum |
-| `TemperatureUnit` | `command/settings.rs` | C/F enum |
-| `Language` | `command/settings.rs` | Display language enum |
+| `DeviceSettings` | `command/settings/device_settings.rs` | Full settings struct (18-byte payload) |
+| `TimeFormat` | `command/settings/time_format.rs` | 12h/24h enum (flags bit 1) |
+| `TemperatureUnit` | `command/settings/temperature_unit.rs` | C/F enum (flags bit 2) |
+| `Language` | `command/settings/language.rs` | Chinese/English enum (flags bit 0) |
+| `Brightness` | `command/settings/brightness.rs` | Validated 0–100 newtype (multiple of 10) |
+| `Timezone` | `command/settings/timezone.rs` | Timezone newtype (6-minute unit encoding) |
+| `RingtoneSignature` | `command/settings/ringtone_signature.rs` | 4-byte signature newtype |
 
 ---
 

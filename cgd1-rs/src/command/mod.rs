@@ -10,6 +10,7 @@ mod alarm;
 mod command_id;
 mod commands;
 mod frame;
+mod settings;
 
 pub use ack::Ack;
 pub use ack_status::AckStatus;
@@ -20,3 +21,10 @@ pub use alarm::DayMask;
 pub use command_id::CommandId;
 pub use commands::Command;
 pub use frame::CommandFrame;
+pub use settings::Brightness;
+pub use settings::DeviceSettings;
+pub use settings::Language;
+pub use settings::RingtoneSignature;
+pub use settings::TemperatureUnit;
+pub use settings::TimeFormat;
+pub use settings::Timezone;
