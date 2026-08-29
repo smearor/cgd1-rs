@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
@@ -23,6 +23,7 @@ use crate::error::ClockError;
 use crate::error::Result;
 use crate::event::ClockEvent;
 use crate::token::AuthToken;
+use crate::token_store::TokenStore;
 use crate::types::BatteryLevel;
 use crate::types::Humidity;
 use crate::types::MacAddress;
@@ -85,6 +86,10 @@ pub struct ClockDevice {
     is_authenticated: Arc<AtomicBool>,
     /// Pending request-response channels keyed by command byte.
     pending: PendingMap,
+    /// Pending channel for the next non-ACK data notification (e.g. firmware).
+    pending_data_response: Arc<Mutex<Option<oneshot::Sender<Vec<u8>>>>>,
+    /// Optional token store for persisting auth tokens after successful privileged commands.
+    token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
 }
 
 impl ClockDevice {
@@ -102,6 +107,8 @@ impl ClockDevice {
             auth_token: Arc::new(Mutex::new(None)),
             is_authenticated: Arc::new(AtomicBool::new(false)),
             pending: Arc::new(Mutex::new(HashMap::new())),
+            pending_data_response: Arc::new(Mutex::new(None)),
+            token_store: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -120,6 +127,15 @@ impl ClockDevice {
         self.is_authenticated.load(Ordering::SeqCst)
     }
 
+    /// Set the token store used to persist auth tokens.
+    ///
+    /// When set, the token is saved after the first privileged command
+    /// (e.g., `sync_time`) succeeds, confirming the device accepted it.
+    pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
+        let mut guard = self.token_store.blocking_lock();
+        *guard = Some(store);
+    }
+
     /// Spawn the background notification task for this device.
     ///
     /// The task listens for BLE notifications, dispatches ACKs to pending
@@ -133,8 +149,23 @@ impl ClockDevice {
         let auth_token = self.auth_token.clone();
         let address = self.address;
         let command_mutex = self.command_mutex.clone();
+        let pending_data_response = self.pending_data_response.clone();
+        let token_store = self.token_store.clone();
 
-        tokio::spawn(async move { notification_task(transport, event_sender, pending, is_authenticated, auth_token, address, command_mutex).await });
+        tokio::spawn(async move {
+            notification_task(
+                transport,
+                event_sender,
+                pending,
+                is_authenticated,
+                auth_token,
+                address,
+                command_mutex,
+                pending_data_response,
+                token_store,
+            )
+            .await
+        });
     }
 
     /// Wait for an ACK with the given command byte.
@@ -210,7 +241,58 @@ impl ClockDevice {
             });
         }
 
+        // Token is now confirmed — persist it if a token store is configured.
+        let store = self.token_store.lock().await;
+        if let Some(ref store) = *store {
+            let token = self.auth_token.lock().await;
+            if let Some(ref token) = *token {
+                store.save(&self.address, token)?;
+            }
+        }
+
         Ok(())
+    }
+
+    /// Synchronize the device clock to the current system time.
+    pub async fn sync_time_now(&self) -> Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| ClockError::Transport(e.to_string()))?;
+        self.sync_time(now.as_secs() as u32).await
+    }
+
+    /// Read the firmware version string from the device.
+    ///
+    /// Sends: `01 0d` to Auth Write.
+    /// Expects response on Auth Notify: `0b [Byte] [ASCII String]`.
+    pub async fn read_firmware(&self) -> Result<String> {
+        let _guard = self.command_mutex.lock().await;
+
+        // Set up a pending channel for the non-ACK data notification.
+        let (sender, receiver) = oneshot::channel();
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = Some(sender);
+        }
+
+        self.transport.write_frame(Command::ReadFirmware, &[]).await?;
+
+        let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver).await {
+            Ok(Ok(data)) => data,
+            Ok(Err(_)) => return Err(ClockError::Transport("firmware response canceled".into())),
+            Err(_) => {
+                let mut pending = self.pending_data_response.lock().await;
+                *pending = None;
+                return Err(ClockError::Timeout);
+            }
+        };
+
+        // Parse: skip length byte, skip one byte, rest is ASCII string.
+        if response.len() < 2 {
+            return Err(ClockError::Parse("firmware response too short".into()));
+        }
+        let version = String::from_utf8_lossy(&response[2..]).to_string();
+        Ok(version)
     }
 
     /// Disconnect from the device.
@@ -240,6 +322,7 @@ fn parse_sensor_data(value: &[u8]) -> Option<(Temperature, Humidity)> {
 /// Listens for BLE notifications from the connected device, dispatches ACKs
 /// to pending request-response channels, broadcasts sensor/battery events,
 /// and attempts reconnection on disconnect.
+#[allow(clippy::too_many_arguments)]
 async fn notification_task(
     transport: Arc<dyn BleTransport>,
     event_sender: broadcast::Sender<ClockEvent>,
@@ -248,6 +331,8 @@ async fn notification_task(
     auth_token: Arc<Mutex<Option<AuthToken>>>,
     address: MacAddress,
     command_mutex: Arc<Mutex<()>>,
+    pending_data_response: Arc<Mutex<Option<oneshot::Sender<Vec<u8>>>>>,
+    token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
 ) {
     let sensor_uuid = CharacteristicUuid::SensorNotify.uuid();
     let battery_uuid = CharacteristicUuid::BatteryLevel.uuid();
@@ -275,11 +360,20 @@ async fn notification_task(
                         let _ = sender.send(Ok(ack));
                     }
                 } else {
-                    debug!(
-                        uuid = %uuid,
-                        len = value.len(),
-                        "unhandled notification, ignoring"
-                    );
+                    // Non-ACK data notification — check for a pending data response request.
+                    let sender = {
+                        let mut pending = pending_data_response.lock().await;
+                        pending.take()
+                    };
+                    if let Some(sender) = sender {
+                        let _ = sender.send(value);
+                    } else {
+                        debug!(
+                            uuid = %uuid,
+                            len = value.len(),
+                            "unhandled notification, ignoring"
+                        );
+                    }
                 }
             }
             None => {
@@ -295,6 +389,8 @@ async fn notification_task(
                     auth_token: auth_token.clone(),
                     is_authenticated: is_authenticated.clone(),
                     pending: pending.clone(),
+                    pending_data_response: pending_data_response.clone(),
+                    token_store: token_store.clone(),
                 };
 
                 match reconnect_and_restore(&device, 6).await {

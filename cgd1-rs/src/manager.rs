@@ -11,6 +11,7 @@ use crate::error::ClockError;
 use crate::error::Result;
 use crate::scanner::ClockScanner;
 use crate::token::AuthToken;
+use crate::token_store::TokenStore;
 use crate::types::MacAddress;
 
 /// Manages BLE connections to CGD1 alarm clocks.
@@ -116,6 +117,18 @@ impl ClockManager {
     pub async fn connect_and_authenticate(&self, address: &MacAddress, token: &AuthToken) -> Result<ClockDevice> {
         let device = self.connect(address).await?;
         device.authenticate(token).await?;
+        Ok(device)
+    }
+
+    /// Connect, set a token store, authenticate, and sync time.
+    ///
+    /// This is the recommended full connection flow: the token is persisted
+    /// only after `sync_time` succeeds, confirming the device accepted it.
+    pub async fn connect_authenticate_and_sync(&self, address: &MacAddress, token: &AuthToken, token_store: Arc<dyn TokenStore>) -> Result<ClockDevice> {
+        let device = self.connect(address).await?;
+        device.set_token_store(token_store);
+        device.authenticate(token).await?;
+        device.sync_time_now().await?;
         Ok(device)
     }
 }
