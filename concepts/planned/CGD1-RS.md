@@ -400,7 +400,12 @@ cgd1-rs/
         ├── mod.rs             # Module declarations + pub use re-exports
         ├── auth.rs            # AuthInit, AuthConfirm commands
         ├── time_sync.rs       # TimeSync command
-        ├── alarm.rs           # SetAlarm, DeleteAlarm, ReadAlarms commands
+        ├── alarm/             # Alarm types (one struct per file)
+        │   ├── mod.rs         # Module declarations + re-exports
+        │   ├── day_mask.rs    # DayMask newtype (day-of-week bitmask)
+        │   ├── entry.rs       # AlarmEntry (hour, minute, repeat, enabled, snooze)
+        │   ├── slot.rs        # AlarmSlot (entry + slot index)
+        │   └── slot_index.rs  # AlarmSlotIndex newtype (validated 0–15)
         ├── settings.rs        # ReadSettings, SetSettings commands
         ├── brightness.rs      # SetBrightness command
         ├── ringtone.rs        # PreviewRingtone command
@@ -722,10 +727,10 @@ impl ClockDevice {
     pub async fn read_alarms(&self) -> Result<Vec<AlarmSlot>>;
 
     /// Set or modify an alarm at the given slot index.
-    pub async fn set_alarm(&self, alarm: &AlarmEntry, slot: u8) -> Result<()>;
+    pub async fn set_alarm(&self, alarm: &AlarmEntry, slot: AlarmSlotIndex) -> Result<()>;
 
     /// Delete an alarm at the given slot index.
-    pub async fn delete_alarm(&self, slot: u8) -> Result<()>;
+    pub async fn delete_alarm(&self, slot: AlarmSlotIndex) -> Result<()>;
 
     /// Read device settings.
     pub async fn read_settings(&self) -> Result<DeviceSettings>;
@@ -836,12 +841,12 @@ pub enum ClockError {
     NoAuthToken,
 
     /// Command was rejected by the device (non-zero ACK status).
-    #[error("command rejected: command={command:#04x}, status={status:#04x}")]
+    #[error("command rejected: command={command:#04x}, status={status}")]
     CommandRejected {
         /// The command byte that was rejected.
         command: u8,
-        /// The status byte from the ACK.
-        status: u8,
+        /// The ACK status from the device.
+        status: AckStatus,
     },
 
     /// Timeout waiting for a response from the device.
@@ -855,10 +860,6 @@ pub enum ClockError {
     /// Device is already connected.
     #[error("already connected")]
     AlreadyConnected,
-
-    /// Invalid alarm slot index (must be 0–15).
-    #[error("invalid alarm slot: {0}")]
-    InvalidAlarmSlot(u8),
 
     /// Invalid settings value (out of range).
     #[error("invalid settings value: {0}")]
@@ -897,16 +898,19 @@ flowchart TB
     (GATT)"]
     eventChannel["broadcast::Sender
     <ClockEvent>"]
-    oneshotMap["Oneshot Senders
-    (pending request-response)"]
+    ackMap["Oneshot Senders
+    (pending ACK response)"]
+    dataChannel["mpsc::Sender
+    (pending data response)"]
 
     notifyTask --> authNotify
     notifyTask --> dataNotify
     notifyTask --> sensorNotify
     notifyTask --> batteryNotify
 
-    authNotify --> oneshotMap
-    dataNotify --> oneshotMap
+    authNotify --> ackMap
+    dataNotify --> ackMap
+    dataNotify --> dataChannel
     sensorNotify --> eventChannel
     batteryNotify --> eventChannel
     authNotify --> eventChannel
@@ -918,8 +922,10 @@ Auth Notify, Data Notify, and Sensor Notify characteristics. ACKs are matched
 to pending request-response oneshot channels by command ID using a FIFO queue
 per command byte (`VecDeque`), so concurrent requests with the same command
 byte are served in order. The `pop_pending` function removes the front sender
-when an ACK arrives. Sensor and battery notifications are broadcast directly
-to event subscribers.
+when an ACK arrives. Non-ACK data notifications (e.g., alarm read responses,
+firmware version) are forwarded via an `mpsc::Sender` channel, allowing
+multi-packet responses to be accumulated by the receiver. Sensor and battery
+notifications are broadcast directly to event subscribers.
 
 #### Request-Response Pattern
 
@@ -1327,54 +1333,125 @@ impl ClockDevice {
 #### Alarm Protocol Overview
 
 The CGD1 supports up to 16 alarm slots (indices 0–15). Each alarm is defined
-by a time, a day-of-week repeat bitmask, and an enable flag. Alarms are
+by a time, a day-of-week repeat bitmask, and enable/snooze flags. Alarms are
 managed via the Data Write characteristic with command `0x05` (set/delete)
 and command `0x06` (read all).
 
-#### AlarmEntry
+The alarm types are organized into separate files under `command/alarm/`,
+following the one-struct-per-file guideline:
+
+```
+command/alarm/
+├── mod.rs         # Module declarations + re-exports
+├── day_mask.rs    # DayMask newtype
+├── entry.rs       # AlarmEntry struct
+├── slot.rs        # AlarmSlot struct
+└── slot_index.rs  # AlarmSlotIndex newtype
+```
+
+#### DayMask
+
+A newtype wrapping a `u8` day-of-week bitmask. Encapsulates the bit layout
+and provides named constants for common patterns.
 
 ```rust
-/// A single alarm entry to be written to a slot.
+/// Day-of-week bitmask for alarm repeat rules.
+///
+/// Bit 0 = Sunday, bit 1 = Monday, ..., bit 6 = Saturday.
+/// 0x7F means every day. 0x00 means one-shot (fires once then auto-disables).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DayMask(u8);
+
+impl DayMask {
+    pub const ONCE: DayMask = DayMask(0x00);
+    pub const EVERY_DAY: DayMask = DayMask(0x7F);
+    pub const WEEKDAYS: DayMask = DayMask(0x3E);
+    pub const WEEKENDS: DayMask = DayMask(0x41);
+
+    /// Create a DayMask from a raw bitmask value.
+    pub const fn new(value: u8) -> Self { Self(value) }
+
+    /// Get the raw bitmask value.
+    pub const fn value(self) -> u8 { self.0 }
+}
+```
+
+#### AlarmSlotIndex
+
+A newtype wrapping a `u8` slot index with validation enforcing the valid
+range 0–15. Construction via `new()` returns `Result<Self>`, and `TryFrom<u8>`
+is implemented for ergonomic conversion.
+
+```rust
+/// Validated alarm slot index (0–15).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AlarmSlotIndex(u8);
+
+impl AlarmSlotIndex {
+    /// Maximum valid slot index.
+    pub const MAX: u8 = 15;
+
+    /// Create a validated slot index. Returns an error if > 15.
+    pub fn new(value: u8) -> Result<Self> {
+        if value > Self::MAX {
+            return Err(ClockError::Parse(format!("invalid alarm slot index: {value}")));
+        }
+        Ok(Self(value))
+    }
+
+    /// Get the raw slot index value.
+    pub const fn value(self) -> u8 { self.0 }
+}
+
+impl TryFrom<u8> for AlarmSlotIndex { /* ... */ }
+impl From<AlarmSlotIndex> for u8 { /* ... */ }
+```
+
+#### AlarmEntry
+
+A single alarm entry with private fields and construction-time validation
+of hour (0–23) and minute (0–59). Access is via getter methods.
+
+```rust
+/// A single alarm entry.
+///
+/// Maps to the 5-byte alarm structure used in the CGD1 BLE protocol:
+/// `[Enabled] [HH] [MM] [Days] [Snooze]`.
+///
+/// Invariants are enforced by construction:
+/// - `hour` is in range 0–23
+/// - `minute` is in range 0–59
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlarmEntry {
-    /// Hour (0–23).
-    pub hour: u8,
-    /// Minute (0–59).
-    pub minute: u8,
-    /// Day-of-week bitmask (bit 0 = Sunday, bit 1 = Monday, ..., bit 6 = Saturday).
-    /// 0x7F means every day. 0x00 means one-shot (fires once then auto-disables).
-    pub repeat_mask: u8,
-    /// Whether the alarm is enabled.
-    pub enabled: bool,
+    hour: u8,
+    minute: u8,
+    repeat_mask: DayMask,
+    enabled: bool,
+    snooze: bool,
 }
 
 impl AlarmEntry {
-    /// Encode the alarm into the 5-byte payload for command 0x05.
-    ///
-    /// Format: [Hour] [Minute] [RepeatMask] [EnableByte] [SlotIndex]
-    /// EnableByte: 0x00 = disabled, 0x01 = enabled
-    pub fn encode(&self, slot: u8) -> [u8; 5] {
-        [
-            self.hour,
-            self.minute,
-            self.repeat_mask,
-            if self.enabled { 0x01 } else { 0x00 },
-            slot,
-        ]
-    }
+    pub const MAX_HOUR: u8 = 23;
+    pub const MAX_MINUTE: u8 = 59;
 
-    /// Decode an alarm from a raw 5-byte payload.
-    pub fn decode(payload: &[u8]) -> Result<Self> {
-        if payload.len() < 4 {
-            return Err(ClockError::Parse("alarm payload too short".into()));
-        }
-        Ok(Self {
-            hour: payload[0],
-            minute: payload[1],
-            repeat_mask: payload[2],
-            enabled: payload[3] != 0x00,
-        })
-    }
+    /// Create a new alarm entry, validating hour and minute ranges.
+    pub fn new(hour: u8, minute: u8, repeat_mask: DayMask, enabled: bool, snooze: bool) -> Result<Self>;
+
+    pub const fn hour(&self) -> u8;
+    pub const fn minute(&self) -> u8;
+    pub const fn repeat_mask(&self) -> DayMask;
+    pub const fn enabled(&self) -> bool;
+    pub const fn snooze(&self) -> bool;
+
+    /// Encode into the 5-byte structure: `[Enabled] [HH] [MM] [Days] [Snooze]`.
+    pub fn encode(&self) -> [u8; 5];
+
+    /// Decode from a raw 5-byte payload. Returns `None` for empty slots (all 0xFF).
+    /// Validates hour and minute ranges from the decoded payload.
+    pub fn decode(payload: &[u8]) -> Result<Option<Self>>;
+
+    /// Encode the set-alarm payload (6 bytes): `[ID] [Enabled] [HH] [MM] [Days] [Snooze]`.
+    pub fn encode_set_payload(&self, slot: AlarmSlotIndex) -> [u8; 6];
 }
 ```
 
@@ -1384,8 +1461,8 @@ impl AlarmEntry {
 /// An alarm slot read from the device, combining the entry and its slot index.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlarmSlot {
-    /// Slot index (0–15).
-    pub slot: u8,
+    /// Validated slot index (0–15).
+    pub index: AlarmSlotIndex,
     /// The alarm entry data.
     pub entry: AlarmEntry,
 }
@@ -1397,23 +1474,16 @@ pub struct AlarmSlot {
 impl ClockDevice {
     /// Set or modify an alarm at the given slot index.
     ///
-    /// Sends: `07 05 [Hour] [Minute] [RepeatMask] [Enable] [Slot]` to Data Write.
+    /// Sends: `07 05 [ID] [Enabled] [HH] [MM] [Days] [Snooze]` to Data Write.
     /// Expects ACK: `04 ff 05 00 00`.
-    pub async fn set_alarm(&self, alarm: &AlarmEntry, slot: u8) -> Result<()> {
-        if slot > 15 {
-            return Err(ClockError::InvalidAlarmSlot(slot));
-        }
+    pub async fn set_alarm(&self, alarm: &AlarmEntry, slot: AlarmSlotIndex) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
 
-        let payload = alarm.encode(slot);
-        let mut frame = Vec::with_capacity(7);
-        frame.push(0x07); // Length
-        frame.push(0x05); // Command: Set/Delete Alarm
-        frame.extend_from_slice(&payload);
+        let payload = alarm.encode_set_payload(slot);
+        self.transport.write_frame(Command::SetAlarm, &payload).await?;
 
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
-
-        let ack = self.wait_for_ack(0x05).await?;
-        if ack.status != 0x00 {
+        let ack = self.wait_for_ack(Command::SetAlarm).await?;
+        if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected { command: 0x05, status: ack.status });
         }
 
@@ -1422,22 +1492,16 @@ impl ClockDevice {
 
     /// Delete an alarm at the given slot index.
     ///
-    /// Sends: `07 05 [00] [00] [00] [00] [Slot]` to Data Write.
+    /// Sends: `07 05 [ID] [00] [00] [00] [00] [00]` to Data Write.
     /// This is equivalent to setting a disabled alarm with no repeat.
-    pub async fn delete_alarm(&self, slot: u8) -> Result<()> {
-        if slot > 15 {
-            return Err(ClockError::InvalidAlarmSlot(slot));
-        }
+    pub async fn delete_alarm(&self, slot: AlarmSlotIndex) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
 
-        let mut frame = Vec::with_capacity(7);
-        frame.push(0x07); // Length
-        frame.push(0x05); // Command: Set/Delete Alarm
-        frame.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, slot]);
+        let payload = [slot.value(), 0x00, 0x00, 0x00, 0x00, 0x00];
+        self.transport.write_frame(Command::SetAlarm, &payload).await?;
 
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
-
-        let ack = self.wait_for_ack(0x05).await?;
-        if ack.status != 0x00 {
+        let ack = self.wait_for_ack(Command::SetAlarm).await?;
+        if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected { command: 0x05, status: ack.status });
         }
 
@@ -1454,26 +1518,33 @@ impl ClockDevice {
     ///
     /// Sends: `01 06` to Data Write.
     /// Expects response on Data Notify: a multi-byte frame containing all
-    /// alarm slots in sequence.
+    /// alarm slots in sequence. The response may span multiple BLE
+    /// notification packets, which are accumulated via an `mpsc` channel.
     pub async fn read_alarms(&self) -> Result<Vec<AlarmSlot>> {
-        let frame = [0x01, 0x06];
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+        let _guard = self.command_mutex.lock().await;
 
-        let response = self.wait_for_response(0x06, Duration::from_secs(RESPONSE_TIMEOUT_SECS)).await?;
+        self.transport.write_frame(Command::ReadAlarms, &[]).await?;
 
-        // Parse response: each alarm is 4 bytes [Hour] [Minute] [RepeatMask] [Enable]
-        // Slots are in order 0..15. Empty slots have hour=0, minute=0, mask=0, enable=0.
-        let mut slots = Vec::new();
-        for (i, chunk) in response.chunks(4).enumerate() {
-            if chunk.len() < 4 {
+        // Accumulate response packets via mpsc channel.
+        let mut data = Vec::new();
+        while let Some(packet) = self.wait_for_data(Duration::from_secs(RESPONSE_TIMEOUT_SECS)).await? {
+            data.extend_from_slice(&packet);
+            // Response is complete when we have all 16 slots × 5 bytes + 2-byte header.
+            if data.len() >= 2 + 16 * 5 {
                 break;
             }
-            // Skip empty slots (all zeros)
-            if chunk.iter().all(|&b| b == 0x00) {
-                continue;
+        }
+
+        // Parse: header [0x11] [0x06], then 16 × 5-byte alarm entries.
+        // Each entry: [Enabled] [HH] [MM] [Days] [Snooze].
+        // Empty slots are all 0xFF.
+        let mut slots = Vec::new();
+        for (i, chunk) in data[2..].chunks(5).enumerate() {
+            if chunk.len() < 5 { break; }
+            if let Some(entry) = AlarmEntry::decode(chunk)? {
+                let index = AlarmSlotIndex::new(i as u8)?;
+                slots.push(AlarmSlot { index, entry });
             }
-            let entry = AlarmEntry::decode(chunk)?;
-            slots.push(AlarmSlot { slot: i as u8, entry });
         }
 
         Ok(slots)
@@ -1501,27 +1572,30 @@ Common patterns:
 
 #### Snooze
 
-The CGD1 has a hardware snooze button on top of the device. Snooze duration
-is fixed at 5 minutes and is not configurable via BLE. When an alarm fires,
-the device beeps for the configured duration and can be silenced by pressing
-the snooze button.
+The snooze flag is part of the alarm entry (5th byte in the BLE payload).
+When enabled, the device snoozes the alarm for 5 minutes when the hardware
+snooze button is pressed. Snooze duration is fixed and not configurable via
+BLE.
 
 #### Testing Strategy
 
 - **Unit tests**: `AlarmEntry::encode` / `AlarmEntry::decode` round-trip
-  with known byte sequences. Repeat bitmask validation. Slot index bounds
-  checking.
-- **Integration tests**: `MockBleTransport` verifying set/delete frame
-  encoding and ACK handling. Read alarms response parsing with multi-slot
-  data.
+  with known byte sequences. `AlarmEntry::new` validation of hour/minute
+  boundaries. `AlarmSlotIndex::new` validation of slot range 0–15.
+  `DayMask` constant values.
+- **Integration tests**: `MockBleTransport` with auto-ACK verifying
+  set/delete frame encoding and ACK handling. Read alarms response parsing
+  with multi-slot data and multi-packet notification accumulation.
 - **Hardware tests**: Real device alarm set, read, and delete, `#[ignore]`.
 
 #### Types Defined in Phase 3
 
 | Type | File | Description |
 |---|---|---|
-| `AlarmEntry` | `command/alarm.rs` | Alarm data (hour, minute, repeat, enabled) |
-| `AlarmSlot` | `command/alarm.rs` | Alarm entry with slot index |
+| `DayMask` | `command/alarm/day_mask.rs` | Day-of-week bitmask newtype with named constants |
+| `AlarmSlotIndex` | `command/alarm/slot_index.rs` | Validated slot index newtype (0–15) |
+| `AlarmEntry` | `command/alarm/entry.rs` | Alarm data (hour, minute, repeat, enabled, snooze) with validated construction |
+| `AlarmSlot` | `command/alarm/slot.rs` | Alarm entry with validated slot index |
 
 ---
 
