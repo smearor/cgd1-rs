@@ -37,6 +37,36 @@ use crate::types::MacAddress;
 /// Response timeout in seconds.
 const RESPONSE_TIMEOUT_SECS: u64 = 10;
 
+/// Extended ACK timeout for audio data packets (seconds).
+///
+/// Regular commands use `RESPONSE_TIMEOUT_SECS` (10s), but audio uploads
+/// involve many sequential packets over a potentially slow BLE link.
+const AUDIO_ACK_TIMEOUT_SECS: u64 = 30;
+
+/// Audio data packet payload size (bytes).
+const AUDIO_PACKET_PAYLOAD_SIZE: usize = 128;
+
+/// Number of audio packets per block before an ACK is expected.
+const AUDIO_PACKETS_PER_BLOCK: usize = 4;
+
+/// Maximum audio data size (~12 seconds at 8 kHz 8-bit mono).
+const AUDIO_MAX_SIZE: usize = 98_304;
+
+/// Validate that audio data meets the CGD1 format requirements.
+///
+/// The audio must be 8-bit unsigned PCM at 8 kHz, mono. The caller is
+/// responsible for providing correctly formatted audio; this function only
+/// checks size constraints.
+pub fn validate_audio(audio: &[u8]) -> Result<()> {
+    if audio.is_empty() {
+        return Err(ClockError::InvalidSettings("audio data is empty".into()));
+    }
+    if audio.len() > AUDIO_MAX_SIZE {
+        return Err(ClockError::InvalidSettings(format!("audio too large: {} bytes (max {})", audio.len(), AUDIO_MAX_SIZE)));
+    }
+    Ok(())
+}
+
 /// Shared state for matching ACKs to pending requests.
 ///
 /// Uses a `VecDeque` per command byte so that multiple concurrent requests
@@ -184,6 +214,22 @@ impl ClockDevice {
         register_pending(&self.pending, command_id, sender).await;
 
         match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver).await {
+            Ok(Ok(ack)) => ack,
+            Ok(Err(_)) => Err(ClockError::Transport("pending request canceled".into())),
+            Err(_) => Err(ClockError::Timeout),
+        }
+    }
+
+    /// Wait for an ACK with a custom timeout duration.
+    ///
+    /// Used by audio upload where per-packet ACKs may take longer than
+    /// the default timeout.
+    async fn wait_for_ack_with_timeout(&self, command: Command, timeout_secs: u64) -> Result<Ack> {
+        let command_id = command.command_id();
+        let (sender, receiver) = oneshot::channel();
+        register_pending(&self.pending, command_id, sender).await;
+
+        match timeout(Duration::from_secs(timeout_secs), receiver).await {
             Ok(Ok(ack)) => ack,
             Ok(Err(_)) => Err(ClockError::Transport("pending request canceled".into())),
             Err(_) => Err(ClockError::Timeout),
@@ -543,6 +589,87 @@ impl ClockDevice {
             return Err(ClockError::Parse("battery response empty".to_string()));
         }
         Ok(BatteryLevel::new(data[0]))
+    }
+
+    /// Upload a custom ringtone to the device.
+    ///
+    /// Performs the full upload sequence:
+    /// 1. MTU exchange to support 130-byte GATT writes.
+    /// 2. Audio Init with a 4-byte signature and total size.
+    /// 3. Audio Data Packets in 128-byte blocks (4 packets per ACK).
+    ///
+    /// The audio must be 8-bit unsigned PCM, 8 kHz, mono. Maximum size
+    /// is ~98,304 bytes (~12 seconds).
+    ///
+    /// Sends: `08 10 [SizeLo] [SizeMid] [SizeHi] [Sig0] [Sig1] [Sig2] [Sig3]`
+    /// to Data Write, then `81 08 [128B payload]` packets in blocks of 4.
+    pub async fn upload_ringtone(&self, audio: &[u8], signature: [u8; 4]) -> Result<()> {
+        validate_audio(audio)?;
+
+        let _guard = self.command_mutex.lock().await;
+
+        // Step 1: MTU Exchange — audio packets are 130 bytes, default MTU is 23
+        let negotiated_mtu = self.transport.request_mtu(247).await?;
+        if (negotiated_mtu as usize) < 132 {
+            return Err(ClockError::InvalidSettings(format!("MTU too small for audio upload: {} (need >= 132)", negotiated_mtu)));
+        }
+        debug!(negotiated_mtu, "MTU exchange successful");
+
+        // Step 2: Audio Init
+        let total_size = audio.len() as u32;
+        let mut init_frame = Vec::with_capacity(9);
+        init_frame.push(0x08); // Length
+        init_frame.push(0x10); // Command: Audio Init
+        init_frame.extend_from_slice(&total_size.to_le_bytes()[0..3]);
+        init_frame.extend_from_slice(&signature);
+
+        self.transport.write(CharacteristicUuid::DataWrite, &init_frame).await?;
+
+        let init_ack = self.wait_for_ack_with_timeout(Command::AudioInit, AUDIO_ACK_TIMEOUT_SECS).await?;
+        if let AckStatus::Failure(_) = init_ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x10,
+                status: init_ack.status,
+            });
+        }
+        debug!(slot = init_ack.payload, total_size, "audio upload initialized");
+
+        // Step 3: Send data packets in blocks of 4
+        let total_packets = audio.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
+        let mut packet_index = 0usize;
+
+        for chunk in audio.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
+            // Pad to 128 bytes with 0xFF
+            let mut payload = [0xFFu8; AUDIO_PACKET_PAYLOAD_SIZE];
+            payload[..chunk.len()].copy_from_slice(chunk);
+
+            let mut frame = Vec::with_capacity(130);
+            frame.push(0x81); // Length (129 bytes follow)
+            frame.push(0x08); // Command: Audio Data Packet
+            frame.extend_from_slice(&payload);
+
+            self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+
+            packet_index += 1;
+
+            // Wait for ACK at end of each block of 4 packets
+            if packet_index.is_multiple_of(AUDIO_PACKETS_PER_BLOCK) || packet_index == total_packets {
+                let ack = self.wait_for_ack_with_timeout(Command::AudioData, AUDIO_ACK_TIMEOUT_SECS).await?;
+                if let AckStatus::Failure(_) = ack.status {
+                    return Err(ClockError::CommandRejected {
+                        command: 0x08,
+                        status: ack.status,
+                    });
+                }
+            }
+
+            if packet_index.is_multiple_of(100) {
+                debug!(packet_index, total_packets, "audio upload progress");
+            }
+        }
+
+        info!(total_packets, "ringtone upload complete");
+        Ok(())
     }
 }
 
@@ -977,5 +1104,117 @@ mod tests {
         mock.set_read_value(CharacteristicUuid::BatteryLevel, vec![]).await;
 
         assert!(device.read_battery().await.is_err());
+    }
+
+    #[test]
+    fn validate_audio_empty_rejected() {
+        assert!(validate_audio(&[]).is_err());
+    }
+
+    #[test]
+    fn validate_audio_valid() {
+        assert!(validate_audio(&[0x80; 256]).is_ok());
+    }
+
+    #[test]
+    fn validate_audio_too_large_rejected() {
+        let audio = vec![0u8; AUDIO_MAX_SIZE + 1];
+        assert!(validate_audio(&audio).is_err());
+    }
+
+    #[test]
+    fn validate_audio_max_size_accepted() {
+        let audio = vec![0u8; AUDIO_MAX_SIZE];
+        assert!(validate_audio(&audio).is_ok());
+    }
+
+    #[tokio::test]
+    async fn upload_ringtone_small_audio() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        // 128 bytes = 1 packet (1 block, ACK after last packet)
+        let audio = vec![0xAAu8; 128];
+        let signature = [0x01, 0x02, 0x03, 0x04];
+
+        device.upload_ringtone(&audio, signature).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        // Write 0: Audio Init frame
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        assert_eq!(writes[0].1[0], 0x08); // length
+        assert_eq!(writes[0].1[1], 0x10); // command
+        assert_eq!(writes[0].1[2], 128); // size lo
+        assert_eq!(writes[0].1[3], 0); // size mid
+        assert_eq!(writes[0].1[4], 0); // size hi
+        assert_eq!(&writes[0].1[5..9], &signature);
+
+        // Write 1: Audio Data Packet
+        assert_eq!(writes[1].0, CharacteristicUuid::DataWrite);
+        assert_eq!(writes[1].1[0], 0x81); // length
+        assert_eq!(writes[1].1[1], 0x08); // command
+        assert_eq!(&writes[1].1[2..], &[0xAA; 128]); // payload
+    }
+
+    #[tokio::test]
+    async fn upload_ringtone_multi_block() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        // 512 bytes = 4 packets = 1 full block (ACK after 4th)
+        let audio = vec![0x55u8; 512];
+        let signature = [0xBA, 0x2C, 0x2C, 0x8C];
+
+        device.upload_ringtone(&audio, signature).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        // 1 init + 4 data packets = 5 writes
+        assert_eq!(writes.len(), 5);
+        // Verify all data packets have correct framing
+        for i in 1..=4 {
+            assert_eq!(writes[i].1[0], 0x81);
+            assert_eq!(writes[i].1[1], 0x08);
+            assert_eq!(writes[i].1.len(), 130);
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_ringtone_pads_last_packet() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        // 130 bytes = 2 packets: 128 + 2 (padded to 128 with 0xFF)
+        let audio = vec![0x11u8; 130];
+        let signature = [0x00; 4];
+
+        device.upload_ringtone(&audio, signature).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        // 1 init + 2 data packets = 3 writes
+        assert_eq!(writes.len(), 3);
+        // Second data packet: first 2 bytes are 0x11, rest 0xFF
+        assert_eq!(writes[2].1[0], 0x81);
+        assert_eq!(writes[2].1[1], 0x08);
+        assert_eq!(writes[2].1[2], 0x11);
+        assert_eq!(writes[2].1[3], 0x11);
+        assert_eq!(writes[2].1[4], 0xFF);
+        assert_eq!(writes[2].1[129], 0xFF);
+    }
+
+    #[tokio::test]
+    async fn upload_ringtone_empty_audio_errors() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        let result = device.upload_ringtone(&[], [0x01, 0x02, 0x03, 0x04]).await;
+        assert!(result.is_err());
     }
 }

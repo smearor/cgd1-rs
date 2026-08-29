@@ -2214,8 +2214,8 @@ match notification_source {
 
 #### Audio Protocol Overview
 
-The CGD1 supports custom ringtone uploads via a two-step protocol on the Data
-Write characteristic:
+The CGD1 supports custom ringtone uploads via a block-based protocol on the
+Data Write characteristic, as verified against the `clOwOck` Android app:
 
 1. **MTU Exchange**: Before any audio data can be sent, the BLE ATT MTU must
    be increased. The default MTU of 23 bytes (20 bytes usable payload) is far
@@ -2223,271 +2223,153 @@ Write characteristic:
    of at least 247 bytes (the typical maximum for BLE 4.2+). If the device
    rejects the MTU exchange, the upload is aborted with a descriptive error.
 
-2. **Audio Init** (command `0x10`): Sends a 4-byte signature and total size
-   to initialize the upload. The device responds with an ACK indicating the
-   slot to use (alternating between two slots).
+2. **Audio Init** (command `0x10`): Sends total size (3 bytes LE) and a
+   4-byte signature to initialize the upload. The device responds with an ACK.
 
 3. **Audio Data Packets** (command `0x08`): Sends 128-byte chunks of 8-bit
-   PCM audio data. Each packet is acknowledged by the device.
+   PCM audio data in blocks of 4 packets. An ACK is expected after each
+   block of 4 (or after the last packet if fewer than 4 remain). Short
+   final packets are padded with `0xFF`.
 
-The audio must be 8-bit unsigned PCM at 16 kHz sample rate, mono. The maximum
-duration is approximately 90 seconds.
+The audio must be 8-bit unsigned PCM at 8 kHz sample rate, mono. The maximum
+size is approximately 98 KB (~12 seconds at 8 kHz).
 
-#### MTU and Throughput Considerations
+#### Audio Init Frame Format
 
-**MTU**: An audio data packet frame is 130 bytes (`0x81 0x08` + 128 bytes
-payload). The default ATT MTU of 23 bytes only allows 20 bytes of payload per
-GATT write. Without an explicit MTU exchange, writes of 130 bytes will fail
-with a `BleError::WriteTooLong` or be silently truncated by the BLE stack.
-The `upload_ringtone` method performs `transport.request_mtu(247)` before
-starting the upload and aborts if the negotiated MTU is below 132 (130 bytes
-frame + 2 bytes ATT header overhead).
+As verified against `clOwOck`, the Audio Init frame sends **size first, then
+signature** (not the reverse as originally planned):
 
-**Throughput**: At maximum size (~1.44 MB, ~11,250 packets of 128 bytes), the
-upload duration depends on the BLE connection interval and whether each packet
-waits for an individual ACK:
-
-| Connection interval | Per-packet RTT | Total time (with ACK per packet) |
-|---|---|---|
-| 7.5 ms | ~15 ms | ~170 seconds |
-| 15 ms | ~30 ms | ~340 seconds |
-| 30 ms | ~60 ms | ~675 seconds |
-
-To mitigate long upload times, the implementation supports two upload modes:
-
-- **Sequential mode** (default): Each packet is sent and the code waits for
-  the per-packet ACK before sending the next. Used when the device firmware
-  does not support windowed uploads. Extended timeout of 30 seconds per
-  packet.
-- **Windowed mode** (optional): Multiple packets are sent in a pipeline
-  before waiting for ACKs. The window size is negotiated during Audio Init.
-  This reduces the total upload time by overlapping BLE write latency with
-  device-side processing.
-
-The upload mode is determined by the Audio Init ACK payload. If the ACK
-payload byte indicates windowed support (non-zero window size), the
-windowed code path is used. Otherwise, the sequential fallback is used.
-
-#### AudioInit Command
-
-```rust
-impl ClockDevice {
-    /// Initialize a custom ringtone upload.
-    ///
-    /// Sends: `08 10 [Signature 4B] [TotalSize 3B LE]` to Data Write.
-    /// Expects ACK: `04 ff 10 00 [Slot]`.
-    ///
-    /// The device alternates between two slots (0 and 1) for each upload.
-    /// The ACK payload byte indicates which slot was assigned.
-    pub async fn audio_init(&self, signature: [u8; 4], total_size: u32) -> Result<u8> {
-        let mut frame = Vec::with_capacity(10);
-        frame.push(0x08); // Length
-        frame.push(0x10); // Command: Audio Init
-        frame.extend_from_slice(&signature);
-        frame.extend_from_slice(&total_size.to_le_bytes()[0..3]);
-
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
-
-        let ack = self.wait_for_ack(0x10).await?;
-        if ack.status != 0x00 {
-            return Err(ClockError::CommandRejected { command: 0x10, status: ack.status });
-        }
-
-        Ok(ack.payload)
-    }
-}
+```
+[0x08] [0x10] [SizeLo] [SizeMid] [SizeHi] [Sig0] [Sig1] [Sig2] [Sig3]
 ```
 
-#### AudioDataPacket Command
+- `0x08`: Length byte (8 bytes follow including command)
+- `0x10`: Command byte (Audio Init)
+- Size: 3-byte little-endian total audio size
+- Signature: 4-byte ringtone signature
+
+#### Audio Data Packet Frame Format
+
+```
+[0x81] [0x08] [128 bytes payload, padded with 0xFF]
+```
+
+- `0x81`: Length byte (129 bytes follow including command)
+- `0x08`: Command byte (Audio Data Packet)
+- Payload: 128 bytes of audio data, padded with `0xFF` if the last chunk
+  is shorter than 128 bytes
+
+#### Block-Based ACK Protocol
+
+The device expects ACKs in blocks of 4 packets (matching `clOwOck`'s
+`AUDIO_PACKETS_PER_BLOCK = 4`). The upload sends up to 4 packets without
+waiting for an ACK, then waits for a single ACK after the 4th packet (or
+after the last packet if fewer than 4 remain in the final block).
+
+This is simpler than the originally planned sequential/windowed dual-mode
+approach and matches the actual device firmware behavior.
+
+#### Implementation
 
 ```rust
-/// Maximum payload size per audio data packet.
+/// Extended ACK timeout for audio data packets (seconds).
+const AUDIO_ACK_TIMEOUT_SECS: u64 = 30;
+
+/// Audio data packet payload size (bytes).
 const AUDIO_PACKET_PAYLOAD_SIZE: usize = 128;
 
-/// Default window size for windowed audio uploads.
-const DEFAULT_AUDIO_WINDOW_SIZE: usize = 8;
+/// Number of audio packets per block before an ACK is expected.
+const AUDIO_PACKETS_PER_BLOCK: usize = 4;
 
-/// Audio upload strategy determined during Audio Init.
-///
-/// The device indicates whether it supports windowed (pipelined) uploads
-/// via the Audio Init ACK payload. When supported, multiple packets can be
-/// sent before waiting for ACKs, significantly reducing total upload time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AudioUploadMode {
-    /// Sequential: send one packet, wait for ACK, send next.
-    Sequential,
-    /// Windowed: send up to `window_size` packets, then drain ACKs.
-    Windowed {
-        /// Maximum number of in-flight (unacknowledged) packets.
-        window_size: usize,
-    },
+/// Maximum audio data size (~12 seconds at 8 kHz 8-bit mono).
+const AUDIO_MAX_SIZE: usize = 98_304;
+
+/// Validate that audio data meets the CGD1 format requirements.
+pub fn validate_audio(audio: &[u8]) -> Result<()> {
+    if audio.is_empty() {
+        return Err(ClockError::InvalidSettings("audio data is empty".into()));
+    }
+    if audio.len() > AUDIO_MAX_SIZE {
+        return Err(ClockError::InvalidSettings(format!(
+            "audio too large: {} bytes (max {})",
+            audio.len(),
+            AUDIO_MAX_SIZE
+        )));
+    }
+    Ok(())
 }
 
 impl ClockDevice {
-    /// Upload a custom ringtone.
+    /// Upload a custom ringtone to the device.
     ///
     /// Performs the full upload sequence:
     /// 1. MTU exchange to support 130-byte GATT writes.
     /// 2. Audio Init with a 4-byte signature and total size.
-    /// 3. Audio Data Packets in 128-byte chunks until complete.
-    ///
-    /// The upload mode (sequential vs. windowed) is determined by the
-    /// Audio Init ACK payload. Windowed mode pipelines multiple packets
-    /// to reduce total upload time when the device supports it.
-    ///
-    /// The audio must be 8-bit unsigned PCM, 16 kHz, mono.
+    /// 3. Audio Data Packets in 128-byte blocks (4 packets per ACK).
     pub async fn upload_ringtone(&self, audio: &[u8], signature: [u8; 4]) -> Result<()> {
         validate_audio(audio)?;
 
-        let total_size = audio.len() as u32;
+        let _guard = self.command_mutex.lock().await;
 
-        // Step 1: MTU Exchange — audio packets are 130 bytes, default MTU is 23
+        // Step 1: MTU Exchange
         let negotiated_mtu = self.transport.request_mtu(247).await?;
-        if negotiated_mtu < 132 {
+        if (negotiated_mtu as usize) < 132 {
             return Err(ClockError::InvalidSettings(format!(
                 "MTU too small for audio upload: {} (need >= 132)",
                 negotiated_mtu
             )));
         }
-        debug!(negotiated_mtu, "MTU exchange successful");
 
-        // Step 2: Audio Init — determine upload mode from ACK payload
-        let slot = self.audio_init(signature, total_size).await?;
-        debug!(slot, total_size, "audio upload initialized");
+        // Step 2: Audio Init — size first (3B LE), then signature (4B)
+        let total_size = audio.len() as u32;
+        let mut init_frame = Vec::with_capacity(9);
+        init_frame.push(0x08);
+        init_frame.push(0x10);
+        init_frame.extend_from_slice(&total_size.to_le_bytes()[0..3]);
+        init_frame.extend_from_slice(&signature);
 
-        // The ACK payload from Audio Init indicates the upload mode:
-        //   0x00 = sequential (no windowed support)
-        //   non-zero = windowed with that many packets per window
-        let upload_mode = self.detect_upload_mode(slot).await?;
-        debug!(?upload_mode, "upload mode determined");
+        self.transport.write(CharacteristicUuid::DataWrite, &init_frame).await?;
 
-        // Step 3: Send data packets using the selected mode
-        let total_packets = (total_size as usize + AUDIO_PACKET_PAYLOAD_SIZE - 1) / AUDIO_PACKET_PAYLOAD_SIZE;
-        match upload_mode {
-            AudioUploadMode::Sequential => {
-                self.upload_sequential(audio, total_packets).await?;
-            }
-            AudioUploadMode::Windowed { window_size } => {
-                self.upload_windowed(audio, total_packets, window_size).await?;
-            }
+        let init_ack = self
+            .wait_for_ack_with_timeout(Command::AudioInit, AUDIO_ACK_TIMEOUT_SECS)
+            .await?;
+        if let AckStatus::Failure(_) = init_ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x10,
+                status: init_ack.status,
+            });
         }
 
-        info!(slot, total_packets, "ringtone upload complete");
-        Ok(())
-    }
+        // Step 3: Send data packets in blocks of 4
+        let total_packets = audio.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
+        let mut packet_index = 0usize;
 
-    /// Detect the upload mode from the Audio Init ACK payload.
-    ///
-    /// Returns `Sequential` if the payload is 0x00, otherwise `Windowed`
-    /// with the payload value as the window size.
-    async fn detect_upload_mode(&self, ack_payload: u8) -> Result<AudioUploadMode> {
-        if ack_payload == 0 {
-            Ok(AudioUploadMode::Sequential)
-        } else {
-            let window_size = ack_payload as usize;
-            Ok(AudioUploadMode::Windowed { window_size })
-        }
-    }
+        for chunk in audio.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
+            let mut payload = [0xFFu8; AUDIO_PACKET_PAYLOAD_SIZE];
+            payload[..chunk.len()].copy_from_slice(chunk);
 
-    /// Sequential upload: send one packet, wait for ACK, repeat.
-    ///
-    /// This is the fallback mode used when the device does not support
-    /// windowed uploads. Uses an extended timeout of 30 seconds per packet.
-    async fn upload_sequential(&self, audio: &[u8], total_packets: usize) -> Result<()> {
-        for (index, chunk) in audio.chunks(AUDIO_PACKET_PAYLOAD_SIZE).enumerate() {
-            self.audio_data_packet_sequential(chunk, index as u16).await?;
-            if index % 100 == 0 {
-                debug!(index, total_packets, "audio upload progress (sequential)");
-            }
-        }
-        Ok(())
-    }
+            let mut frame = Vec::with_capacity(130);
+            frame.push(0x81);
+            frame.push(0x08);
+            frame.extend_from_slice(&payload);
 
-    /// Windowed upload: pipeline multiple packets, then drain ACKs.
-    ///
-    /// Sends up to `window_size` packets without waiting for individual
-    /// ACKs, then collects all pending ACKs before sending the next batch.
-    /// This overlaps BLE write latency with device-side processing.
-    async fn upload_windowed(
-        &self,
-        audio: &[u8],
-        total_packets: usize,
-        window_size: usize,
-    ) -> Result<()> {
-        let chunks: Vec<&[u8]> = audio.chunks(AUDIO_PACKET_PAYLOAD_SIZE).collect();
-        let mut sent = 0usize;
-        let mut acked = 0usize;
+            self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
 
-        while sent < total_packets {
-            // Fill the window: send up to `window_size` packets
-            let batch_end = (sent + window_size).min(total_packets);
-            for index in sent..batch_end {
-                self.audio_data_packet_write_only(chunks[index], index as u16).await?;
-            }
-            sent = batch_end;
+            packet_index += 1;
 
-            // Drain ACKs for the sent batch
-            for _ in acked..sent {
-                let ack = tokio::time::timeout(
-                    Duration::from_secs(AUDIO_ACK_TIMEOUT_SECS),
-                    self.wait_for_ack(0x08),
-                )
-                .await
-                .map_err(|_| ClockError::Timeout { command: 0x08 })??;
-
-                if ack.status != 0x00 {
+            if packet_index.is_multiple_of(AUDIO_PACKETS_PER_BLOCK)
+                || packet_index == total_packets
+            {
+                let ack = self
+                    .wait_for_ack_with_timeout(Command::AudioData, AUDIO_ACK_TIMEOUT_SECS)
+                    .await?;
+                if let AckStatus::Failure(_) = ack.status {
                     return Err(ClockError::CommandRejected {
                         command: 0x08,
                         status: ack.status,
                     });
                 }
             }
-            acked = sent;
-
-            debug!(sent, acked, total_packets, "audio upload progress (windowed)");
-        }
-
-        Ok(())
-    }
-
-    /// Write a single audio data packet without waiting for ACK.
-    ///
-    /// Used in windowed mode where ACKs are drained in batch after
-    /// sending a full window of packets.
-    async fn audio_data_packet_write_only(&self, data: &[u8], index: u16) -> Result<()> {
-        let mut payload = [0u8; AUDIO_PACKET_PAYLOAD_SIZE];
-        let copy_len = data.len().min(AUDIO_PACKET_PAYLOAD_SIZE);
-        payload[..copy_len].copy_from_slice(&data[..copy_len]);
-
-        let mut frame = Vec::with_capacity(130);
-        frame.push(0x81); // Length (129 bytes follow)
-        frame.push(0x08); // Command: Audio Data Packet
-        frame.extend_from_slice(&payload);
-
-        self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
-        Ok(())
-    }
-
-    /// Send a single audio data packet and wait for its ACK.
-    ///
-    /// Used in sequential mode. Acquires `command_mutex` to prevent
-    /// concurrent same-command races.
-    ///
-    /// Uses an extended timeout of 30 seconds (vs. the default 10 seconds)
-    /// to account for BLE connection interval latency during uploads.
-    async fn audio_data_packet_sequential(&self, data: &[u8], index: u16) -> Result<()> {
-        let _guard = self.command_mutex.lock().await;
-        self.audio_data_packet_write_only(data, index).await?;
-
-        let ack = tokio::time::timeout(
-            Duration::from_secs(AUDIO_ACK_TIMEOUT_SECS),
-            self.wait_for_ack(0x08),
-        )
-        .await
-        .map_err(|_| ClockError::Timeout { command: 0x08 })??;
-
-        if ack.status != 0x00 {
-            return Err(ClockError::CommandRejected { command: 0x08, status: ack.status });
         }
 
         Ok(())
@@ -2509,30 +2391,18 @@ sequenceDiagram
     Transport->>CGD1: ATT MTU Exchange Request
     CGD1-->>Transport: MTU Exchange Response (247)
     Transport-->>Device: negotiated_mtu = 247
-    Device->>Transport: write(Data Write, 08 10 [Sig] [Size LE])
+    Device->>Transport: write(Data Write, 08 10 [Size LE 3B] [Sig 4B])
     Transport->>CGD1: GATT write
-    CGD1-->>Transport: notification (04 ff 10 00 [Slot/Window])
-    Transport-->>Device: Ack { command: 10, status: 00, payload: Mode }
-    Device-->>App: upload mode determined
+    CGD1-->>Transport: notification (04 ff 10 00 00)
+    Transport-->>Device: Ack { command: 10, status: 00 }
 
-    alt Sequential mode (payload = 0x00)
-        loop Each 128-byte chunk (extended timeout)
+    loop Each block of 4 packets (or last partial block)
+        loop Send up to 4 packets (no ACK wait)
             Device->>Transport: write(Data Write, 81 08 [128B payload])
             Transport->>CGD1: GATT write
-            CGD1-->>Transport: notification (04 ff 08 00 00)
-            Transport-->>Device: Ack { command: 08, status: 00 }
         end
-    else Windowed mode (payload = window_size)
-        loop Each batch of window_size packets
-            loop Send window_size packets (no ACK wait)
-                Device->>Transport: write(Data Write, 81 08 [128B payload])
-                Transport->>CGD1: GATT write
-            end
-            loop Drain window_size ACKs
-                CGD1-->>Transport: notification (04 ff 08 00 00)
-                Transport-->>Device: Ack { command: 08, status: 00 }
-            end
-        end
+        CGD1-->>Transport: notification (04 ff 08 00 00)
+        Transport-->>Device: Ack { command: 08, status: 00 }
     end
 
     Device-->>App: Ok (upload complete)
@@ -2543,53 +2413,29 @@ sequenceDiagram
 | Property | Value |
 |---|---|
 | Format | 8-bit unsigned PCM |
-| Sample rate | 16 kHz |
+| Sample rate | 8 kHz |
 | Channels | Mono (1 channel) |
-| Max duration | ~90 seconds |
-| Max size | ~1,440,000 bytes |
+| Max duration | ~12 seconds |
+| Max size | ~98,304 bytes |
 | Required MTU | >= 132 bytes (130 frame + 2 ATT overhead) |
 | Requested MTU | 247 bytes (BLE 4.2+ typical max) |
-| Packet count (max) | ~11,250 |
-| Per-packet ACK timeout | 30 seconds (extended) |
-| Upload modes | Sequential (default), Windowed (if supported) |
-| Default window size | 8 packets |
+| Packet payload | 128 bytes |
+| Packets per block | 4 (ACK after each block) |
+| Padding | 0xFF for short final packet |
+| Per-block ACK timeout | 30 seconds (extended) |
 
 #### Audio Conversion
 
 The library does not perform audio conversion. The caller is responsible for
-providing audio in the correct format. A utility module is provided for
-validation:
+providing audio in the correct format. The `validate_audio` function checks
+only size constraints.
 
-```rust
-/// Extended ACK timeout for audio data packets (seconds).
-///
-/// Regular commands use `RESPONSE_TIMEOUT_SECS` (10s), but audio uploads
-/// involve many sequential packets over a potentially slow BLE link.
-/// The extended timeout prevents spurious failures during long uploads.
-const AUDIO_ACK_TIMEOUT_SECS: u64 = 30;
+#### Methods Added in Phase 6
 
-/// Validate that audio data meets the CGD1 format requirements.
-pub fn validate_audio(audio: &[u8]) -> Result<()> {
-    if audio.is_empty() {
-        return Err(ClockError::InvalidSettings("audio data is empty".into()));
-    }
-    if audio.len() > 1_440_000 {
-        return Err(ClockError::InvalidSettings(format!(
-            "audio too large: {} bytes (max 1,440,000)",
-            audio.len()
-        )));
-    }
-    Ok(())
-}
-```
-
-#### Testing Strategy
-
-- **Unit tests**: `validate_audio` with valid and invalid data. Audio init
-  frame encoding. Audio data packet frame encoding with padding.
-- **Integration tests**: `MockBleTransport` simulating the full upload
-  sequence with ACK responses. Verify chunking and padding of last packet.
-- **Hardware tests**: Real device ringtone upload, `#[ignore]`.
+| Method | Type | Description |
+|---|---|---|
+| `ClockDevice::upload_ringtone()` | `async -> Result<()>` | Full ringtone upload sequence |
+| `validate_audio()` | `fn -> Result<()>` | Validate audio size constraints |
 
 #### Types Defined in Phase 6
 

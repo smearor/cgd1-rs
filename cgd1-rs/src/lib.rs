@@ -34,6 +34,7 @@ pub use command::TemperatureUnit;
 pub use command::TimeFormat;
 pub use command::Timezone;
 pub use device::ClockDevice;
+pub use device::validate_audio;
 pub use discovered_device::DiscoveredDevice;
 pub use error::ClockError;
 pub use error::Result;
