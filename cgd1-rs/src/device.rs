@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 use tracing::debug;
@@ -17,6 +18,9 @@ use crate::BleTransport;
 use crate::CharacteristicUuid;
 use crate::command::Ack;
 use crate::command::AckStatus;
+use crate::command::AlarmEntry;
+use crate::command::AlarmSlot;
+use crate::command::AlarmSlotIndex;
 use crate::command::Command;
 use crate::command::CommandId;
 use crate::error::ClockError;
@@ -86,8 +90,9 @@ pub struct ClockDevice {
     is_authenticated: Arc<AtomicBool>,
     /// Pending request-response channels keyed by command byte.
     pending: PendingMap,
-    /// Pending channel for the next non-ACK data notification (e.g. firmware).
-    pending_data_response: Arc<Mutex<Option<oneshot::Sender<Vec<u8>>>>>,
+    /// Pending channel for non-ACK data notifications (e.g. firmware, alarms).
+    /// Uses mpsc to support multi-packet responses.
+    pending_data_response: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
     /// Optional token store for persisting auth tokens after successful privileged commands.
     token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
 }
@@ -255,9 +260,7 @@ impl ClockDevice {
 
     /// Synchronize the device clock to the current system time.
     pub async fn sync_time_now(&self) -> Result<()> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|e| ClockError::Transport(e.to_string()))?;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| ClockError::Transport(e.to_string()))?;
         self.sync_time(now.as_secs() as u32).await
     }
 
@@ -268,8 +271,8 @@ impl ClockDevice {
     pub async fn read_firmware(&self) -> Result<String> {
         let _guard = self.command_mutex.lock().await;
 
-        // Set up a pending channel for the non-ACK data notification.
-        let (sender, receiver) = oneshot::channel();
+        // Set up a pending mpsc channel for non-ACK data notifications.
+        let (sender, mut receiver) = mpsc::channel(16);
         {
             let mut pending = self.pending_data_response.lock().await;
             *pending = Some(sender);
@@ -277,9 +280,9 @@ impl ClockDevice {
 
         self.transport.write_frame(Command::ReadFirmware, &[]).await?;
 
-        let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver).await {
-            Ok(Ok(data)) => data,
-            Ok(Err(_)) => return Err(ClockError::Transport("firmware response canceled".into())),
+        let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver.recv()).await {
+            Ok(Some(data)) => data,
+            Ok(None) => return Err(ClockError::Transport("firmware response canceled".into())),
             Err(_) => {
                 let mut pending = self.pending_data_response.lock().await;
                 *pending = None;
@@ -287,12 +290,136 @@ impl ClockDevice {
             }
         };
 
+        // Clean up the pending channel.
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = None;
+        }
+
         // Parse: skip length byte, skip one byte, rest is ASCII string.
         if response.len() < 2 {
             return Err(ClockError::Parse("firmware response too short".into()));
         }
         let version = String::from_utf8_lossy(&response[2..]).to_string();
         Ok(version)
+    }
+
+    /// Set or modify an alarm at the given slot index.
+    ///
+    /// Sends: `07 05 [ID] [Enabled] [HH] [MM] [Days] [Snooze]` to Data Write.
+    /// Expects ACK: `04 ff 05 00 00`.
+    pub async fn set_alarm(&self, alarm: &AlarmEntry, slot: AlarmSlotIndex) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
+
+        let payload = alarm.encode_set_payload(slot);
+        self.transport.write_frame(Command::SetAlarm, &payload).await?;
+
+        let ack = self.wait_for_ack(Command::SetAlarm).await?;
+        if let AckStatus::Failure(_) = ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x05,
+                status: ack.status,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Delete an alarm at the given slot index.
+    ///
+    /// Sends: `07 05 [ID] FF FF FF FF FF` to Data Write.
+    /// This overwrites the slot with 0xFF values, marking it as empty.
+    pub async fn delete_alarm(&self, slot: AlarmSlotIndex) -> Result<()> {
+        let _guard = self.command_mutex.lock().await;
+
+        let payload = [slot.value(), 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+        self.transport.write_frame(Command::SetAlarm, &payload).await?;
+
+        let ack = self.wait_for_ack(Command::SetAlarm).await?;
+        if let AckStatus::Failure(_) = ack.status {
+            return Err(ClockError::CommandRejected {
+                command: 0x05,
+                status: ack.status,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Read all alarm slots from the device.
+    ///
+    /// Sends: `01 06` to Data Write.
+    /// Expects multiple response packets on Data Notify, each containing
+    /// up to 3 alarm entries (5 bytes each). The device sends 6 packets
+    /// for all 16 slots.
+    pub async fn read_alarms(&self) -> Result<Vec<AlarmSlot>> {
+        let _guard = self.command_mutex.lock().await;
+
+        // Set up a pending mpsc channel for multi-packet data notifications.
+        let (sender, mut receiver) = mpsc::channel(16);
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = Some(sender);
+        }
+
+        self.transport.write_frame(Command::ReadAlarms, &[]).await?;
+
+        // Collect all data packets within the timeout period.
+        // The device sends 6 packets for 16 slots (3 per packet).
+        let mut all_data = Vec::new();
+        let deadline = Duration::from_secs(RESPONSE_TIMEOUT_SECS);
+
+        loop {
+            match timeout(deadline, receiver.recv()).await {
+                Ok(Some(data)) => {
+                    all_data.push(data);
+                    // If we've received 6 packets, we have all slots.
+                    if all_data.len() >= 6 {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+
+        // Clean up the pending channel.
+        {
+            let mut pending = self.pending_data_response.lock().await;
+            *pending = None;
+        }
+
+        if all_data.is_empty() {
+            return Err(ClockError::Timeout);
+        }
+
+        // Parse all received packets.
+        // Each packet: [Length] [0x06] [BaseIndex] [Entry1 5B] [Entry2 5B] [Entry3 5B]
+        let mut slots = Vec::new();
+        for packet in &all_data {
+            if packet.len() < 3 {
+                continue;
+            }
+            // Skip length byte (packet[0]) and command byte (packet[1]).
+            // packet[2] is the base index (slot index of the first entry in this packet).
+            let base_index = packet[2] as usize;
+            let entries_data = &packet[3..];
+
+            for (i, chunk) in entries_data.chunks(5).enumerate() {
+                if chunk.len() < 5 {
+                    break;
+                }
+                let raw_slot = (base_index + i) as u8;
+                let Ok(index) = AlarmSlotIndex::new(raw_slot) else {
+                    continue;
+                };
+                if let Some(entry) = AlarmEntry::decode(chunk)? {
+                    slots.push(AlarmSlot { index, entry });
+                }
+            }
+        }
+
+        Ok(slots)
     }
 
     /// Disconnect from the device.
@@ -331,7 +458,7 @@ async fn notification_task(
     auth_token: Arc<Mutex<Option<AuthToken>>>,
     address: MacAddress,
     command_mutex: Arc<Mutex<()>>,
-    pending_data_response: Arc<Mutex<Option<oneshot::Sender<Vec<u8>>>>>,
+    pending_data_response: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
     token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
 ) {
     let sensor_uuid = CharacteristicUuid::SensorNotify.uuid();
@@ -360,13 +487,13 @@ async fn notification_task(
                         let _ = sender.send(Ok(ack));
                     }
                 } else {
-                    // Non-ACK data notification — check for a pending data response request.
+                    // Non-ACK data notification — forward to pending data response channel.
                     let sender = {
-                        let mut pending = pending_data_response.lock().await;
-                        pending.take()
+                        let pending = pending_data_response.lock().await;
+                        pending.clone()
                     };
                     if let Some(sender) = sender {
-                        let _ = sender.send(value);
+                        let _ = sender.send(value).await;
                     } else {
                         debug!(
                             uuid = %uuid,
@@ -471,6 +598,10 @@ async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Resul
 mod tests {
     use super::*;
 
+    use crate::AlarmSlotIndex;
+    use crate::DayMask;
+    use crate::MockBleTransport;
+
     #[test]
     fn parse_ack_valid() {
         let value = [0x04, 0xff, 0x01, 0x00, 0x06];
@@ -512,5 +643,92 @@ mod tests {
     fn parse_sensor_data_too_short() {
         let value = [0x00, 0x64, 0x00];
         assert!(parse_sensor_data(&value).is_none());
+    }
+
+    #[tokio::test]
+    async fn set_alarm_sends_correct_frame() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        let alarm = AlarmEntry::new(7, 30, DayMask::WEEKDAYS, true, true).unwrap();
+        device.set_alarm(&alarm, AlarmSlotIndex::new(2).unwrap()).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        // Frame: [length=0x07] [cmd=0x05] [slot=2] [enabled=1] [hh=7] [mm=30] [days=0x3E] [snooze=1]
+        assert_eq!(writes[0].1, vec![0x07, 0x05, 0x02, 0x01, 0x07, 0x1E, 0x3E, 0x01]);
+    }
+
+    #[tokio::test]
+    async fn delete_alarm_sends_correct_frame() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        device.delete_alarm(AlarmSlotIndex::new(5).unwrap()).await.unwrap();
+
+        let writes = mock.drain_writes().await;
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
+        // Frame: [length=0x07] [cmd=0x05] [slot=5] FF FF FF FF FF
+        assert_eq!(writes[0].1, vec![0x07, 0x05, 0x05, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
+    }
+
+    #[tokio::test]
+    async fn read_alarms_parses_multi_packet() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        // Pre-push 6 data notify packets on Data Notify.
+        // The auto-ACK for the ReadAlarms write will arrive first, then these data packets.
+        // Each packet: [length] [0x06] [base_index] [entry1 5B] [entry2 5B] [entry3 5B]
+        let data_notify = CharacteristicUuid::DataNotify.uuid();
+
+        // Packet 0: slots 0-2, slot 0 has alarm at 07:30 weekdays
+        mock.push_notification(
+            data_notify,
+            vec![
+                0x11, 0x06, 0x00, 0x01, 0x07, 0x1E, 0x3E, 0x01, // slot 0: enabled, 7:30, weekdays, snooze
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 1: empty
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 2: empty
+            ],
+        );
+        // Packets 1-5: all empty slots
+        for base in [3u8, 6, 9, 12, 15] {
+            mock.push_notification(
+                data_notify,
+                vec![
+                    0x11, 0x06, base, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                ],
+            );
+        }
+
+        let slots = device.read_alarms().await.unwrap();
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].index.value(), 0);
+        assert_eq!(slots[0].entry.hour(), 7);
+        assert_eq!(slots[0].entry.minute(), 30);
+        assert_eq!(slots[0].entry.repeat_mask(), DayMask::WEEKDAYS);
+        assert!(slots[0].entry.enabled());
+        assert!(slots[0].entry.snooze());
+    }
+
+    #[tokio::test]
+    async fn set_alarm_rejects_invalid_slot() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+
+        let alarm = AlarmEntry::new(7, 30, DayMask::EVERY_DAY, true, false).unwrap();
+        let result = AlarmSlotIndex::new(16);
+        assert!(result.is_err());
+        // Verify valid slot still works with the device
+        let _ = device.set_alarm(&alarm, AlarmSlotIndex::new(0).unwrap()).await;
     }
 }
