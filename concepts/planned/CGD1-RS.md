@@ -269,13 +269,17 @@ license = "MIT"
 repository = "https://github.com/smearor/cgd1-rs"
 
 [workspace.dependencies]
-tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+btleplug = "0.12"
+gio = "0.22"
+glib = "0.22"
+gtk4 = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tracing = "0.1"
 thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
-btleplug = "0.11"
 ```
 
 #### Scaffolded Entry Points
@@ -344,7 +348,7 @@ adapts them to the `cgd1-rs` workspace:
 | `build.yml` | Replace `dice-rs` crate references with `cgd1-rs` equivalents in `build_cross_platform` and `test_cross_platform` jobs |
 | `audit.yml` | Update path filters from `dice-rs*/Cargo.toml` to `cgd1-rs*/Cargo.toml` |
 | `book.yml` | No changes needed — already generic (builds `book/` directory) |
-| `docs.yml` | No changes needed — already generic |
+| `docs.yml` | Update path filters from `dice-rs*/src/**/*.rs` to `cgd1-rs*/src/**/*.rs` |
 | `msrv.yml` | Update crate references if present |
 
 **Verification commands** (run locally before committing):
