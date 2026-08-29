@@ -1,0 +1,53 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "dice-rs*/src/**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "dice-rs*/src/**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/docs.yml"
+
+env:
+  CARGO_TERM_COLOR: always
+  APT_PACKAGES: curl build-essential pkg-config libgtk-4-dev libglib2.0-dev libgl-dev libdbus-1-dev
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: VCS Checkout
+        uses: actions/checkout@v7
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.APT_PACKAGES }}
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Run cargo doc
+        run: cargo doc --no-deps --document-private-items --workspace --verbose
+      - name: Run doctests
+        run: cargo test --doc --workspace --verbose
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        if: ${{ github.ref == 'refs/heads/main' }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target/doc
+          destination_dir: docs
