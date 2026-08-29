@@ -18,19 +18,19 @@ This service is discovered after connecting. Passive advertisements carry sensor
 
 ### Characteristics
 
-| Name | UUID | Direction |
-|---|---|---|
-| Auth Write | `00000001-0000-1000-8000-00805f9b34fb` | Host → Device |
-| Auth Notify | `00000002-0000-1000-8000-00805f9b34fb` | Device → Host |
-| Data Write | `0000000b-0000-1000-8000-00805f9b34fb` | Host → Device |
-| Data Notify | `0000000c-0000-1000-8000-00805f9b34fb` | Device → Host |
+| Name          | UUID                                   | Direction     |
+|---------------|----------------------------------------|---------------|
+| Auth Write    | `00000001-0000-1000-8000-00805f9b34fb` | Host → Device |
+| Auth Notify   | `00000002-0000-1000-8000-00805f9b34fb` | Device → Host |
+| Data Write    | `0000000b-0000-1000-8000-00805f9b34fb` | Host → Device |
+| Data Notify   | `0000000c-0000-1000-8000-00805f9b34fb` | Device → Host |
 | Sensor Notify | `00000100-0000-1000-8000-00805f9b34fb` | Device → Host |
 
 ### Standard Services
 
-| Service | UUID | Characteristic | UUID | Format |
-|---|---|---|---|---|
-| Battery | `0x180f` | Battery Level | `0x2a19` | 1 byte (percentage 0–100) |
+| Service | UUID     | Characteristic | UUID     | Format                    |
+|---------|----------|----------------|----------|---------------------------|
+| Battery | `0x180f` | Battery Level  | `0x2a19` | 1 byte (percentage 0–100) |
 
 ## 2. Protocol Structure
 
@@ -51,16 +51,16 @@ Example: `04 ff 01 00 06` means "command `01` succeeded" and carries payload byt
 
 ### Length Byte Constants
 
-| Constant | Value | Commands |
-|---|---|---|
-| `AUTH` | `0x11` | Auth Init, Auth Confirm, Read Alarms response |
-| `TIME` | `0x05` | Time Sync |
-| `GET_DATA` | `0x01` | Read Settings, Read Firmware, Preview Ringtone (current vol) |
-| `SET_ALARM` | `0x07` | Set/Delete Alarm |
-| `BRIGHTNESS` | `0x02` | Set Brightness, Preview Ringtone (specific vol) |
-| `SET_SETTINGS` | `0x13` | Set Settings, Read Settings response |
-| `AUDIO_INIT` | `0x08` | Audio Init |
-| `AUDIO_PACKET` | `0x81` | Audio Data Packet |
+| Constant       | Value  | Commands                                                     |
+|----------------|--------|--------------------------------------------------------------|
+| `AUTH`         | `0x11` | Auth Init, Auth Confirm, Read Alarms response                |
+| `TIME`         | `0x05` | Time Sync                                                    |
+| `GET_DATA`     | `0x01` | Read Settings, Read Firmware, Preview Ringtone (current vol) |
+| `SET_ALARM`    | `0x07` | Set/Delete Alarm                                             |
+| `BRIGHTNESS`   | `0x02` | Set Brightness, Preview Ringtone (specific vol)              |
+| `SET_SETTINGS` | `0x13` | Set Settings, Read Settings response                         |
+| `AUDIO_INIT`   | `0x08` | Audio Init                                                   |
+| `AUDIO_PACKET` | `0x81` | Audio Data Packet                                            |
 
 ## 3. Authentication (Two-Step Token Protocol)
 
@@ -126,27 +126,27 @@ Create or modify an alarm:
 07 05 [ID] [Enabled] [HH] [MM] [Days] [Snooze]
 ```
 
-| Field | Bytes | Description |
-|---|---|---|
-| ID | 1 | Alarm index (0–15) |
-| Enabled | 1 | `0x01` = On, `0x00` = Off |
-| HH | 1 | Hour (0–23) |
-| MM | 1 | Minute (0–59) |
-| Days | 1 | Day bitmask (see below) |
-| Snooze | 1 | `0x01` = On, `0x00` = Off |
+| Field   | Bytes | Description               |
+|---------|-------|---------------------------|
+| ID      | 1     | Alarm index (0–15)        |
+| Enabled | 1     | `0x01` = On, `0x00` = Off |
+| HH      | 1     | Hour (0–23)               |
+| MM      | 1     | Minute (0–59)             |
+| Days    | 1     | Day bitmask (see below)   |
+| Snooze  | 1     | `0x01` = On, `0x00` = Off |
 
 #### Days Bitmask
 
-| Bit | Value | Day |
-|---|---|---|
-| 0 | `0x01` | Monday |
-| 1 | `0x02` | Tuesday |
-| 2 | `0x04` | Wednesday |
-| 3 | `0x08` | Thursday |
-| 4 | `0x10` | Friday |
-| 5 | `0x20` | Saturday |
-| 6 | `0x40` | Sunday |
-| — | `0x00` | Once (no repeat) |
+| Bit | Value  | Day              |
+|-----|--------|------------------|
+| 0   | `0x01` | Monday           |
+| 1   | `0x02` | Tuesday          |
+| 2   | `0x04` | Wednesday        |
+| 3   | `0x08` | Thursday         |
+| 4   | `0x10` | Friday           |
+| 5   | `0x20` | Saturday         |
+| 6   | `0x40` | Sunday           |
+| —   | `0x00` | Once (no repeat) |
 
 ### 5.2. Alarm Entry Structure (5 bytes)
 
@@ -197,35 +197,35 @@ Managed via a single comprehensive payload on **Data Write**.
 13 01 [Vol] [Hdr1] [Hdr2] [Flags] [TZ] [Duration] [Brightness] [NightStartH] [NightStartM] [NightEndH] [NightEndM] [TzSign] [NightEn] [Reserved] [Sig 4B]
 ```
 
-| Offset | Field | Bytes | Description |
-|---|---|---|---|
-| 0 | Header | 1 | `0x13` (length byte) |
-| 1 | Command | 1 | `0x01` (set) or `0x02` (read response) |
-| 2 | Volume | 1 | Sound volume (1–5) |
-| 3 | Hdr1 | 1 | Unknown, set to `0xFF` |
-| 4 | Hdr2 | 1 | Unknown, set to `0xFF` |
-| 5 | Flags | 1 | Mode bitfield (see below) |
-| 6 | Timezone | 1 | Timezone offset in 6-minute units (offset_minutes / 6) |
-| 7 | Duration | 1 | Screen light duration in seconds (1–30) |
-| 8 | Brightness | 1 | Packed brightness (see below) |
-| 9 | NightStartH | 1 | Night mode start hour (0–23) |
-| 10 | NightStartM | 1 | Night mode start minute (0–59) |
-| 11 | NightEndH | 1 | Night mode end hour (0–23) |
-| 12 | NightEndM | 1 | Night mode end minute (0–59) |
-| 13 | TzSign | 1 | `0x01` = positive offset, `0x00` = negative |
-| 14 | NightEn | 1 | `0x01` = night mode enabled, `0x00` = disabled |
-| 15 | Reserved | 1 | Set to `0xFF` |
-| 16–19 | Signature | 4 | Ringtone signature, set to `0xFF` when unused |
+| Offset | Field       | Bytes | Description                                            |
+|--------|-------------|-------|--------------------------------------------------------|
+| 0      | Header      | 1     | `0x13` (length byte)                                   |
+| 1      | Command     | 1     | `0x01` (set) or `0x02` (read response)                 |
+| 2      | Volume      | 1     | Sound volume (1–5)                                     |
+| 3      | Hdr1        | 1     | Unknown, set to `0xFF`                                 |
+| 4      | Hdr2        | 1     | Unknown, set to `0xFF`                                 |
+| 5      | Flags       | 1     | Mode bitfield (see below)                              |
+| 6      | Timezone    | 1     | Timezone offset in 6-minute units (offset_minutes / 6) |
+| 7      | Duration    | 1     | Screen light duration in seconds (1–30)                |
+| 8      | Brightness  | 1     | Packed brightness (see below)                          |
+| 9      | NightStartH | 1     | Night mode start hour (0–23)                           |
+| 10     | NightStartM | 1     | Night mode start minute (0–59)                         |
+| 11     | NightEndH   | 1     | Night mode end hour (0–23)                             |
+| 12     | NightEndM   | 1     | Night mode end minute (0–59)                           |
+| 13     | TzSign      | 1     | `0x01` = positive offset, `0x00` = negative            |
+| 14     | NightEn     | 1     | `0x01` = night mode enabled, `0x00` = disabled         |
+| 15     | Reserved    | 1     | Set to `0xFF`                                          |
+| 16–19  | Signature   | 4     | Ringtone signature, set to `0xFF` when unused          |
 
 ### 6.4. Flags Bitfield (Byte 5)
 
-| Bit | Mask | Field | 0 | 1 |
-|---|---|---|---|---|
-| 0 | `0x01` | Language | Chinese | English |
-| 1 | `0x02` | Time Format | 24-hour | 12-hour |
-| 2 | `0x04` | Temperature Unit | Celsius | Fahrenheit |
-| 3 | `0x08` | Unknown | — | — |
-| 4 | `0x10` | Alarms | Enabled | Disabled |
+| Bit | Mask   | Field            | 0       | 1          |
+|-----|--------|------------------|---------|------------|
+| 0   | `0x01` | Language         | Chinese | English    |
+| 1   | `0x02` | Time Format      | 24-hour | 12-hour    |
+| 2   | `0x04` | Temperature Unit | Celsius | Fahrenheit |
+| 3   | `0x08` | Unknown          | —       | —          |
+| 4   | `0x10` | Alarms           | Enabled | Disabled   |
 
 > **Night mode workaround**: Disabling night mode is done by setting a 1-minute night mode window (`00:00`–`00:01`). Even the official app does this.
 
@@ -262,10 +262,10 @@ Plays a generic "beep" sound for testing volume level (not the user's selected r
 
 This stream does **not** follow the length-byte framing: the packet is always 5 bytes and starts with a constant `00`.
 
-| Field | Type | Scaling |
-|---|---|---|
-| Temperature | Signed Int16 LE | value / 100.0 (°C) |
-| Humidity | Unsigned UInt16 LE | value / 100.0 (%RH) |
+| Field       | Type               | Scaling             |
+|-------------|--------------------|---------------------|
+| Temperature | Signed Int16 LE    | value / 100.0 (°C)  |
+| Humidity    | Unsigned UInt16 LE | value / 100.0 (%RH) |
 
 ## 8. Passive Sensor Stream (Advertising)
 
@@ -284,10 +284,10 @@ The first byte is `0x08` or `0x88` (flags), the second is `0x0C` (length of rema
 
 ### TLV Objects
 
-| Type | Length | Value | Scaling |
-|---|---|---|---|
+| Type   | Length | Value                               | Scaling                  |
+|--------|--------|-------------------------------------|--------------------------|
 | `0x01` | `0x04` | `[Temp L] [Temp H] [Hum L] [Hum H]` | Same as connected stream |
-| `0x02` | `0x01` | `[Battery]` | 0–100 (percentage) |
+| `0x02` | `0x01` | `[Battery]`                         | 0–100 (percentage)       |
 
 ### Example
 
@@ -332,17 +332,17 @@ The leading `0x0b` = 11 is a length byte. For the known 10-character versions (`
 
 Official apps use these 4-byte signatures to identify ringtones:
 
-| Signature | Name |
-|---|---|
-| `fd c3 66 a5` | Beep |
-| `09 61 bb 77` | Digital Ringtone |
+| Signature     | Name               |
+|---------------|--------------------|
+| `fd c3 66 a5` | Beep               |
+| `09 61 bb 77` | Digital Ringtone   |
 | `ba 2c 2c 8c` | Digital Ringtone 2 |
-| `ea 2d 4c 02` | Cuckoo |
+| `ea 2d 4c 02` | Cuckoo             |
 | `79 1b ac b3` | Telephone Ringtone |
-| `1d 01 9f d6` | Exotic Guitar |
-| `6e 70 b6 59` | Lively Piano |
-| `8f 00 48 86` | Story Piano |
-| `26 52 25 19` | Forest Piano |
+| `1d 01 9f d6` | Exotic Guitar      |
+| `6e 70 b6 59` | Lively Piano       |
+| `8f 00 48 86` | Story Piano        |
+| `26 52 25 19` | Forest Piano       |
 
 ### 11.3. Custom Ringtone Slots
 
@@ -405,33 +405,33 @@ After the last block is acknowledged, the device stores the audio under the give
 
 ## 12. Known Command IDs Summary
 
-| Length | Command | Operation | Characteristic |
-|---|---|---|---|
-| `0x11` | `0x01` | Auth Init | Auth Write |
-| `0x11` | `0x02` | Auth Confirm | Auth Write |
-| `0x05` | `0x09` | Time Sync | Auth Write |
-| `0x01` | `0x0d` | Read Firmware | Auth Write |
-| `0x01` | `0x02` | Read Settings | Data Write |
-| `0x13` | `0x01` | Set Settings | Data Write |
-| `0x02` | `0x03` | Set Brightness | Data Write |
-| `0x01` | `0x04` | Preview Ringtone (current vol) | Data Write |
-| `0x02` | `0x04` | Preview Ringtone (specific vol) | Data Write |
-| `0x01` | `0x06` | Read Alarms | Data Write |
-| `0x07` | `0x05` | Set/Delete Alarm | Data Write |
-| `0x08` | `0x10` | Audio Init | Data Write |
-| `0x81` | `0x08` | Audio Data Packet | Data Write |
-| `0x04` | `0xff` | ACK (Notify) | Auth/Data Notify |
+| Length | Command | Operation                       | Characteristic   |
+|--------|---------|---------------------------------|------------------|
+| `0x11` | `0x01`  | Auth Init                       | Auth Write       |
+| `0x11` | `0x02`  | Auth Confirm                    | Auth Write       |
+| `0x05` | `0x09`  | Time Sync                       | Auth Write       |
+| `0x01` | `0x0d`  | Read Firmware                   | Auth Write       |
+| `0x01` | `0x02`  | Read Settings                   | Data Write       |
+| `0x13` | `0x01`  | Set Settings                    | Data Write       |
+| `0x02` | `0x03`  | Set Brightness                  | Data Write       |
+| `0x01` | `0x04`  | Preview Ringtone (current vol)  | Data Write       |
+| `0x02` | `0x04`  | Preview Ringtone (specific vol) | Data Write       |
+| `0x01` | `0x06`  | Read Alarms                     | Data Write       |
+| `0x07` | `0x05`  | Set/Delete Alarm                | Data Write       |
+| `0x08` | `0x10`  | Audio Init                      | Data Write       |
+| `0x81` | `0x08`  | Audio Data Packet               | Data Write       |
+| `0x04` | `0xff`  | ACK (Notify)                    | Auth/Data Notify |
 
 ## 13. GATT Disconnection Status Codes
 
 When the device disconnects, the GATT status indicates the reason:
 
-| Code | Name | Description |
-|---|---|---|
-| `0x00` | `GATT_SUCCESS` | Normal disconnection |
-| `0x08` | `GATT_CONN_TIMEOUT` | Connection timeout |
-| `0x13` | `GATT_CONN_TERMINATE_PEER` | Device terminated connection |
-| `0x16` | `GATT_CONN_TERMINATE_LOCAL` | Host terminated connection |
+| Code   | Name                        | Description                  |
+|--------|-----------------------------|------------------------------|
+| `0x00` | `GATT_SUCCESS`              | Normal disconnection         |
+| `0x08` | `GATT_CONN_TIMEOUT`         | Connection timeout           |
+| `0x13` | `GATT_CONN_TERMINATE_PEER`  | Device terminated connection |
+| `0x16` | `GATT_CONN_TERMINATE_LOCAL` | Host terminated connection   |
 
 ## 14. Connection Lifecycle
 

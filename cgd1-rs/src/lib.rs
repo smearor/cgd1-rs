@@ -1,1 +1,33 @@
-// Module declarations will be added in Phase 1.
+mod ble;
+mod command;
+mod device;
+mod discovered_device;
+mod error;
+mod event;
+mod manager;
+mod scanner;
+mod token;
+mod types;
+
+pub use ble::AdvertisementData;
+pub use ble::BleTransport;
+pub use ble::BtleplugTransport;
+pub use ble::CharacteristicUuid;
+pub use ble::TransportState;
+pub use command::Ack;
+pub use command::AckStatus;
+pub use command::Command;
+pub use command::CommandFrame;
+pub use command::CommandId;
+pub use device::ClockDevice;
+pub use discovered_device::DiscoveredDevice;
+pub use error::ClockError;
+pub use error::Result;
+pub use event::ClockEvent;
+pub use manager::ClockManager;
+pub use scanner::ClockScanner;
+pub use token::AuthToken;
+pub use types::BatteryLevel;
+pub use types::Humidity;
+pub use types::MacAddress;
+pub use types::Temperature;
