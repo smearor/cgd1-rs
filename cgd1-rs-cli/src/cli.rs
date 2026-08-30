@@ -7,6 +7,7 @@ use cgd1_rs::DayMask;
 use cgd1_rs::Language;
 use cgd1_rs::MacAddress;
 use cgd1_rs::RingtoneSignature;
+use cgd1_rs::ScanDuration;
 use cgd1_rs::TemperatureUnit;
 use cgd1_rs::TimeFormat;
 use cgd1_rs::Timezone;
@@ -15,7 +16,6 @@ use clap::Parser;
 use clap::Subcommand;
 
 use crate::monitor_duration::MonitorDuration;
-use crate::scan_duration::ScanDuration;
 
 /// Command-line tool for the Qingping CGD1 Bluetooth Alarm Clock.
 #[derive(Parser)]

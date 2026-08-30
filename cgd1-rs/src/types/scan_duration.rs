@@ -3,8 +3,11 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::str::FromStr;
 
-use cgd1_rs::parse_iso_duration_to_seconds;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
+
+use crate::types::parse_iso_duration_to_seconds;
 
 /// Error parsing a [`ScanDuration`] from a string.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -18,8 +21,9 @@ pub struct ScanDurationParseError {
 
 /// Scan duration in seconds (1–600).
 ///
-/// Used by the `scan` CLI command to limit BLE discovery time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Used by the `scan` command to limit BLE discovery time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ScanDuration(u64);
 
 impl ScanDuration {

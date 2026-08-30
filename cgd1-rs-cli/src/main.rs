@@ -3,7 +3,6 @@ mod command;
 mod connection;
 mod error;
 mod monitor_duration;
-mod scan_duration;
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;

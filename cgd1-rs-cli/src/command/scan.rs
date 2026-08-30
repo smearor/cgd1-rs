@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use cgd1_rs::BtleplugTransport;
 use cgd1_rs::ClockScanner;
+use cgd1_rs::ScanDuration;
 
 use crate::error::CliError;
-use crate::scan_duration::ScanDuration;
 
 /// Arguments for the `scan` command.
 pub struct ScanArgs {

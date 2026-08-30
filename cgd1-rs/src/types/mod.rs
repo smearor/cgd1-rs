@@ -3,6 +3,7 @@ mod clock_time;
 mod humidity;
 mod iso_duration;
 mod mac_address;
+mod scan_duration;
 mod temperature;
 
 pub use battery_level::BatteryLevel;
@@ -13,6 +14,8 @@ pub use humidity::Humidity;
 pub use humidity::HumidityParseError;
 pub use mac_address::MacAddress;
 pub use mac_address::MacAddressParseError;
+pub use scan_duration::ScanDuration;
+pub use scan_duration::ScanDurationParseError;
 pub use temperature::Temperature;
 pub use temperature::TemperatureParseError;
 
