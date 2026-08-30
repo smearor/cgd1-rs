@@ -18,7 +18,6 @@ pub use ringtone_signature::RingtoneSignature;
 pub use ringtone_signature::RingtoneSignatureParseError;
 pub use screen_light_duration::ScreenLightDuration;
 pub use screen_light_duration::ScreenLightDurationParseError;
-pub use settings_flags::SettingsFlags;
 pub use temperature_unit::TemperatureUnit;
 pub use temperature_unit::TemperatureUnitParseError;
 pub use time_format::TimeFormat;
