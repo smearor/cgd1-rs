@@ -160,6 +160,18 @@ pub enum Commands {
         #[arg(short, long, default_value = "0")]
         duration: MonitorDuration,
     },
+
+    /// Start an interactive REPL session.
+    ///
+    /// Keeps a persistent connection to the device so that state changes
+    /// (e.g. `settings-write`) are visible in subsequent commands
+    /// (e.g. `settings-read`). If `--address` is given, the REPL connects
+    /// automatically on startup; otherwise use `connect <mac>` inside.
+    Repl {
+        /// Device MAC address (optional; use `connect` inside the REPL if omitted).
+        #[arg(long)]
+        address: Option<MacAddress>,
+    },
 }
 
 #[cfg(test)]

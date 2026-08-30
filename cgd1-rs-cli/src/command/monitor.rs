@@ -1,8 +1,11 @@
-use std::time::Duration;
-
 use cgd1_rs::Backend;
+use cgd1_rs::ClockDevice;
 use cgd1_rs::ClockEvent;
 use cgd1_rs::MacAddress;
+use std::time::Duration;
+use tokio::sync::broadcast::error::RecvError;
+use tokio::time::Instant;
+use tokio::time::sleep_until;
 use tracing::debug;
 use tracing::info;
 use tracing::warn;
@@ -24,14 +27,19 @@ pub struct MonitorArgs {
 /// Run the `monitor` command.
 pub async fn run(args: MonitorArgs) -> Result<(), CliError> {
     let connection = DeviceConnection::connect(&args.address, args.backend).await?;
-    let mut receiver = connection.device().subscribe();
+    run_monitor(connection.device(), args.duration).await
+}
+
+/// Monitor sensor data from an already-connected device.
+pub async fn run_monitor(device: &ClockDevice, duration: MonitorDuration) -> Result<(), CliError> {
+    let mut receiver = device.subscribe();
 
     println!("Monitoring sensor data (Ctrl+C to stop)...");
 
-    let deadline = if args.duration.is_indefinite() {
+    let deadline = if duration.is_indefinite() {
         None
     } else {
-        Some(tokio::time::Instant::now() + Duration::from_secs(args.duration.seconds()))
+        Some(Instant::now() + Duration::from_secs(duration.seconds()))
     };
 
     loop {
@@ -55,7 +63,7 @@ pub async fn run(args: MonitorArgs) -> Result<(), CliError> {
                         info!("Device reconnected.");
                     }
                     Ok(ClockEvent::Advertisement(_)) => {}
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    Err(RecvError::Lagged(n)) => {
                         warn!("Skipped {n} events.");
                     }
                     Err(_) => break,
@@ -63,7 +71,7 @@ pub async fn run(args: MonitorArgs) -> Result<(), CliError> {
             }
             _ = async {
                 if let Some(dl) = deadline {
-                    tokio::time::sleep_until(dl).await;
+                    sleep_until(dl).await;
                 } else {
                     std::future::pending::<()>().await;
                 }

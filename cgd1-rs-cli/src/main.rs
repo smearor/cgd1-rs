@@ -3,6 +3,7 @@ mod command;
 mod connection;
 mod error;
 mod monitor_duration;
+mod repl;
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
@@ -101,5 +102,6 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Commands::Firmware { address } => command::firmware::run(FirmwareArgs { address, backend }).await,
         Commands::Battery { address } => command::battery::run(BatteryArgs { address, backend }).await,
         Commands::Monitor { address, duration } => command::monitor::run(MonitorArgs { address, duration, backend }).await,
+        Commands::Repl { address } => repl::run(backend, address).await,
     }
 }
