@@ -1,15 +1,21 @@
 mod advertisement;
+mod backend;
 mod btleplug_transport;
 mod characteristic;
 mod mock_transport;
 mod sensor_notification;
 mod transport;
 mod transport_state;
+mod virtual_device_state;
+mod virtual_transport;
 
 pub use advertisement::AdvertisementData;
+pub use backend::Backend;
+pub use backend::BackendParseError;
 pub use btleplug_transport::BtleplugTransport;
 pub use characteristic::CharacteristicUuid;
 pub use mock_transport::MockBleTransport;
 pub use sensor_notification::SensorNotification;
 pub use transport::BleTransport;
 pub use transport_state::TransportState;
+pub use virtual_transport::VirtualClockTransport;

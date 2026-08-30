@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use cgd1_rs::AuthFailedError;
-use cgd1_rs::BtleplugTransport;
+use cgd1_rs::Backend;
+use cgd1_rs::BleTransport;
 use cgd1_rs::ClockDevice;
 use cgd1_rs::ClockError;
 use cgd1_rs::ClockManager;
@@ -15,7 +16,7 @@ use crate::error::CliError;
 pub struct DeviceConnection {
     /// The BLE transport (kept alive to maintain the connection).
     #[allow(dead_code)]
-    transport: Arc<BtleplugTransport>,
+    transport: Arc<dyn BleTransport>,
     /// The authenticated device handle.
     device: ClockDevice,
 }
@@ -30,8 +31,8 @@ impl DeviceConnection {
     ///
     /// The token is loaded from the file store if available, or generated
     /// if not. The token is persisted after `sync_time` succeeds.
-    pub async fn connect(mac: &MacAddress) -> Result<Self, CliError> {
-        let transport = Arc::new(BtleplugTransport::new().await?);
+    pub async fn connect(mac: &MacAddress, backend: Backend) -> Result<Self, CliError> {
+        let transport = backend.create_transport().await?;
         let manager = ClockManager::new(transport.clone());
         let device = manager.connect(mac).await?;
 
@@ -56,8 +57,8 @@ impl DeviceConnection {
     ///
     /// Used by `sync_time` which needs to persist the token after a
     /// successful time sync.
-    pub async fn connect_with_store(mac: &MacAddress) -> Result<(Self, Arc<FileTokenStore>), CliError> {
-        let transport = Arc::new(BtleplugTransport::new().await?);
+    pub async fn connect_with_store(mac: &MacAddress, backend: Backend) -> Result<(Self, Arc<FileTokenStore>), CliError> {
+        let transport = backend.create_transport().await?;
         let manager = ClockManager::new(transport.clone());
         let device = manager.connect(mac).await?;
 

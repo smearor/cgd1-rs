@@ -5,6 +5,7 @@ mod routes;
 mod session;
 mod state;
 
+use cgd1_rs::Backend;
 use clap::Parser;
 
 use state::ServerState;
@@ -24,6 +25,10 @@ struct Cli {
     /// Verbosity level (0=warn, 1=info, 2=debug, 3=trace).
     #[arg(short, long, default_value_t = 0)]
     verbose: u8,
+
+    /// BLE backend: `btleplug` (real hardware) or `virtual` (in-memory device for testing).
+    #[arg(long, default_value_t)]
+    backend: Backend,
 }
 
 #[tokio::main]
@@ -38,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let state = ServerState::new().await?;
+    let state = ServerState::new(cli.backend).await?;
     let router = routes::build_router(state);
 
     let bind_addr = format!("{}:{}", cli.address, cli.port);

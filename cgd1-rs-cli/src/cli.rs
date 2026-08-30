@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use cgd1_rs::AlarmSlotIndex;
+use cgd1_rs::Backend;
 use cgd1_rs::Brightness;
 use cgd1_rs::ClockTime;
 use cgd1_rs::DayMask;
@@ -24,6 +25,10 @@ pub struct Cli {
     /// Verbosity level (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
+
+    /// BLE backend: `btleplug` (real hardware) or `virtual` (in-memory device for testing).
+    #[arg(long, default_value_t)]
+    pub backend: Backend,
 
     #[command(subcommand)]
     pub command: Commands,

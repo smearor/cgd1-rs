@@ -1,7 +1,6 @@
-use std::sync::Arc;
 use std::time::Duration;
 
-use cgd1_rs::BtleplugTransport;
+use cgd1_rs::Backend;
 use cgd1_rs::ClockScanner;
 use cgd1_rs::ScanDuration;
 
@@ -11,11 +10,13 @@ use crate::error::CliError;
 pub struct ScanArgs {
     /// Scan duration in seconds (1–600).
     pub duration: ScanDuration,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `scan` command.
 pub async fn run(args: ScanArgs) -> Result<(), CliError> {
-    let transport = Arc::new(BtleplugTransport::new().await?);
+    let transport = args.backend.create_transport().await?;
     let scanner = ClockScanner::new(transport);
 
     println!("Scanning for {}...", args.duration);

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use cgd1_rs::Backend;
 use cgd1_rs::ClockEvent;
 use cgd1_rs::MacAddress;
 use tracing::debug;
@@ -16,11 +17,13 @@ pub struct MonitorArgs {
     pub address: MacAddress,
     /// Duration (0 = indefinite).
     pub duration: MonitorDuration,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `monitor` command.
 pub async fn run(args: MonitorArgs) -> Result<(), CliError> {
-    let connection = DeviceConnection::connect(&args.address).await?;
+    let connection = DeviceConnection::connect(&args.address, args.backend).await?;
     let mut receiver = connection.device().subscribe();
 
     println!("Monitoring sensor data (Ctrl+C to stop)...");

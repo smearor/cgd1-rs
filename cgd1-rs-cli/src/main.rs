@@ -40,10 +40,11 @@ async fn main() -> miette::Result<()> {
 }
 
 async fn run(cli: Cli) -> Result<(), CliError> {
+    let backend = cli.backend;
     match cli.command {
-        Commands::Scan { duration } => command::scan::run(ScanArgs { duration }).await,
-        Commands::SyncTime { address } => command::sync_time::run(SyncTimeArgs { address }).await,
-        Commands::AlarmList { address } => command::alarm_list::run(AlarmListArgs { address }).await,
+        Commands::Scan { duration } => command::scan::run(ScanArgs { duration, backend }).await,
+        Commands::SyncTime { address } => command::sync_time::run(SyncTimeArgs { address, backend }).await,
+        Commands::AlarmList { address } => command::alarm_list::run(AlarmListArgs { address, backend }).await,
         Commands::AlarmSet {
             address,
             slot,
@@ -57,11 +58,12 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 time,
                 repeat,
                 snooze: !no_snooze,
+                backend,
             })
             .await
         }
-        Commands::AlarmDelete { address, slot } => command::alarm_delete::run(AlarmDeleteArgs { address, slot }).await,
-        Commands::SettingsRead { address } => command::settings_read::run(SettingsReadArgs { address }).await,
+        Commands::AlarmDelete { address, slot } => command::alarm_delete::run(AlarmDeleteArgs { address, slot, backend }).await,
+        Commands::SettingsRead { address } => command::settings_read::run(SettingsReadArgs { address, backend }).await,
         Commands::SettingsWrite {
             address,
             volume,
@@ -81,14 +83,23 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 time_format,
                 temp_unit,
                 language,
+                backend,
             })
             .await
         }
-        Commands::Brightness { address, value } => command::brightness::run(BrightnessArgs { address, value }).await,
-        Commands::RingtonePreview { address, volume } => command::ringtone_preview::run(RingtonePreviewArgs { address, volume }).await,
-        Commands::RingtoneUpload { address, file, signature } => command::ringtone_upload::run(RingtoneUploadArgs { address, file, signature }).await,
-        Commands::Firmware { address } => command::firmware::run(FirmwareArgs { address }).await,
-        Commands::Battery { address } => command::battery::run(BatteryArgs { address }).await,
-        Commands::Monitor { address, duration } => command::monitor::run(MonitorArgs { address, duration }).await,
+        Commands::Brightness { address, value } => command::brightness::run(BrightnessArgs { address, value, backend }).await,
+        Commands::RingtonePreview { address, volume } => command::ringtone_preview::run(RingtonePreviewArgs { address, volume, backend }).await,
+        Commands::RingtoneUpload { address, file, signature } => {
+            command::ringtone_upload::run(RingtoneUploadArgs {
+                address,
+                file,
+                signature,
+                backend,
+            })
+            .await
+        }
+        Commands::Firmware { address } => command::firmware::run(FirmwareArgs { address, backend }).await,
+        Commands::Battery { address } => command::battery::run(BatteryArgs { address, backend }).await,
+        Commands::Monitor { address, duration } => command::monitor::run(MonitorArgs { address, duration, backend }).await,
     }
 }

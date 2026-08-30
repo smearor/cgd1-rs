@@ -10,12 +10,15 @@ mod token;
 mod types;
 
 pub use ble::AdvertisementData;
+pub use ble::Backend;
+pub use ble::BackendParseError;
 pub use ble::BleTransport;
 pub use ble::BtleplugTransport;
 pub use ble::CharacteristicUuid;
 pub use ble::MockBleTransport;
 pub use ble::SensorNotification;
 pub use ble::TransportState;
+pub use ble::VirtualClockTransport;
 pub use command::Ack;
 pub use command::AckStatus;
 pub use command::AlarmEntry;

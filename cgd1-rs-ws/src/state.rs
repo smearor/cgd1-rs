@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use cgd1_rs::BtleplugTransport;
+use cgd1_rs::Backend;
+use cgd1_rs::BleTransport;
 use cgd1_rs::ClockDevice;
 use cgd1_rs::ClockError;
 use cgd1_rs::ClockManager;
@@ -19,7 +20,7 @@ use crate::error::ServerError;
 pub struct ServerState {
     /// The BLE transport (kept alive to maintain the adapter connection).
     #[allow(dead_code)]
-    transport: Arc<BtleplugTransport>,
+    transport: Arc<dyn BleTransport>,
     /// Core library BLE manager for device connections.
     manager: Arc<ClockManager>,
     /// Token store for device authentication.
@@ -27,11 +28,11 @@ pub struct ServerState {
 }
 
 impl ServerState {
-    /// Create new server state with the given transport.
+    /// Create new server state with the given backend.
     ///
     /// The `ClockManager` is created internally from the transport.
-    pub async fn new() -> Result<Self, ClockError> {
-        let transport = Arc::new(BtleplugTransport::new().await?);
+    pub async fn new(backend: Backend) -> Result<Self, ClockError> {
+        let transport = backend.create_transport().await?;
         let manager = Arc::new(ClockManager::new(transport.clone()));
         let token_store = Arc::new(FileTokenStore::default_directory());
         Ok(Self {

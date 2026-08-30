@@ -1,3 +1,4 @@
+use cgd1_rs::Backend;
 use cgd1_rs::Language;
 use cgd1_rs::MacAddress;
 use cgd1_rs::TemperatureUnit;
@@ -10,11 +11,13 @@ use crate::error::CliError;
 pub struct SettingsReadArgs {
     /// Device MAC address.
     pub address: MacAddress,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `settings-read` command.
 pub async fn run(args: SettingsReadArgs) -> Result<(), CliError> {
-    let connection = DeviceConnection::connect(&args.address).await?;
+    let connection = DeviceConnection::connect(&args.address, args.backend).await?;
     let settings = connection.device().read_settings().await?;
 
     println!("Volume: {}", settings.volume());

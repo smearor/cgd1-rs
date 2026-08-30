@@ -1,3 +1,4 @@
+use cgd1_rs::Backend;
 use cgd1_rs::MacAddress;
 use cgd1_rs::Volume;
 
@@ -10,11 +11,13 @@ pub struct RingtonePreviewArgs {
     pub address: MacAddress,
     /// Volume level (optional, uses device volume if omitted).
     pub volume: Option<Volume>,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `ringtone-preview` command.
 pub async fn run(args: RingtonePreviewArgs) -> Result<(), CliError> {
-    let connection = DeviceConnection::connect(&args.address).await?;
+    let connection = DeviceConnection::connect(&args.address, args.backend).await?;
     connection.device().preview_ringtone(args.volume).await?;
 
     println!("Ringtone preview triggered.");
