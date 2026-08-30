@@ -5,8 +5,11 @@ use crate::types::Humidity;
 use crate::types::MacAddress;
 use crate::types::Temperature;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 /// Parsed sensor data from a passive BLE advertisement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AdvertisementData {
     /// Device MAC address (reversed from advertisement).
     pub mac: MacAddress,

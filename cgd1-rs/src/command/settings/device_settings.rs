@@ -2,10 +2,14 @@ use crate::error::ClockError;
 use crate::error::Result;
 use crate::types::ClockTime;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use super::brightness::Brightness;
 use super::language::Language;
 use super::ringtone_signature::RingtoneSignature;
 use super::screen_light_duration::ScreenLightDuration;
+use super::settings_flags::SettingsFlags;
 use super::temperature_unit::TemperatureUnit;
 use super::time_format::TimeFormat;
 use super::timezone::Timezone;
@@ -24,12 +28,13 @@ use super::volume::Volume;
 /// - `night_start`/`night_end` hours are 0–23, minutes 0–59
 /// - `timezone` is within -720 to +840 minutes
 /// - `screen_light_duration` is in range 0–255 seconds
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceSettings {
     /// Sound volume (1–5).
     volume: Volume,
-    /// Flags byte (language, time format, temperature unit, master alarm disable).
-    flags: u8,
+    /// Flags (language, time format, temperature unit, master alarm disable).
+    #[serde(flatten)]
+    flags: SettingsFlags,
     /// Timezone offset.
     timezone: Timezone,
     /// Screen light duration.
@@ -44,8 +49,6 @@ pub struct DeviceSettings {
     night_end: ClockTime,
     /// Whether night mode is enabled.
     night_mode_enabled: bool,
-    /// Whether the master alarm switch is disabled.
-    master_alarm_disabled: bool,
     /// Ringtone signature (4 bytes, `0xFF` when unused).
     ringtone_signature: RingtoneSignature,
 }
@@ -53,15 +56,6 @@ pub struct DeviceSettings {
 impl DeviceSettings {
     /// Maximum volume level.
     pub const MAX_VOLUME: u8 = 5;
-
-    /// Flag bit for English language.
-    pub const FLAG_LANG_ENGLISH: u8 = 0x01;
-    /// Flag bit for 12-hour time format.
-    pub const FLAG_TIME_FORMAT_12H: u8 = 0x02;
-    /// Flag bit for Fahrenheit temperature unit.
-    pub const FLAG_TEMP_UNIT_F: u8 = 0x04;
-    /// Flag bit for master alarm disable.
-    pub const FLAG_MASTER_ALARM_DISABLE: u8 = 0x10;
 
     /// Fixed header byte at payload offset 1.
     pub const HDR_BYTE_1: u8 = 0x58;
@@ -85,10 +79,7 @@ impl DeviceSettings {
         master_alarm_disabled: bool,
         ringtone_signature: RingtoneSignature,
     ) -> Result<Self> {
-        let flags = language.flag_bit()
-            | time_format.flag_bit()
-            | temperature_unit.flag_bit()
-            | if master_alarm_disabled { Self::FLAG_MASTER_ALARM_DISABLE } else { 0 };
+        let flags = SettingsFlags::new(language, time_format, temperature_unit, master_alarm_disabled);
 
         Ok(Self {
             volume,
@@ -100,7 +91,6 @@ impl DeviceSettings {
             night_start,
             night_end,
             night_mode_enabled,
-            master_alarm_disabled,
             ringtone_signature,
         })
     }
@@ -111,18 +101,18 @@ impl DeviceSettings {
     }
 
     /// Get the time format.
-    pub fn time_format(&self) -> TimeFormat {
-        TimeFormat::from_flags(self.flags)
+    pub const fn time_format(&self) -> TimeFormat {
+        self.flags.time_format()
     }
 
     /// Get the temperature unit.
-    pub fn temperature_unit(&self) -> TemperatureUnit {
-        TemperatureUnit::from_flags(self.flags)
+    pub const fn temperature_unit(&self) -> TemperatureUnit {
+        self.flags.temperature_unit()
     }
 
     /// Get the display language.
-    pub fn language(&self) -> Language {
-        Language::from_flags(self.flags)
+    pub const fn language(&self) -> Language {
+        self.flags.language()
     }
 
     /// Get the timezone.
@@ -162,7 +152,7 @@ impl DeviceSettings {
 
     /// Whether the master alarm switch is disabled.
     pub const fn master_alarm_disabled(&self) -> bool {
-        self.master_alarm_disabled
+        self.flags.master_alarm_disabled()
     }
 
     /// Get the ringtone signature.
@@ -192,19 +182,19 @@ impl DeviceSettings {
 
     /// Return a copy with the specified time format.
     pub fn with_time_format(self, time_format: TimeFormat) -> Self {
-        let flags = (self.flags & !Self::FLAG_TIME_FORMAT_12H) | time_format.flag_bit();
+        let flags = SettingsFlags::new(self.flags.language(), time_format, self.flags.temperature_unit(), self.flags.master_alarm_disabled());
         Self { flags, ..self }
     }
 
     /// Return a copy with the specified temperature unit.
     pub fn with_temperature_unit(self, temp_unit: TemperatureUnit) -> Self {
-        let flags = (self.flags & !Self::FLAG_TEMP_UNIT_F) | temp_unit.flag_bit();
+        let flags = SettingsFlags::new(self.flags.language(), self.flags.time_format(), temp_unit, self.flags.master_alarm_disabled());
         Self { flags, ..self }
     }
 
     /// Return a copy with the specified language.
     pub fn with_language(self, language: Language) -> Self {
-        let flags = (self.flags & !Self::FLAG_LANG_ENGLISH) | language.flag_bit();
+        let flags = SettingsFlags::new(language, self.flags.time_format(), self.flags.temperature_unit(), self.flags.master_alarm_disabled());
         Self { flags, ..self }
     }
 
@@ -238,7 +228,7 @@ impl DeviceSettings {
         payload[0] = self.volume.value();
         payload[1] = Self::HDR_BYTE_1;
         payload[2] = Self::HDR_BYTE_2;
-        payload[3] = self.flags;
+        payload[3] = self.flags.byte();
         payload[4] = self.timezone.encoded_units();
         payload[5] = self.screen_light_duration.seconds();
         payload[6] = (self.brightness.nibble() << 4) | self.night_brightness.nibble();
@@ -284,16 +274,13 @@ impl DeviceSettings {
         sig_bytes.copy_from_slice(&payload[14..18]);
         let ringtone_signature = RingtoneSignature::from_bytes(sig_bytes);
 
-        let time_format = TimeFormat::from_flags(flags);
-        let temperature_unit = TemperatureUnit::from_flags(flags);
-        let language = Language::from_flags(flags);
-        let master_alarm_disabled = (flags & Self::FLAG_MASTER_ALARM_DISABLE) != 0;
+        let settings_flags = SettingsFlags::from_byte(flags);
 
         Self::new(
             volume,
-            time_format,
-            temperature_unit,
-            language,
+            settings_flags.time_format(),
+            settings_flags.temperature_unit(),
+            settings_flags.language(),
             timezone,
             screen_light_duration,
             brightness,
@@ -301,7 +288,7 @@ impl DeviceSettings {
             night_start,
             night_end,
             night_mode_enabled,
-            master_alarm_disabled,
+            settings_flags.master_alarm_disabled(),
             ringtone_signature,
         )
     }

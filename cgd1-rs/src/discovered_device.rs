@@ -1,8 +1,11 @@
 use crate::AdvertisementData;
 use crate::MacAddress;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 /// A discovered CGD1 device.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveredDevice {
     /// MAC address.
     pub address: MacAddress,

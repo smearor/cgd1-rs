@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`Volume`] from a string.
@@ -20,7 +22,8 @@ pub struct VolumeParseError {
 /// Sound volume level (1–5).
 ///
 /// Encoded as byte 0 of the settings payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Volume(u8);
 
 impl Volume {

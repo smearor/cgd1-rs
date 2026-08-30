@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing an [`AlarmSlotIndex`] from a string.
@@ -21,7 +23,8 @@ pub struct AlarmSlotIndexParseError {
 ///
 /// Valid range: 0–15 (16 slots total). Construction validates
 /// the range, so any `AlarmSlotIndex` is guaranteed valid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct AlarmSlotIndex(u8);
 
 impl AlarmSlotIndex {

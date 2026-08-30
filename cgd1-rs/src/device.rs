@@ -843,15 +843,15 @@ mod tests {
     use super::*;
 
     use crate::AlarmSlotIndex;
-    use crate::Timezone;
-    use crate::TimeFormat;
-    use crate::TemperatureUnit;
-    use crate::ScreenLightDuration;
-    use crate::RingtoneSignature;
-    use crate::Language;
     use crate::ClockTime;
     use crate::DayMask;
+    use crate::Language;
     use crate::MockBleTransport;
+    use crate::RingtoneSignature;
+    use crate::ScreenLightDuration;
+    use crate::TemperatureUnit;
+    use crate::TimeFormat;
+    use crate::Timezone;
 
     #[test]
     fn parse_ack_valid() {

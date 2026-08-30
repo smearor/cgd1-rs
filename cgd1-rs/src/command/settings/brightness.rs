@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`Brightness`] from a string.
@@ -22,7 +24,8 @@ pub struct BrightnessParseError {
 /// Used for both daytime and nighttime brightness in [`super::DeviceSettings`].
 /// Encoded as a nibble value (0–15) in the packed brightness byte.
 /// The device accepts nibble values 0–15, though typical range is 0–10 (0–100%).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Brightness(u8);
 
 impl Brightness {

@@ -2,6 +2,9 @@ use crate::error::ClockError;
 use crate::error::Result;
 use crate::types::ClockTime;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use super::day_mask::DayMask;
 use super::slot_index::AlarmSlotIndex;
 
@@ -12,7 +15,7 @@ use super::slot_index::AlarmSlotIndex;
 ///
 /// Invariants are enforced by construction via the [`ClockTime`] field:
 /// - `time` hour is in range 0–23, minute 0–59
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AlarmEntry {
     /// Alarm time (hour 0–23, minute 0–59).
     time: ClockTime,

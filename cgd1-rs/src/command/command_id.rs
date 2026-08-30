@@ -1,5 +1,9 @@
+use serde::Deserialize;
+use serde::Serialize;
+
 /// A CGD1 BLE protocol command identifier (single byte).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct CommandId(u8);
 
 impl CommandId {

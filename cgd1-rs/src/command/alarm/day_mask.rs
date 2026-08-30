@@ -3,6 +3,8 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::str::FromStr;
 
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`DayMask`] from a string.
@@ -20,7 +22,8 @@ pub struct DayMaskParseError {
 /// Bit 0 = Monday, bit 1 = Tuesday, ..., bit 5 = Saturday, bit 6 = Sunday.
 /// `0x00` means one-shot (fires once, then auto-disables).
 /// `0x7F` means every day.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct DayMask(u8);
 
 impl DayMask {

@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`Language`] from a string.
@@ -20,11 +22,13 @@ pub struct LanguageParseError {
 /// Display language for the CGD1.
 ///
 /// Encoded as bit 0 of the flags byte in the settings payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Language {
     /// Chinese (Simplified).
+    #[serde(rename = "zh")]
     Chinese,
     /// English.
+    #[serde(rename = "en")]
     English,
 }
 

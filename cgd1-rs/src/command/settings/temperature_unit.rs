@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`TemperatureUnit`] from a string.
@@ -20,11 +22,13 @@ pub struct TemperatureUnitParseError {
 /// Temperature display unit for the CGD1.
 ///
 /// Encoded as bit 2 of the flags byte in the settings payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TemperatureUnit {
     /// Degrees Celsius.
+    #[serde(rename = "C")]
     Celsius,
     /// Degrees Fahrenheit.
+    #[serde(rename = "F")]
     Fahrenheit,
 }
 

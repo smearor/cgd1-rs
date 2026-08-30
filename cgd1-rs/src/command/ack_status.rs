@@ -2,6 +2,9 @@ use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 /// ACK status byte from a CGD1 BLE notification.
 ///
 /// The protocol defines only two outcomes:
@@ -10,7 +13,8 @@ use std::fmt::Formatter;
 ///
 /// The raw byte is preserved in the [`AckStatus::Failure`] variant for
 /// diagnostics, since the protocol does not standardize failure codes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AckStatus {
     /// Command succeeded (status byte `0x00`).
     Success,

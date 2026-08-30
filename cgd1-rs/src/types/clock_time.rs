@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`ClockTime`] from a string.
@@ -21,9 +23,11 @@ pub struct ClockTimeParseError {
 ///
 /// Used by alarm entries and night-mode settings to represent
 /// a specific time of day in 24-hour format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ClockTime {
+    /// Hour (0–23).
     hour: u8,
+    /// Minute (0–59).
     minute: u8,
 }
 

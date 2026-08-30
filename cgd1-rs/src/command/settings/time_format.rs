@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`TimeFormat`] from a string.
@@ -20,11 +22,13 @@ pub struct TimeFormatParseError {
 /// Time display format for the CGD1.
 ///
 /// Encoded as bit 1 of the flags byte in the settings payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeFormat {
     /// 24-hour format.
+    #[serde(rename = "24h")]
     TwentyFourHour,
     /// 12-hour format (AM/PM).
+    #[serde(rename = "12h")]
     TwelveHour,
 }
 

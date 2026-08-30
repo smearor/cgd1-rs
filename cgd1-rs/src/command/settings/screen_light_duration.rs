@@ -6,6 +6,8 @@ use std::str::FromStr;
 use crate::error::ClockError;
 use crate::error::Result;
 use crate::types::parse_iso_duration_to_seconds;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`ScreenLightDuration`] from a string.
@@ -22,7 +24,8 @@ pub struct ScreenLightDurationParseError {
 ///
 /// Encoded as byte 5 of the settings payload.
 /// A value of 0 means the screen light stays off after triggering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ScreenLightDuration(u8);
 
 impl ScreenLightDuration {

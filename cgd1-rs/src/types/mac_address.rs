@@ -3,6 +3,8 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::str::FromStr;
 
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`MacAddress`] from a string.
@@ -16,8 +18,8 @@ pub struct MacAddressParseError {
 }
 
 /// A 6-byte BLE MAC address.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MacAddress([u8; 6]);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MacAddress(#[serde(with = "mac_serde")] [u8; 6]);
 
 impl MacAddress {
     /// Create a new MAC address from raw bytes.
@@ -80,6 +82,30 @@ impl FromStr for MacAddress {
 
 pub(crate) fn normalized(s: &str) -> String {
     s.replace([':', '-'], "").to_lowercase()
+}
+
+mod mac_serde {
+    use serde::Deserialize;
+    use serde::Deserializer;
+    use serde::Serializer;
+    use std::str::FromStr;
+
+    pub fn serialize<S>(bytes: &[u8; 6], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+        serializer.serialize_str(&s)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 6], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let mac = crate::MacAddress::from_str(&s).map_err(serde::de::Error::custom)?;
+        Ok(*mac.as_bytes())
+    }
 }
 
 #[cfg(test)]

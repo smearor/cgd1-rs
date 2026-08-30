@@ -5,6 +5,8 @@ use std::str::FromStr;
 
 use crate::error::ClockError;
 use crate::error::Result;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// Error parsing a [`Timezone`] from a string.
@@ -21,7 +23,7 @@ pub struct TimezoneParseError {
 ///
 /// The device stores timezone as `offset_minutes / 6` with a separate sign byte.
 /// This newtype encapsulates the encoding/decoding and validates the range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Timezone {
     /// Timezone offset in minutes (e.g., +60 for UTC+1, -300 for UTC-5).
     offset_minutes: i16,

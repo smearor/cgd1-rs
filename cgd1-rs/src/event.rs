@@ -5,8 +5,12 @@ use crate::types::BatteryLevel;
 use crate::types::Humidity;
 use crate::types::Temperature;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 /// Events emitted by a connected CGD1 device.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ClockEvent {
     /// Real-time sensor update (temperature, humidity).
     SensorUpdate {
