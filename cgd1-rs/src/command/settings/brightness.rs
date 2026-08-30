@@ -1,5 +1,21 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
 use crate::error::ClockError;
 use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing a [`Brightness`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid brightness '{input}': {reason}")]
+pub struct BrightnessParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// Brightness level (0–150, must be a multiple of 10).
 ///
@@ -53,6 +69,27 @@ impl TryFrom<u8> for Brightness {
 impl From<Brightness> for u8 {
     fn from(b: Brightness) -> Self {
         b.0
+    }
+}
+
+impl Display for Brightness {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for Brightness {
+    type Err = BrightnessParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let value: u8 = u8::from_str(s).map_err(|e| BrightnessParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })?;
+        Brightness::new(value).map_err(|e| BrightnessParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })
     }
 }
 

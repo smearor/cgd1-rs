@@ -1,5 +1,21 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
 use crate::error::ClockError;
 use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing a [`TimeFormat`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid time format '{input}': {reason}")]
+pub struct TimeFormatParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// Time display format for the CGD1.
 ///
@@ -44,6 +60,30 @@ impl From<TimeFormat> for u8 {
         match format {
             TimeFormat::TwentyFourHour => 0,
             TimeFormat::TwelveHour => 1,
+        }
+    }
+}
+
+impl Display for TimeFormat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TwentyFourHour => write!(f, "24"),
+            Self::TwelveHour => write!(f, "12"),
+        }
+    }
+}
+
+impl FromStr for TimeFormat {
+    type Err = TimeFormatParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "12" => Ok(Self::TwelveHour),
+            "24" => Ok(Self::TwentyFourHour),
+            _ => Err(TimeFormatParseError {
+                input: s.to_string(),
+                reason: "must be '12' or '24'".to_string(),
+            }),
         }
     }
 }

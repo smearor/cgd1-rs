@@ -1,5 +1,21 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
 use crate::error::ClockError;
 use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing a [`Timezone`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid timezone '{input}': {reason}")]
+pub struct TimezoneParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// Timezone offset encoded in 6-minute units as used by the CGD1 protocol.
 ///
@@ -55,6 +71,34 @@ impl Timezone {
         let abs_minutes = (units as i16) * 6;
         let minutes = if sign == 0x00 { -abs_minutes } else { abs_minutes };
         Self::from_minutes(minutes)
+    }
+}
+
+impl Display for Timezone {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let hours = self.offset_minutes / 60;
+        let mins = self.offset_minutes % 60;
+        if mins == 0 {
+            write!(f, "{hours:+}")
+        } else {
+            write!(f, "{hours:+}:{mins:02}")
+        }
+    }
+}
+
+impl FromStr for Timezone {
+    type Err = TimezoneParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let trimmed = s.trim_start_matches("UTC").trim_start_matches("utc");
+        let parsed: i16 = i16::from_str(trimmed).map_err(|e| TimezoneParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })?;
+        Self::from_minutes(parsed).map_err(|e| TimezoneParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })
     }
 }
 

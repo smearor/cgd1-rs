@@ -1,5 +1,21 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
 use crate::error::ClockError;
 use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing a [`Language`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid language '{input}': {reason}")]
+pub struct LanguageParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// Display language for the CGD1.
 ///
@@ -44,6 +60,30 @@ impl From<Language> for u8 {
         match lang {
             Language::Chinese => 0,
             Language::English => 1,
+        }
+    }
+}
+
+impl Display for Language {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Chinese => write!(f, "zh"),
+            Self::English => write!(f, "en"),
+        }
+    }
+}
+
+impl FromStr for Language {
+    type Err = LanguageParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "en" | "english" => Ok(Self::English),
+            "zh" | "chinese" => Ok(Self::Chinese),
+            _ => Err(LanguageParseError {
+                input: s.to_string(),
+                reason: "must be 'en' or 'zh'".to_string(),
+            }),
         }
     }
 }

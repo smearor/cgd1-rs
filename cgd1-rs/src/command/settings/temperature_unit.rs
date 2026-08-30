@@ -1,5 +1,21 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
 use crate::error::ClockError;
 use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing a [`TemperatureUnit`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid temperature unit '{input}': {reason}")]
+pub struct TemperatureUnitParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// Temperature display unit for the CGD1.
 ///
@@ -44,6 +60,30 @@ impl From<TemperatureUnit> for u8 {
         match unit {
             TemperatureUnit::Celsius => 0,
             TemperatureUnit::Fahrenheit => 1,
+        }
+    }
+}
+
+impl Display for TemperatureUnit {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Celsius => write!(f, "C"),
+            Self::Fahrenheit => write!(f, "F"),
+        }
+    }
+}
+
+impl FromStr for TemperatureUnit {
+    type Err = TemperatureUnitParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "c" | "celsius" => Ok(Self::Celsius),
+            "f" | "fahrenheit" => Ok(Self::Fahrenheit),
+            _ => Err(TemperatureUnitParseError {
+                input: s.to_string(),
+                reason: "must be 'C' or 'F'".to_string(),
+            }),
         }
     }
 }

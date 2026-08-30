@@ -11,7 +11,7 @@ use crate::error::ClockError;
 use crate::error::Result;
 use crate::scanner::ClockScanner;
 use crate::token::AuthToken;
-use crate::token_store::TokenStore;
+use crate::token::TokenStore;
 use crate::types::MacAddress;
 
 /// Manages BLE connections to CGD1 alarm clocks.

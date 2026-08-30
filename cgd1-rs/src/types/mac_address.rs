@@ -1,7 +1,19 @@
 use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
 
-use crate::error::ClockError;
-use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing a [`MacAddress`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid MAC address '{input}': {reason}")]
+pub struct MacAddressParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// A 6-byte BLE MAC address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,14 +31,20 @@ impl MacAddress {
     }
 
     /// Parse a MAC address from a colon-separated string (e.g. `aa:bb:cc:dd:ee:ff`).
-    pub fn parse(s: &str) -> Result<Self> {
+    pub fn parse(s: &str) -> Result<Self, MacAddressParseError> {
         let normalized = normalized(s);
         if normalized.len() != 12 {
-            return Err(ClockError::Parse(format!("invalid MAC address length: {s}")));
+            return Err(MacAddressParseError {
+                input: s.to_string(),
+                reason: format!("invalid MAC address length: expected 12 hex chars, got {}", normalized.len()),
+            });
         }
         let mut bytes = [0u8; 6];
         for i in 0..6 {
-            bytes[i] = u8::from_str_radix(&normalized[i * 2..i * 2 + 2], 16).map_err(|_| ClockError::Parse(format!("invalid MAC address: {s}")))?;
+            bytes[i] = u8::from_str_radix(&normalized[i * 2..i * 2 + 2], 16).map_err(|e| MacAddressParseError {
+                input: s.to_string(),
+                reason: e.to_string(),
+            })?;
         }
         Ok(Self(bytes))
     }
@@ -36,8 +54,8 @@ impl MacAddress {
     }
 }
 
-impl fmt::Display for MacAddress {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for MacAddress {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
@@ -49,6 +67,14 @@ impl fmt::Display for MacAddress {
 impl From<[u8; 6]> for MacAddress {
     fn from(bytes: [u8; 6]) -> Self {
         Self(bytes)
+    }
+}
+
+impl FromStr for MacAddress {
+    type Err = MacAddressParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 

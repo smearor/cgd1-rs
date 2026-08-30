@@ -1,12 +1,15 @@
 use crate::error::ClockError;
 use crate::error::Result;
+use crate::types::ClockTime;
 
 use super::brightness::Brightness;
 use super::language::Language;
 use super::ringtone_signature::RingtoneSignature;
+use super::screen_light_duration::ScreenLightDuration;
 use super::temperature_unit::TemperatureUnit;
 use super::time_format::TimeFormat;
 use super::timezone::Timezone;
+use super::volume::Volume;
 
 /// Device settings for the CGD1 alarm clock.
 ///
@@ -16,33 +19,29 @@ use super::timezone::Timezone;
 /// `13 02 [18 bytes payload]` for read response.
 ///
 /// Invariants are enforced by construction via the newtype fields:
-/// - `volume` is in range 1–5
+/// - `volume` is in range 1–5 (validated by [`Volume`])
 /// - `brightness` and `night_brightness` are 0–150 in multiples of 10
 /// - `night_start`/`night_end` hours are 0–23, minutes 0–59
 /// - `timezone` is within -720 to +840 minutes
-/// - `screen_duration` is in range 0–255 seconds
+/// - `screen_light_duration` is in range 0–255 seconds
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceSettings {
     /// Sound volume (1–5).
-    volume: u8,
+    volume: Volume,
     /// Flags byte (language, time format, temperature unit, master alarm disable).
     flags: u8,
     /// Timezone offset.
     timezone: Timezone,
-    /// Screen light duration in seconds.
-    screen_duration: u8,
+    /// Screen light duration.
+    screen_light_duration: ScreenLightDuration,
     /// Daytime brightness (0–150, multiple of 10).
     brightness: Brightness,
     /// Nighttime brightness (0–150, multiple of 10).
     night_brightness: Brightness,
-    /// Night mode start hour (0–23).
-    night_start_hour: u8,
-    /// Night mode start minute (0–59).
-    night_start_minute: u8,
-    /// Night mode end hour (0–23).
-    night_end_hour: u8,
-    /// Night mode end minute (0–59).
-    night_end_minute: u8,
+    /// Night mode start time.
+    night_start: ClockTime,
+    /// Night mode end time.
+    night_end: ClockTime,
     /// Whether night mode is enabled.
     night_mode_enabled: bool,
     /// Whether the master alarm switch is disabled.
@@ -72,32 +71,20 @@ impl DeviceSettings {
     /// Create a new device settings with validation.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        volume: u8,
+        volume: Volume,
         time_format: TimeFormat,
         temperature_unit: TemperatureUnit,
         language: Language,
         timezone: Timezone,
-        screen_duration: u8,
+        screen_light_duration: ScreenLightDuration,
         brightness: Brightness,
         night_brightness: Brightness,
-        night_start_hour: u8,
-        night_start_minute: u8,
-        night_end_hour: u8,
-        night_end_minute: u8,
+        night_start: ClockTime,
+        night_end: ClockTime,
         night_mode_enabled: bool,
         master_alarm_disabled: bool,
         ringtone_signature: RingtoneSignature,
     ) -> Result<Self> {
-        if !(1..=Self::MAX_VOLUME).contains(&volume) {
-            return Err(ClockError::InvalidSettings(format!("volume {volume} out of range 1-5")));
-        }
-        if night_start_hour > 23 || night_end_hour > 23 {
-            return Err(ClockError::InvalidSettings("night mode hour out of range 0-23".into()));
-        }
-        if night_start_minute > 59 || night_end_minute > 59 {
-            return Err(ClockError::InvalidSettings("night mode minute out of range 0-59".into()));
-        }
-
         let flags = language.flag_bit()
             | time_format.flag_bit()
             | temperature_unit.flag_bit()
@@ -107,13 +94,11 @@ impl DeviceSettings {
             volume,
             flags,
             timezone,
-            screen_duration,
+            screen_light_duration,
             brightness,
             night_brightness,
-            night_start_hour,
-            night_start_minute,
-            night_end_hour,
-            night_end_minute,
+            night_start,
+            night_end,
             night_mode_enabled,
             master_alarm_disabled,
             ringtone_signature,
@@ -121,7 +106,7 @@ impl DeviceSettings {
     }
 
     /// Get the volume level (1–5).
-    pub const fn volume(&self) -> u8 {
+    pub const fn volume(&self) -> Volume {
         self.volume
     }
 
@@ -145,9 +130,9 @@ impl DeviceSettings {
         self.timezone
     }
 
-    /// Get the screen light duration in seconds.
-    pub const fn screen_duration(&self) -> u8 {
-        self.screen_duration
+    /// Get the screen light duration.
+    pub const fn screen_light_duration(&self) -> ScreenLightDuration {
+        self.screen_light_duration
     }
 
     /// Get the daytime brightness.
@@ -160,24 +145,14 @@ impl DeviceSettings {
         self.night_brightness
     }
 
-    /// Get the night mode start hour (0–23).
-    pub const fn night_start_hour(&self) -> u8 {
-        self.night_start_hour
+    /// Get the night mode start time.
+    pub const fn night_start(&self) -> ClockTime {
+        self.night_start
     }
 
-    /// Get the night mode start minute (0–59).
-    pub const fn night_start_minute(&self) -> u8 {
-        self.night_start_minute
-    }
-
-    /// Get the night mode end hour (0–23).
-    pub const fn night_end_hour(&self) -> u8 {
-        self.night_end_hour
-    }
-
-    /// Get the night mode end minute (0–59).
-    pub const fn night_end_minute(&self) -> u8 {
-        self.night_end_minute
+    /// Get the night mode end time.
+    pub const fn night_end(&self) -> ClockTime {
+        self.night_end
     }
 
     /// Whether night mode is enabled.
@@ -193,6 +168,44 @@ impl DeviceSettings {
     /// Get the ringtone signature.
     pub const fn ringtone_signature(&self) -> RingtoneSignature {
         self.ringtone_signature
+    }
+
+    /// Return a copy with the specified volume.
+    pub fn with_volume(self, volume: Volume) -> Result<Self> {
+        Ok(Self { volume, ..self })
+    }
+
+    /// Return a copy with the specified brightness.
+    pub fn with_brightness(self, brightness: Brightness) -> Result<Self> {
+        Ok(Self { brightness, ..self })
+    }
+
+    /// Return a copy with the specified night brightness.
+    pub fn with_night_brightness(self, night_brightness: Brightness) -> Result<Self> {
+        Ok(Self { night_brightness, ..self })
+    }
+
+    /// Return a copy with the specified timezone.
+    pub fn with_timezone(self, timezone: Timezone) -> Result<Self> {
+        Ok(Self { timezone, ..self })
+    }
+
+    /// Return a copy with the specified time format.
+    pub fn with_time_format(self, time_format: TimeFormat) -> Self {
+        let flags = (self.flags & !Self::FLAG_TIME_FORMAT_12H) | time_format.flag_bit();
+        Self { flags, ..self }
+    }
+
+    /// Return a copy with the specified temperature unit.
+    pub fn with_temperature_unit(self, temp_unit: TemperatureUnit) -> Self {
+        let flags = (self.flags & !Self::FLAG_TEMP_UNIT_F) | temp_unit.flag_bit();
+        Self { flags, ..self }
+    }
+
+    /// Return a copy with the specified language.
+    pub fn with_language(self, language: Language) -> Self {
+        let flags = (self.flags & !Self::FLAG_LANG_ENGLISH) | language.flag_bit();
+        Self { flags, ..self }
     }
 
     /// Encode settings into the 18-byte payload for the settings frame.
@@ -222,18 +235,18 @@ impl DeviceSettings {
     /// not properly support disabling night mode via the enabled flag alone.
     pub fn encode(&self) -> [u8; 18] {
         let mut payload = [0u8; 18];
-        payload[0] = self.volume;
+        payload[0] = self.volume.value();
         payload[1] = Self::HDR_BYTE_1;
         payload[2] = Self::HDR_BYTE_2;
         payload[3] = self.flags;
         payload[4] = self.timezone.encoded_units();
-        payload[5] = self.screen_duration;
+        payload[5] = self.screen_light_duration.seconds();
         payload[6] = (self.brightness.nibble() << 4) | self.night_brightness.nibble();
         if self.night_mode_enabled {
-            payload[7] = self.night_start_hour;
-            payload[8] = self.night_start_minute;
-            payload[9] = self.night_end_hour;
-            payload[10] = self.night_end_minute;
+            payload[7] = self.night_start.hour();
+            payload[8] = self.night_start.minute();
+            payload[9] = self.night_end.hour();
+            payload[10] = self.night_end.minute();
         } else {
             // Firmware workaround: 1-minute night mode to effectively disable it.
             payload[7] = 0;
@@ -256,22 +269,20 @@ impl DeviceSettings {
             return Err(ClockError::Parse("settings payload too short".into()));
         }
 
-        let volume = payload[0];
+        let volume = Volume::new(payload[0])?;
         let flags = payload[3];
         let timezone = Timezone::from_encoded(payload[4], payload[11])?;
-        let screen_duration = payload[5];
+        let screen_light_duration = ScreenLightDuration::new(payload[5])?;
         let day_nibble = (payload[6] >> 4) & 0x0F;
         let night_nibble = payload[6] & 0x0F;
         let brightness = Brightness::from_nibble(day_nibble)?;
         let night_brightness = Brightness::from_nibble(night_nibble)?;
-        let night_start_hour = payload[7];
-        let night_start_minute = payload[8];
-        let night_end_hour = payload[9];
-        let night_end_minute = payload[10];
+        let night_start = ClockTime::new(payload[7], payload[8])?;
+        let night_end = ClockTime::new(payload[9], payload[10])?;
         let night_mode_enabled = payload[12] != 0x00;
         let mut sig_bytes = [0u8; 4];
         sig_bytes.copy_from_slice(&payload[14..18]);
-        let ringtone_signature = RingtoneSignature::new(sig_bytes);
+        let ringtone_signature = RingtoneSignature::from_bytes(sig_bytes);
 
         let time_format = TimeFormat::from_flags(flags);
         let temperature_unit = TemperatureUnit::from_flags(flags);
@@ -284,13 +295,11 @@ impl DeviceSettings {
             temperature_unit,
             language,
             timezone,
-            screen_duration,
+            screen_light_duration,
             brightness,
             night_brightness,
-            night_start_hour,
-            night_start_minute,
-            night_end_hour,
-            night_end_minute,
+            night_start,
+            night_end,
             night_mode_enabled,
             master_alarm_disabled,
             ringtone_signature,
@@ -304,21 +313,19 @@ mod tests {
 
     fn sample_settings() -> DeviceSettings {
         DeviceSettings::new(
-            3,
+            Volume::new(3).unwrap(),
             TimeFormat::TwentyFourHour,
             TemperatureUnit::Celsius,
             Language::English,
             Timezone::from_hours(1).unwrap(),
-            10,
+            ScreenLightDuration::new(10).unwrap(),
             Brightness::new(80).unwrap(),
             Brightness::new(30).unwrap(),
-            22,
-            0,
-            7,
-            0,
+            ClockTime::new(22, 0).unwrap(),
+            ClockTime::new(7, 0).unwrap(),
             true,
             true,
-            RingtoneSignature::UNUSED,
+            RingtoneSignature::Unused,
         )
         .unwrap()
     }
@@ -361,88 +368,48 @@ mod tests {
     fn new_rejects_invalid_volume() {
         assert!(
             DeviceSettings::new(
-                0,
+                Volume::new(0).unwrap_or(Volume::MIN),
                 TimeFormat::TwentyFourHour,
                 TemperatureUnit::Celsius,
                 Language::English,
                 Timezone::from_hours(0).unwrap(),
-                10,
+                ScreenLightDuration::new(10).unwrap(),
                 Brightness::new(50).unwrap(),
                 Brightness::new(30).unwrap(),
-                22,
-                0,
-                7,
-                0,
+                ClockTime::new(22, 0).unwrap(),
+                ClockTime::new(7, 0).unwrap(),
                 true,
                 true,
-                RingtoneSignature::UNUSED
+                RingtoneSignature::Unused
             )
-            .is_err()
+            .is_ok() // Volume::new(0) fails, so we use MIN as fallback
         );
-        assert!(
-            DeviceSettings::new(
-                6,
-                TimeFormat::TwentyFourHour,
-                TemperatureUnit::Celsius,
-                Language::English,
-                Timezone::from_hours(0).unwrap(),
-                10,
-                Brightness::new(50).unwrap(),
-                Brightness::new(30).unwrap(),
-                22,
-                0,
-                7,
-                0,
-                true,
-                true,
-                RingtoneSignature::UNUSED
-            )
-            .is_err()
-        );
+        assert!(Volume::new(0).is_err());
+        assert!(Volume::new(6).is_err());
     }
 
     #[test]
     fn new_rejects_invalid_night_hours() {
-        assert!(
-            DeviceSettings::new(
-                3,
-                TimeFormat::TwentyFourHour,
-                TemperatureUnit::Celsius,
-                Language::English,
-                Timezone::from_hours(0).unwrap(),
-                10,
-                Brightness::new(50).unwrap(),
-                Brightness::new(30).unwrap(),
-                24,
-                0,
-                7,
-                0,
-                true,
-                true,
-                RingtoneSignature::UNUSED
-            )
-            .is_err()
-        );
+        assert!(ClockTime::new(24, 0).is_err());
+        assert!(ClockTime::new(0, 60).is_err());
     }
 
     #[test]
     fn night_mode_disabled_overwrites_schedule() {
         let settings = DeviceSettings::new(
-            3,
+            Volume::new(3).unwrap(),
             TimeFormat::TwentyFourHour,
             TemperatureUnit::Celsius,
             Language::English,
             Timezone::from_hours(0).unwrap(),
-            10,
+            ScreenLightDuration::new(10).unwrap(),
             Brightness::new(50).unwrap(),
             Brightness::new(30).unwrap(),
-            22,
-            0,
-            7,
-            0,
+            ClockTime::new(22, 0).unwrap(),
+            ClockTime::new(7, 0).unwrap(),
             false,
             true,
-            RingtoneSignature::UNUSED,
+            RingtoneSignature::Unused,
         )
         .unwrap();
         let payload = settings.encode();
@@ -457,42 +424,38 @@ mod tests {
     #[test]
     fn master_alarm_disabled_flag() {
         let with_flag = DeviceSettings::new(
-            3,
+            Volume::new(3).unwrap(),
             TimeFormat::TwentyFourHour,
             TemperatureUnit::Celsius,
             Language::Chinese,
             Timezone::from_hours(0).unwrap(),
-            10,
+            ScreenLightDuration::new(10).unwrap(),
             Brightness::new(50).unwrap(),
             Brightness::new(30).unwrap(),
-            22,
-            0,
-            7,
-            0,
+            ClockTime::new(22, 0).unwrap(),
+            ClockTime::new(7, 0).unwrap(),
             true,
             true,
-            RingtoneSignature::UNUSED,
+            RingtoneSignature::Unused,
         )
         .unwrap();
         assert!(with_flag.master_alarm_disabled());
         assert_eq!(with_flag.encode()[3] & 0x10, 0x10);
 
         let without_flag = DeviceSettings::new(
-            3,
+            Volume::new(3).unwrap(),
             TimeFormat::TwentyFourHour,
             TemperatureUnit::Celsius,
             Language::Chinese,
             Timezone::from_hours(0).unwrap(),
-            10,
+            ScreenLightDuration::new(10).unwrap(),
             Brightness::new(50).unwrap(),
             Brightness::new(30).unwrap(),
-            22,
-            0,
-            7,
-            0,
+            ClockTime::new(22, 0).unwrap(),
+            ClockTime::new(7, 0).unwrap(),
             true,
             false,
-            RingtoneSignature::UNUSED,
+            RingtoneSignature::Unused,
         )
         .unwrap();
         assert!(!without_flag.master_alarm_disabled());
@@ -502,21 +465,19 @@ mod tests {
     #[test]
     fn flags_combine_all_fields() {
         let settings = DeviceSettings::new(
-            3,
+            Volume::new(3).unwrap(),
             TimeFormat::TwelveHour,
             TemperatureUnit::Fahrenheit,
             Language::English,
             Timezone::from_hours(0).unwrap(),
-            10,
+            ScreenLightDuration::new(10).unwrap(),
             Brightness::new(50).unwrap(),
             Brightness::new(30).unwrap(),
-            22,
-            0,
-            7,
-            0,
+            ClockTime::new(22, 0).unwrap(),
+            ClockTime::new(7, 0).unwrap(),
             true,
             true,
-            RingtoneSignature::UNUSED,
+            RingtoneSignature::Unused,
         )
         .unwrap();
         // English=0x01, 12h=0x02, Fahrenheit=0x04, master_alarm_disable=0x10 → 0x17

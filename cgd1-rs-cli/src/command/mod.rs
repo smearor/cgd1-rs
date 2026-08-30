@@ -1,0 +1,13 @@
+pub mod alarm_delete;
+pub mod alarm_list;
+pub mod alarm_set;
+pub mod battery;
+pub mod brightness;
+pub mod firmware;
+pub mod monitor;
+pub mod ringtone_preview;
+pub mod ringtone_upload;
+pub mod scan;
+pub mod settings_read;
+pub mod settings_write;
+pub mod sync_time;

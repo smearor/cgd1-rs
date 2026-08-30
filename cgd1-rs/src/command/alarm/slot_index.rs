@@ -1,5 +1,21 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
 use crate::error::ClockError;
 use crate::error::Result;
+use thiserror::Error;
+
+/// Error parsing an [`AlarmSlotIndex`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid alarm slot index '{input}': {reason}")]
+pub struct AlarmSlotIndexParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
 
 /// Index of an alarm slot on the CGD1 device.
 ///
@@ -37,6 +53,30 @@ impl TryFrom<u8> for AlarmSlotIndex {
 impl From<AlarmSlotIndex> for u8 {
     fn from(index: AlarmSlotIndex) -> u8 {
         index.0
+    }
+}
+
+impl Display for AlarmSlotIndex {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for AlarmSlotIndex {
+    type Err = AlarmSlotIndexParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let index: u8 = u8::from_str(s).map_err(|e| AlarmSlotIndexParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })?;
+        if index > Self::MAX {
+            return Err(AlarmSlotIndexParseError {
+                input: s.to_string(),
+                reason: format!("must be 0–{}", Self::MAX),
+            });
+        }
+        Ok(Self(index))
     }
 }
 

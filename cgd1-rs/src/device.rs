@@ -3,7 +3,9 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
@@ -26,11 +28,13 @@ use crate::command::Brightness;
 use crate::command::Command;
 use crate::command::CommandId;
 use crate::command::DeviceSettings;
+use crate::command::Volume;
+use crate::error::AuthFailedError;
 use crate::error::ClockError;
 use crate::error::Result;
 use crate::event::ClockEvent;
 use crate::token::AuthToken;
-use crate::token_store::TokenStore;
+use crate::token::TokenStore;
 use crate::types::BatteryLevel;
 use crate::types::MacAddress;
 
@@ -251,7 +255,11 @@ impl ClockDevice {
 
         let ack = self.wait_for_ack(Command::AuthInit).await?;
         if let AckStatus::Failure(code) = ack.status {
-            return Err(ClockError::AuthFailed(format!("init status: {code:#04x}")));
+            return Err(ClockError::AuthFailed(AuthFailedError {
+                reason: format!("init status: {code:#04x}"),
+                is_new_token: false,
+                token_path: None,
+            }));
         }
 
         // Step 2: Auth Confirm
@@ -259,7 +267,11 @@ impl ClockDevice {
 
         let ack = self.wait_for_ack(Command::AuthConfirm).await?;
         if let AckStatus::Failure(code) = ack.status {
-            return Err(ClockError::AuthFailed(format!("confirm status: {code:#04x}")));
+            return Err(ClockError::AuthFailed(AuthFailedError {
+                reason: format!("confirm status: {code:#04x}"),
+                is_new_token: false,
+                token_path: None,
+            }));
         }
 
         // Store the token for automatic re-auth on reconnect.
@@ -551,11 +563,11 @@ impl ClockDevice {
     ///
     /// Sends: `01 04` (current volume) or `02 04 [Volume]` (specific volume)
     /// to Data Write.
-    pub async fn preview_ringtone(&self, volume: Option<u8>) -> Result<()> {
+    pub async fn preview_ringtone(&self, volume: Option<Volume>) -> Result<()> {
         let _guard = self.command_mutex.lock().await;
 
         let payload = match volume {
-            Some(v) => vec![v],
+            Some(v) => vec![v.value()],
             None => vec![],
         };
         self.transport.write_frame(Command::PreviewRingtone, &payload).await?;
@@ -831,6 +843,13 @@ mod tests {
     use super::*;
 
     use crate::AlarmSlotIndex;
+    use crate::Timezone;
+    use crate::TimeFormat;
+    use crate::TemperatureUnit;
+    use crate::ScreenLightDuration;
+    use crate::RingtoneSignature;
+    use crate::Language;
+    use crate::ClockTime;
     use crate::DayMask;
     use crate::MockBleTransport;
 
@@ -862,7 +881,7 @@ mod tests {
         let device = ClockDevice::new(mock.clone(), addr);
         device.spawn_notification_task();
 
-        let alarm = AlarmEntry::new(7, 30, DayMask::WEEKDAYS, true, true).unwrap();
+        let alarm = AlarmEntry::new(ClockTime::new(7, 30).unwrap(), DayMask::WEEKDAYS, true, true);
         device.set_alarm(&alarm, AlarmSlotIndex::new(2).unwrap()).await.unwrap();
 
         let writes = mock.drain_writes().await;
@@ -931,15 +950,8 @@ mod tests {
 
     #[tokio::test]
     async fn set_alarm_rejects_invalid_slot() {
-        let mock = Arc::new(MockBleTransport::new());
-        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
-        let device = ClockDevice::new(mock.clone(), addr);
-
-        let alarm = AlarmEntry::new(7, 30, DayMask::EVERY_DAY, true, false).unwrap();
         let result = AlarmSlotIndex::new(16);
         assert!(result.is_err());
-        // Verify valid slot still works with the device
-        let _ = device.set_alarm(&alarm, AlarmSlotIndex::new(0).unwrap()).await;
     }
 
     #[tokio::test]
@@ -950,21 +962,19 @@ mod tests {
         device.spawn_notification_task();
 
         let settings = DeviceSettings::new(
-            3,
-            crate::TimeFormat::TwentyFourHour,
-            crate::TemperatureUnit::Celsius,
-            crate::Language::English,
-            crate::Timezone::from_hours(1).unwrap(),
-            10,
-            crate::Brightness::new(80).unwrap(),
-            crate::Brightness::new(30).unwrap(),
-            22,
-            0,
-            7,
-            0,
+            Volume::new(3).unwrap(),
+            TimeFormat::TwentyFourHour,
+            TemperatureUnit::Celsius,
+            Language::English,
+            Timezone::from_hours(1).unwrap(),
+            ScreenLightDuration::new(10).unwrap(),
+            Brightness::new(80).unwrap(),
+            Brightness::new(30).unwrap(),
+            ClockTime::new(22, 0).unwrap(),
+            ClockTime::new(7, 0).unwrap(),
             true,
             true,
-            crate::RingtoneSignature::UNUSED,
+            RingtoneSignature::Unused,
         )
         .unwrap();
 
@@ -1018,16 +1028,16 @@ mod tests {
         mock.push_notification(data_notify, response);
 
         let settings = device.read_settings().await.unwrap();
-        assert_eq!(settings.volume(), 3);
+        assert_eq!(settings.volume(), crate::Volume::new(3).unwrap());
         assert_eq!(settings.language(), crate::Language::English);
         assert_eq!(settings.time_format(), crate::TimeFormat::TwentyFourHour);
         assert_eq!(settings.temperature_unit(), crate::TemperatureUnit::Celsius);
         assert_eq!(settings.timezone().minutes(), 60);
-        assert_eq!(settings.screen_duration(), 10);
+        assert_eq!(settings.screen_light_duration().seconds(), 10);
         assert_eq!(settings.brightness().value(), 80);
         assert_eq!(settings.night_brightness().value(), 30);
-        assert_eq!(settings.night_start_hour(), 22);
-        assert_eq!(settings.night_end_hour(), 7);
+        assert_eq!(settings.night_start().hour(), 22);
+        assert_eq!(settings.night_end().hour(), 7);
         assert!(settings.night_mode_enabled());
         assert!(settings.master_alarm_disabled());
         assert!(settings.ringtone_signature().is_unused());
@@ -1072,7 +1082,7 @@ mod tests {
         let device = ClockDevice::new(mock.clone(), addr);
         device.spawn_notification_task();
 
-        device.preview_ringtone(Some(3)).await.unwrap();
+        device.preview_ringtone(Some(crate::Volume::new(3).unwrap())).await.unwrap();
 
         let writes = mock.drain_writes().await;
         assert_eq!(writes.len(), 1);

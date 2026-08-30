@@ -1,4 +1,6 @@
 use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 
 /// ACK status byte from a CGD1 BLE notification.
 ///
@@ -48,8 +50,8 @@ impl From<AckStatus> for u8 {
     }
 }
 
-impl fmt::Display for AckStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for AckStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Success => write!(f, "success"),
             Self::Failure(code) => write!(f, "failure(0x{code:02x})"),

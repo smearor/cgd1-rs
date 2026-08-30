@@ -1,3 +1,20 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
+use thiserror::Error;
+
+/// Error parsing a [`Humidity`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid humidity '{input}': {reason}")]
+pub struct HumidityParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
+
 /// Relative humidity in percent.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Humidity(f32);
@@ -17,6 +34,24 @@ impl Humidity {
 impl From<f32> for Humidity {
     fn from(value: f32) -> Self {
         Self(value)
+    }
+}
+
+impl Display for Humidity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for Humidity {
+    type Err = HumidityParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value: f32 = f32::from_str(s).map_err(|e| HumidityParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })?;
+        Ok(Self(value))
     }
 }
 

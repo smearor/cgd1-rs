@@ -1,3 +1,20 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
+
+use thiserror::Error;
+
+/// Error parsing a [`DayMask`] from a string.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("invalid day mask '{input}': {reason}")]
+pub struct DayMaskParseError {
+    /// The raw input string.
+    pub input: String,
+    /// The parse error reason.
+    pub reason: String,
+}
+
 /// Day-of-week bitmask for alarm repeat.
 ///
 /// Bit 0 = Monday, bit 1 = Tuesday, ..., bit 5 = Saturday, bit 6 = Sunday.
@@ -39,6 +56,25 @@ impl From<u8> for DayMask {
 impl From<DayMask> for u8 {
     fn from(mask: DayMask) -> u8 {
         mask.0
+    }
+}
+
+impl Display for DayMask {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:02x}", self.0)
+    }
+}
+
+impl FromStr for DayMask {
+    type Err = DayMaskParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let trimmed = s.trim_start_matches("0x");
+        let mask = u8::from_str_radix(trimmed, 16).map_err(|e| DayMaskParseError {
+            input: s.to_string(),
+            reason: e.to_string(),
+        })?;
+        Ok(Self(mask))
     }
 }
 
