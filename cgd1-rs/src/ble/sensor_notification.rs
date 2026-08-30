@@ -17,6 +17,28 @@ pub struct SensorNotification {
 }
 
 impl SensorNotification {
+    /// Create a new sensor notification from temperature and humidity values.
+    pub const fn new(temperature: Temperature, humidity: Humidity) -> Self {
+        Self { temperature, humidity }
+    }
+
+    /// Encode the sensor notification into the 5-byte payload format.
+    ///
+    /// Format: `[0x00] [TempLo] [TempHi] [HumLo] [HumHi]` (5 bytes).
+    /// Temperature is a signed 16-bit little-endian value, scaled by * 100.
+    /// Humidity is an unsigned 16-bit little-endian value, scaled by * 100.
+    pub fn encode(&self) -> [u8; 5] {
+        let temp_raw = (self.temperature.value() * 100.0) as i16;
+        let hum_raw = (self.humidity.value() * 100.0) as u16;
+        [
+            0x00,
+            (temp_raw & 0xFF) as u8,
+            ((temp_raw >> 8) & 0xFF) as u8,
+            (hum_raw & 0xFF) as u8,
+            ((hum_raw >> 8) & 0xFF) as u8,
+        ]
+    }
+
     /// Parse a raw sensor notification payload.
     ///
     /// The first byte must be `0x00` (sensor data header). Temperature and
@@ -81,5 +103,22 @@ mod tests {
     fn parse_wrong_header() {
         let payload = [0x01, 0x29, 0x09, 0xE0, 0x15];
         assert!(SensorNotification::parse(&payload).is_err());
+    }
+
+    #[test]
+    fn encode_round_trip() {
+        let sensor = SensorNotification::new(Temperature::new(23.45), Humidity::new(56.0));
+        let encoded = sensor.encode();
+        let parsed = SensorNotification::parse(&encoded).unwrap();
+        assert_eq!(parsed, sensor);
+    }
+
+    #[test]
+    fn encode_negative_temperature() {
+        let sensor = SensorNotification::new(Temperature::new(-5.5), Humidity::new(1.0));
+        let encoded = sensor.encode();
+        let parsed = SensorNotification::parse(&encoded).unwrap();
+        assert_eq!(parsed.temperature.value(), -5.5);
+        assert_eq!(parsed.humidity.value(), 1.0);
     }
 }
