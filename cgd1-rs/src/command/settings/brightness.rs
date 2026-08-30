@@ -31,7 +31,7 @@ pub struct Brightness(u8);
 impl Brightness {
     /// Minimum brightness.
     pub const MIN: Brightness = Brightness(0);
-    /// Maximum brightness (nibble 15 × 10).
+    /// Maximum brightness (nibble 15 x 10).
     pub const MAX: Brightness = Brightness(150);
 
     /// Create a validated brightness value. Must be 0–150 and a multiple of 10.
