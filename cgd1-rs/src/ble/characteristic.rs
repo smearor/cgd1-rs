@@ -1,3 +1,6 @@
+use std::fmt::Display;
+use std::fmt::Formatter;
+
 use uuid::Uuid;
 
 /// BLE base UUID bytes for 16-bit UUID expansion.
@@ -30,6 +33,19 @@ impl CharacteristicUuid {
             Self::DataNotify => Uuid::from_fields(0x0000000c, 0x0000, 0x1000, &BLE_BASE_UUID),
             Self::SensorNotify => Uuid::from_fields(0x00000100, 0x0000, 0x1000, &BLE_BASE_UUID),
             Self::BatteryLevel => Uuid::from_fields(0x00002a19, 0x0000, 0x1000, &BLE_BASE_UUID),
+        }
+    }
+}
+
+impl Display for CharacteristicUuid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AuthWrite => write!(f, "AuthWrite"),
+            Self::AuthNotify => write!(f, "AuthNotify"),
+            Self::DataWrite => write!(f, "DataWrite"),
+            Self::DataNotify => write!(f, "DataNotify"),
+            Self::SensorNotify => write!(f, "SensorNotify"),
+            Self::BatteryLevel => write!(f, "BatteryLevel"),
         }
     }
 }

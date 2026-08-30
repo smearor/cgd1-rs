@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::BtleplugTransport;
 use crate::ble::transport::BleTransport;
-use crate::ble::virtual_transport::VirtualClockTransport;
+use crate::ble::virt::VirtualClockTransport;
 use crate::error::Result;
 
 /// BLE backend selection for transport creation.

@@ -32,6 +32,7 @@ use crate::command::Volume;
 use crate::error::AuthFailedError;
 use crate::error::ClockError;
 use crate::error::Result;
+use crate::error::TransportError;
 use crate::event::ClockEvent;
 use crate::token::AuthToken;
 use crate::token::TokenStore;
@@ -219,7 +220,7 @@ impl ClockDevice {
 
         match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver).await {
             Ok(Ok(ack)) => ack,
-            Ok(Err(_)) => Err(ClockError::Transport("pending request canceled".into())),
+            Ok(Err(_)) => Err(TransportError::RequestCanceled.into()),
             Err(_) => Err(ClockError::Timeout),
         }
     }
@@ -235,7 +236,7 @@ impl ClockDevice {
 
         match timeout(Duration::from_secs(timeout_secs), receiver).await {
             Ok(Ok(ack)) => ack,
-            Ok(Err(_)) => Err(ClockError::Transport("pending request canceled".into())),
+            Ok(Err(_)) => Err(TransportError::RequestCanceled.into()),
             Err(_) => Err(ClockError::Timeout),
         }
     }
@@ -319,7 +320,9 @@ impl ClockDevice {
 
     /// Synchronize the device clock to the current system time.
     pub async fn sync_time_now(&self) -> Result<()> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| ClockError::Transport(e.to_string()))?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| ClockError::from(TransportError::SystemTime(e.to_string())))?;
         self.sync_time(now.as_secs() as u32).await
     }
 
@@ -341,7 +344,7 @@ impl ClockDevice {
 
         let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver.recv()).await {
             Ok(Some(data)) => data,
-            Ok(None) => return Err(ClockError::Transport("firmware response canceled".into())),
+            Ok(None) => return Err(TransportError::ResponseCanceled { context: "firmware".into() }.into()),
             Err(_) => {
                 let mut pending = self.pending_data_response.lock().await;
                 *pending = None;
@@ -498,7 +501,7 @@ impl ClockDevice {
 
         let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver.recv()).await {
             Ok(Some(data)) => data,
-            Ok(None) => return Err(ClockError::Transport("settings response canceled".into())),
+            Ok(None) => return Err(TransportError::ResponseCanceled { context: "settings".into() }.into()),
             Err(_) => {
                 let mut pending = self.pending_data_response.lock().await;
                 *pending = None;
@@ -835,7 +838,7 @@ async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Resul
         return Ok(());
     }
 
-    Err(ClockError::Transport("reconnect with state recovery failed".into()))
+    Err(TransportError::ReconnectFailed.into())
 }
 
 #[cfg(test)]

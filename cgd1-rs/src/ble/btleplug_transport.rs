@@ -24,6 +24,7 @@ use crate::ble::transport::BleTransport;
 use crate::ble::transport_state::TransportState;
 use crate::error::ClockError;
 use crate::error::Result;
+use crate::error::TransportError;
 use crate::types::MacAddress;
 
 type NotificationStream = Pin<Box<dyn Stream<Item = ValueNotification> + Send>>;
@@ -47,10 +48,7 @@ impl BtleplugTransport {
     pub async fn new() -> Result<Self> {
         let manager = Manager::new().await.map_err(ClockError::from)?;
         let adapters = manager.adapters().await.map_err(ClockError::from)?;
-        let adapter = adapters
-            .into_iter()
-            .next()
-            .ok_or_else(|| ClockError::Transport("no Bluetooth adapter found".into()))?;
+        let adapter = adapters.into_iter().next().ok_or(TransportError::NoAdapter)?;
         Ok(Self {
             adapter,
             state: Mutex::new(TransportState::new()),
@@ -131,7 +129,7 @@ impl BleTransport for BtleplugTransport {
                 let addr = p.address().to_string().replace([':', '-'], "").to_lowercase();
                 addr == normalized_target
             })
-            .ok_or_else(|| ClockError::Transport(format!("device not found: {address}")))?;
+            .ok_or(TransportError::DeviceNotFound { address: *address })?;
 
         target.connect().await.map_err(ClockError::from)?;
         target.discover_services().await.map_err(ClockError::from)?;
@@ -184,7 +182,7 @@ impl BleTransport for BtleplugTransport {
             let char = state
                 .characteristics
                 .get(&characteristic.uuid())
-                .ok_or_else(|| ClockError::Transport(format!("characteristic not found: {characteristic:?}")))?
+                .ok_or(TransportError::CharacteristicNotFound { characteristic })?
                 .clone();
             (peripheral, char)
         };
@@ -199,7 +197,7 @@ impl BleTransport for BtleplugTransport {
             let char = state
                 .characteristics
                 .get(&characteristic.uuid())
-                .ok_or_else(|| ClockError::Transport(format!("characteristic not found: {characteristic:?}")))?
+                .ok_or(TransportError::CharacteristicNotFound { characteristic })?
                 .clone();
             (peripheral, char)
         };
@@ -221,7 +219,7 @@ impl BleTransport for BtleplugTransport {
             let char = state
                 .characteristics
                 .get(&characteristic.uuid())
-                .ok_or_else(|| ClockError::Transport(format!("characteristic not found: {characteristic:?}")))?
+                .ok_or(TransportError::CharacteristicNotFound { characteristic })?
                 .clone();
             (peripheral, char)
         };
