@@ -65,6 +65,8 @@ pub use types::Humidity;
 pub use types::HumidityParseError;
 pub use types::MacAddress;
 pub use types::MacAddressParseError;
+pub use types::Rssi;
+pub use types::RssiParseError;
 pub use types::ScanDuration;
 pub use types::ScanDurationParseError;
 pub use types::Temperature;

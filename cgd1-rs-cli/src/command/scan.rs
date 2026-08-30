@@ -35,7 +35,7 @@ pub async fn run(args: ScanArgs) -> Result<(), CliError> {
             println!("    Battery: {} %", ad.battery.value());
         }
         if let Some(rssi) = device.rssi {
-            println!("    RSSI: {rssi} dBm");
+            println!("    RSSI: {}", rssi.dbm());
         }
     }
 

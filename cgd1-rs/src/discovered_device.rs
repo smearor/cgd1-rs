@@ -1,5 +1,6 @@
 use crate::AdvertisementData;
 use crate::MacAddress;
+use crate::Rssi;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -12,5 +13,5 @@ pub struct DiscoveredDevice {
     /// Last seen advertisement data (if any).
     pub advertisement: Option<AdvertisementData>,
     /// RSSI signal strength.
-    pub rssi: Option<i16>,
+    pub rssi: Option<Rssi>,
 }
