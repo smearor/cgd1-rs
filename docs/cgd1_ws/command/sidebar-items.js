@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["alarm_delete","alarm_list","alarm_set","battery","brightness","connect","disconnect","firmware","preview_ringtone","read_settings","scan","sync_time","write_settings"]};

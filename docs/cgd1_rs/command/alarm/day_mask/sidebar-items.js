@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["DayMask"]};
+window.SIDEBAR_ITEMS = {"struct":["DayMask","DayMaskParseError"]};

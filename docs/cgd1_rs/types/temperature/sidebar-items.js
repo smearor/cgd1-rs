@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["Temperature"]};
+window.SIDEBAR_ITEMS = {"struct":["Temperature","TemperatureParseError"]};

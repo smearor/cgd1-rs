@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["battery_level","humidity","mac_address","temperature"]};
+window.SIDEBAR_ITEMS = {"mod":["battery_level","clock_time","humidity","iso_duration","mac_address","rssi","scan_duration","temperature"]};

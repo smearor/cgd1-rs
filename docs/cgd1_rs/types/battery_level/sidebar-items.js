@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["BatteryLevel"]};
+window.SIDEBAR_ITEMS = {"struct":["BatteryLevel","BatteryLevelParseError"]};

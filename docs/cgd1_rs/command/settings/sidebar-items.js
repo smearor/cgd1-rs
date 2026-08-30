@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["brightness","device_settings","language","ringtone_signature","screen_light_duration","settings_flags","temperature_unit","time_format","timezone","volume"]};

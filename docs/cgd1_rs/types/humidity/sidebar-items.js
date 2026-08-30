@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["Humidity"]};
+window.SIDEBAR_ITEMS = {"struct":["Humidity","HumidityParseError"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["ClockError"],"type":["Result"]};
+window.SIDEBAR_ITEMS = {"enum":["ClockError"],"struct":["AuthFailedError"],"type":["Result"]};

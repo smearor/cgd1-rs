@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["RESPONSE_TIMEOUT_SECS"],"fn":["notification_task","parse_sensor_data","pop_pending_alive","reconnect_and_restore","register_pending"],"struct":["ClockDevice"],"type":["PendingMap"]};
+window.SIDEBAR_ITEMS = {"constant":["AUDIO_ACK_TIMEOUT_SECS","AUDIO_MAX_SIZE","AUDIO_PACKETS_PER_BLOCK","AUDIO_PACKET_PAYLOAD_SIZE","RESPONSE_TIMEOUT_SECS"],"fn":["notification_task","pop_pending_alive","reconnect_and_restore","register_pending","validate_audio"],"struct":["ClockDevice"],"type":["PendingMap"]};

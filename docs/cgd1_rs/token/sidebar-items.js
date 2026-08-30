@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["AuthToken"]};
+window.SIDEBAR_ITEMS = {"mod":["auth_token","file_store","result","store"]};

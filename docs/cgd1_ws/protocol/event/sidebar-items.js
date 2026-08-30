@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["ack","battery_level","empty","sensor_update","ws"]};

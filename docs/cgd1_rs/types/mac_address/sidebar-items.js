@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["normalized"],"struct":["MacAddress"]};
+window.SIDEBAR_ITEMS = {"fn":["normalized"],"mod":["mac_serde"],"struct":["MacAddress","MacAddressParseError"]};
