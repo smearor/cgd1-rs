@@ -1,11 +1,14 @@
 //! Integration test: spawn the `cgd1` CLI binary with `--backend virtual`
 //! and verify its stdout output for each command.
 
+use std::env::temp_dir;
 use std::fs::create_dir_all;
 use std::fs::remove_dir_all;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 /// Default virtual device MAC address (first in `DEFAULT_VIRTUAL_MACS`).
 const VIRTUAL_MAC: &str = "AA:BB:CC:DD:E0:01";
@@ -20,10 +23,10 @@ fn cli_binary() -> PathBuf {
 /// Set `XDG_DATA_HOME` to a temp dir so token files don't pollute the user's
 /// real data directory.
 fn isolate_token_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = temp_dir().join(format!(
         "cgd1_cli_test_{}_{}",
         std::process::id(),
-        SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
     ));
     let _ = remove_dir_all(&dir);
     create_dir_all(&dir).unwrap();
@@ -32,7 +35,7 @@ fn isolate_token_dir() -> PathBuf {
 
 /// Run the CLI binary with `--backend virtual` and the given subcommand args.
 /// Returns (exit_status, stdout, stderr).
-fn run_cli(args: &[&str], xdg_data_home: &std::path::Path) -> (bool, String, String) {
+fn run_cli(args: &[&str], xdg_data_home: &Path) -> (bool, String, String) {
     let binary = cli_binary();
     let output = Command::new(&binary)
         .args(["--backend", "virtual"])
@@ -48,7 +51,7 @@ fn run_cli(args: &[&str], xdg_data_home: &std::path::Path) -> (bool, String, Str
 
 /// Pre-generate a token for the virtual device so `connect` succeeds
 /// without needing `sync_time` to persist it first.
-fn pre_generate_token(xdg_data_home: &std::path::Path) {
+fn pre_generate_token(xdg_data_home: &Path) {
     let token_dir = xdg_data_home.join("cgd1-rs");
     create_dir_all(&token_dir).unwrap();
     // The token file name is the MAC with colons replaced by underscores.
