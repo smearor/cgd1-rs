@@ -71,6 +71,30 @@ impl Command {
             | Self::AudioData => CharacteristicUuid::DataWrite,
         }
     }
+
+    /// Resolve a [`CommandId`] to a [`Command`] given the GATT characteristic context.
+    ///
+    /// The CGD1 protocol reuses command byte values across characteristics,
+    /// so the same byte means different commands on Auth Write vs. Data Write.
+    /// This method disambiguates based on which characteristic the frame was
+    /// received on.
+    pub const fn from_id_for_characteristic(id: CommandId, characteristic: CharacteristicUuid) -> Option<Self> {
+        match (characteristic, id.value()) {
+            (CharacteristicUuid::AuthWrite, 0x01) => Some(Self::AuthInit),
+            (CharacteristicUuid::AuthWrite, 0x02) => Some(Self::AuthConfirm),
+            (CharacteristicUuid::AuthWrite, 0x09) => Some(Self::TimeSync),
+            (CharacteristicUuid::AuthWrite, 0x0d) => Some(Self::ReadFirmware),
+            (CharacteristicUuid::DataWrite, 0x01) => Some(Self::SetSettings),
+            (CharacteristicUuid::DataWrite, 0x02) => Some(Self::ReadSettings),
+            (CharacteristicUuid::DataWrite, 0x03) => Some(Self::SetBrightness),
+            (CharacteristicUuid::DataWrite, 0x04) => Some(Self::PreviewRingtone),
+            (CharacteristicUuid::DataWrite, 0x05) => Some(Self::SetAlarm),
+            (CharacteristicUuid::DataWrite, 0x06) => Some(Self::ReadAlarms),
+            (CharacteristicUuid::DataWrite, 0x08) => Some(Self::AudioData),
+            (CharacteristicUuid::DataWrite, 0x10) => Some(Self::AudioInit),
+            _ => None,
+        }
+    }
 }
 
 impl From<Command> for CommandId {
@@ -147,5 +171,27 @@ mod tests {
     fn into_command_id() {
         let id: CommandId = Command::TimeSync.into();
         assert_eq!(id, CommandId::new(0x09));
+    }
+
+    #[test]
+    fn from_id_for_auth_write() {
+        assert_eq!(
+            Command::from_id_for_characteristic(CommandId::new(0x01), CharacteristicUuid::AuthWrite),
+            Some(Command::AuthInit)
+        );
+        assert_eq!(
+            Command::from_id_for_characteristic(CommandId::new(0x09), CharacteristicUuid::AuthWrite),
+            Some(Command::TimeSync)
+        );
+        // 0x01 on DataWrite is SetSettings, not AuthInit.
+        assert_eq!(
+            Command::from_id_for_characteristic(CommandId::new(0x01), CharacteristicUuid::DataWrite),
+            Some(Command::SetSettings)
+        );
+        // Unknown byte returns None.
+        assert_eq!(
+            Command::from_id_for_characteristic(CommandId::new(0xFF), CharacteristicUuid::AuthWrite),
+            None
+        );
     }
 }
