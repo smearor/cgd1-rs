@@ -181,6 +181,9 @@ async fn handle_line(state: &mut ReplState, line: &str) -> Result<(), CliError> 
     }
 
     // Parse as a full CLI command (reuses clap definitions).
+    // If connected and the command requires <ADDRESS> but the user omitted it,
+    // inject the connected device's address automatically.
+    let tokens = inject_address_if_needed(state, &tokens);
     let mut args = vec!["cgd1".to_string()];
     args.extend(tokens.iter().cloned());
 
@@ -193,6 +196,50 @@ async fn handle_line(state: &mut ReplState, line: &str) -> Result<(), CliError> 
     };
 
     dispatch(state, cli).await
+}
+
+/// Commands that take <ADDRESS> as their first positional argument.
+const ADDRESS_COMMANDS: &[&str] = &[
+    "sync-time",
+    "alarm-list",
+    "alarm-set",
+    "alarm-delete",
+    "settings-read",
+    "settings-write",
+    "brightness",
+    "ringtone-preview",
+    "ringtone-upload",
+    "firmware",
+    "battery",
+    "monitor",
+];
+
+/// If the user is connected and typed a device command without a MAC address,
+/// inject the connected address as the second token.
+fn inject_address_if_needed(state: &ReplState, tokens: &[String]) -> Vec<String> {
+    if tokens.is_empty() {
+        return tokens.to_vec();
+    }
+
+    let command = tokens[0].as_str();
+    if !ADDRESS_COMMANDS.contains(&command) {
+        return tokens.to_vec();
+    }
+
+    // If the second token looks like a MAC (contains ':'), the user provided it.
+    if tokens.get(1).is_some_and(|t| t.contains(':')) {
+        return tokens.to_vec();
+    }
+
+    // If connected, inject the address after the command name.
+    if let Some(ref conn) = state.connection {
+        let mut result = vec![tokens[0].clone()];
+        result.push(conn.device().address().to_string());
+        result.extend(tokens.iter().skip(1).cloned());
+        return result;
+    }
+
+    tokens.to_vec()
 }
 
 /// Dispatch a parsed CLI command in the REPL context.
