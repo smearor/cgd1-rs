@@ -1,8 +1,11 @@
 //! Integration test: spawn the `cgd1` CLI binary with `--backend virtual`
 //! and verify its stdout output for each command.
 
+use std::fs::create_dir_all;
+use std::fs::remove_dir_all;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::SystemTime;
 
 /// Default virtual device MAC address (first in `DEFAULT_VIRTUAL_MACS`).
 const VIRTUAL_MAC: &str = "AA:BB:CC:DD:E0:01";
@@ -20,13 +23,10 @@ fn isolate_token_dir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "cgd1_cli_test_{}_{}",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
+        SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()
     ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let _ = remove_dir_all(&dir);
+    create_dir_all(&dir).unwrap();
     dir
 }
 
@@ -50,7 +50,7 @@ fn run_cli(args: &[&str], xdg_data_home: &std::path::Path) -> (bool, String, Str
 /// without needing `sync_time` to persist it first.
 fn pre_generate_token(xdg_data_home: &std::path::Path) {
     let token_dir = xdg_data_home.join("cgd1-rs");
-    std::fs::create_dir_all(&token_dir).unwrap();
+    create_dir_all(&token_dir).unwrap();
     // The token file name is the MAC with colons replaced by underscores.
     let token_file = token_dir.join(VIRTUAL_MAC.replace(':', "_"));
     // Write a 16-byte zero token — the virtual device accepts any token.
@@ -61,14 +61,11 @@ fn pre_generate_token(xdg_data_home: &std::path::Path) {
 fn cli_scan_finds_virtual_devices() {
     let token_dir = isolate_token_dir();
     let (success, stdout, stderr) = run_cli(&["scan", "-d", "1"], &token_dir);
-    let _ = std::fs::remove_dir_all(&token_dir);
+    let _ = remove_dir_all(&token_dir);
 
     assert!(success, "scan should exit 0, stderr: {stderr}");
     assert!(stdout.contains("Found"), "stdout should list found devices: {stdout}");
-    assert!(
-        stdout.to_lowercase().contains(&VIRTUAL_MAC.to_lowercase()),
-        "stdout should contain {VIRTUAL_MAC}: {stdout}"
-    );
+    assert!(stdout.to_lowercase().contains(&VIRTUAL_MAC.to_lowercase()), "stdout should contain {VIRTUAL_MAC}: {stdout}");
 }
 
 #[test]
@@ -101,10 +98,7 @@ fn cli_full_virtual_device_flow() {
     let (ok, stdout, stderr) = run_cli(&["alarm-list", VIRTUAL_MAC], &token_dir);
     assert!(ok, "alarm-list should exit 0, stderr: {stderr}");
     // alarm-list prints either "No alarms set." or a table with "Slot".
-    assert!(
-        stdout.contains("Slot") || stdout.contains("No alarms"),
-        "stdout should contain alarm info: {stdout}"
-    );
+    assert!(stdout.contains("Slot") || stdout.contains("No alarms"), "stdout should contain alarm info: {stdout}");
 
     // 6. brightness
     let (ok, stdout, stderr) = run_cli(&["brightness", VIRTUAL_MAC, "80"], &token_dir);
