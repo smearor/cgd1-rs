@@ -126,7 +126,7 @@ impl ClockManager {
     /// only after `sync_time` succeeds, confirming the device accepted it.
     pub async fn connect_authenticate_and_sync(&self, address: &MacAddress, token: &AuthToken, token_store: Arc<dyn TokenStore>) -> Result<ClockDevice> {
         let device = self.connect(address).await?;
-        device.set_token_store(token_store);
+        device.set_token_store(token_store).await;
         device.authenticate(token).await?;
         device.sync_time_now().await?;
         Ok(device)

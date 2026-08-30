@@ -39,7 +39,7 @@ impl DeviceConnection {
         let store = Arc::new(FileTokenStore::default_directory());
         let token_result = store.load_or_generate(mac);
 
-        device.set_token_store(store.clone() as Arc<dyn TokenStore>);
+        device.set_token_store(store.clone() as Arc<dyn TokenStore>).await;
 
         match device.authenticate(&token_result).await {
             Ok(()) => Ok(Self { transport, device }),
@@ -65,7 +65,7 @@ impl DeviceConnection {
         let store = Arc::new(FileTokenStore::default_directory());
         let token_result = store.load_or_generate(mac);
 
-        device.set_token_store(store.clone() as Arc<dyn TokenStore>);
+        device.set_token_store(store.clone() as Arc<dyn TokenStore>).await;
 
         match device.authenticate(&token_result).await {
             Ok(()) => Ok((Self { transport, device }, store)),
