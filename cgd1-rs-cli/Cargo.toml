@@ -15,7 +15,9 @@ cgd1-rs = { path = "../cgd1-rs" }
 clap.workspace = true
 hex.workspace = true
 miette.workspace = true
+rustyline.workspace = true
 serde_json.workspace = true
+shell-words.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

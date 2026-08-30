@@ -22,6 +22,11 @@ pub struct DeviceConnection {
 }
 
 impl DeviceConnection {
+    /// Create a new device connection from already-connected components.
+    pub fn new(transport: Arc<dyn BleTransport>, device: ClockDevice) -> Self {
+        Self { transport, device }
+    }
+
     /// Get the device handle.
     pub fn device(&self) -> &ClockDevice {
         &self.device
