@@ -2451,185 +2451,229 @@ No new types. Uses existing `ClockDevice` methods and `ClockError` variants.
 cgd1-rs-cli/
 ├── Cargo.toml
 └── src/
-    ├── main.rs              # Entry point, clap parsing, command dispatch
-    ├── scan.rs              # Scan command implementation
-    ├── connect.rs           # Connect command implementation
-    ├── time_sync.rs         # Time sync command implementation
-    ├── alarm.rs             # Alarm list/set/delete command implementations
-    ├── settings.rs          # Settings read/write command implementations
-    ├── brightness.rs        # Brightness command implementation
-    ├── ringtone.rs          # Ringtone preview/upload command implementations
-    ├── firmware.rs          # Firmware read command implementation
-    ├── battery.rs           # Battery read command implementation
-    └── monitor.rs           # Sensor monitoring command implementation
+    ├── main.rs              # Entry point, tracing init, command dispatch
+    ├── cli.rs               # Cli struct + Commands enum (clap)
+    ├── connection.rs        # DeviceConnection: connect + authenticate helper
+    ├── error.rs             # CliError enum (miette + thiserror)
+    ├── monitor_duration.rs  # MonitorDuration newtype (ISO 8601 parsing)
+    └── command/             # One file per subcommand
+        ├── mod.rs           # Module declarations
+        ├── scan.rs          # Scan command
+        ├── sync_time.rs     # Sync-time command
+        ├── alarm_list.rs    # Alarm list command
+        ├── alarm_set.rs     # Alarm set command
+        ├── alarm_delete.rs  # Alarm delete command
+        ├── settings_read.rs # Settings read command
+        ├── settings_write.rs# Settings write command
+        ├── brightness.rs    # Brightness command
+        ├── ringtone_preview.rs  # Ringtone preview command
+        ├── ringtone_upload.rs   # Ringtone upload command
+        ├── firmware.rs      # Firmware read command
+        ├── battery.rs       # Battery read command
+        └── monitor.rs       # Sensor monitoring command
 ```
+
+Each command file defines an `Args` struct and a `run(args: Args) -> Result<(), CliError>` function, keeping the command logic self-contained and testable.
 
 #### CLI Design
 
-The CLI uses `clap` with subcommands mirroring the core library API:
+The CLI uses `clap` with subcommands mirroring the core library API. All
+address and value parameters use newtypes from the core library
+(`MacAddress`, `AlarmSlotIndex`, `Brightness`, `Volume`, etc.) for
+compile-time validation at the argument-parsing layer. There is no
+separate `Connect` subcommand — each command connects and authenticates
+implicitly via `DeviceConnection::connect`.
 
 ```rust
 use clap::{Parser, Subcommand};
 
+use cgd1_rs::AlarmSlotIndex;
+use cgd1_rs::Brightness;
+use cgd1_rs::ClockTime;
+use cgd1_rs::DayMask;
+use cgd1_rs::Language;
+use cgd1_rs::MacAddress;
+use cgd1_rs::RingtoneSignature;
+use cgd1_rs::ScanDuration;
+use cgd1_rs::TemperatureUnit;
+use cgd1_rs::TimeFormat;
+use cgd1_rs::Timezone;
+use cgd1_rs::Volume;
+
+use crate::monitor_duration::MonitorDuration;
+
 /// Command-line tool for the Qingping CGD1 Bluetooth Alarm Clock.
 #[derive(Parser)]
 #[command(name = "cgd1", version, about = "Control Qingping CGD1 via BLE")]
-struct Cli {
+pub struct Cli {
     /// Verbosity level (-v, -vv, -vvv)
     #[arg(short, long, action = clap::ArgAction::Count)]
-    verbose: u8,
+    pub verbose: u8,
 
     #[command(subcommand)]
-    command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Scan for nearby CGD1 devices.
     Scan {
-        /// Scan duration in seconds.
+        /// Scan duration in seconds (1–600).
         #[arg(short, long, default_value = "10")]
-        duration: u64,
-    },
-
-    /// Connect to a device by MAC address.
-    Connect {
-        /// Device MAC address.
-        address: String,
+        duration: ScanDuration,
     },
 
     /// Synchronize the device clock to the current system time.
     SyncTime {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
     },
 
     /// Read all alarms from the device.
     AlarmList {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
     },
 
     /// Set an alarm at a specific slot.
     AlarmSet {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
         /// Slot index (0–15).
-        slot: u8,
-        /// Hour (0–23).
-        hour: u8,
-        /// Minute (0–59).
-        minute: u8,
+        slot: AlarmSlotIndex,
+        /// Alarm time in HH:MM format (e.g., "07:30").
+        time: ClockTime,
         /// Repeat mask as hex (e.g., 7f for every day, 3e for weekdays).
         #[arg(short, long, default_value = "7f")]
-        repeat: String,
+        repeat: DayMask,
+        /// Disable snooze for this alarm.
+        #[arg(long)]
+        no_snooze: bool,
     },
 
     /// Delete an alarm at a specific slot.
     AlarmDelete {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
         /// Slot index (0–15).
-        slot: u8,
+        slot: AlarmSlotIndex,
     },
 
     /// Read device settings.
     SettingsRead {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
     },
 
     /// Write device settings.
     SettingsWrite {
         /// Device MAC address.
-        address: String,
-        /// Volume (0–30).
+        address: MacAddress,
+        /// Volume (1–5).
         #[arg(long)]
-        volume: Option<u8>,
-        /// Brightness (0–10).
+        volume: Option<Volume>,
+        /// Brightness (0–150, multiple of 10).
         #[arg(long)]
-        brightness: Option<u8>,
-        /// Night brightness (0–10).
+        brightness: Option<Brightness>,
+        /// Night brightness (0–150, multiple of 10).
         #[arg(long)]
-        night_brightness: Option<u8>,
-        /// Timezone offset (-12 to +14).
+        night_brightness: Option<Brightness>,
+        /// Timezone offset in minutes (-720 to +840).
         #[arg(long)]
-        timezone: Option<i8>,
+        timezone: Option<Timezone>,
         /// Time format: 12 or 24.
         #[arg(long)]
-        time_format: Option<u8>,
+        time_format: Option<TimeFormat>,
         /// Temperature unit: C or F.
         #[arg(long)]
-        temp_unit: Option<String>,
-        /// Ringtone (0–7).
+        temp_unit: Option<TemperatureUnit>,
+        /// Language: en or zh.
         #[arg(long)]
-        ringtone: Option<u8>,
+        language: Option<Language>,
     },
 
     /// Set immediate brightness (preview).
     Brightness {
         /// Device MAC address.
-        address: String,
-        /// Brightness value (0–10).
-        value: u8,
+        address: MacAddress,
+        /// Brightness value (0–150, multiple of 10).
+        value: Brightness,
     },
 
     /// Preview a ringtone.
     RingtonePreview {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
         /// Volume level (optional, uses device volume if omitted).
         #[arg(short, long)]
-        volume: Option<u8>,
+        volume: Option<Volume>,
     },
 
     /// Upload a custom ringtone from a file.
     RingtoneUpload {
         /// Device MAC address.
-        address: String,
-        /// Path to 8-bit PCM audio file (16 kHz, mono).
-        file: String,
-        /// 4-byte signature as hex (e.g., "deadbeef").
-        #[arg(short, long, default_value = "00000000")]
-        signature: String,
+        address: MacAddress,
+        /// Path to 8-bit PCM audio file (8 kHz, mono).
+        file: PathBuf,
+        /// Ringtone name (e.g., "Beep", "CustomSlotA") or 4-byte hex (e.g., "deadbeef").
+        #[arg(short, long, default_value = "CustomSlotA")]
+        signature: RingtoneSignature,
     },
 
     /// Read firmware version.
     Firmware {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
     },
 
     /// Read battery level.
     Battery {
         /// Device MAC address.
-        address: String,
+        address: MacAddress,
     },
 
     /// Monitor sensor data (temperature, humidity) in real-time.
     Monitor {
         /// Device MAC address.
-        address: String,
-        /// Duration in seconds (0 = indefinite).
+        address: MacAddress,
+        /// Duration in seconds (0 = indefinite). Supports ISO 8601 (e.g., PT30S, PT1H).
         #[arg(short, long, default_value = "0")]
-        duration: u64,
+        duration: MonitorDuration,
     },
 }
 ```
 
+Key differences from the original concept:
+
+- **No `Connect` subcommand**: connection is implicit per-command via
+  `DeviceConnection::connect`.
+- **Newtype arguments**: `MacAddress`, `AlarmSlotIndex`, `Brightness`,
+  `Volume`, `ScanDuration`, `ClockTime`, `DayMask`, `Timezone`,
+  `TimeFormat`, `TemperatureUnit`, `Language`, `RingtoneSignature` — all
+  validated at parse time via `FromStr` implementations.
+- **`AlarmSet` uses `time: ClockTime`** (HH:MM format) instead of
+  separate `hour`/`minute` fields, and `--no-snooze` flag instead of a
+  positive `snooze` parameter.
+- **`SettingsWrite` omits `ringtone`** — ringtone selection is handled
+  via the `RingtoneUpload` command with a `RingtoneSignature`.
+- **`MonitorDuration`** supports ISO 8601 duration strings (e.g.,
+  `PT30S`, `PT1H30M`) in addition to plain seconds.
+
 #### Command Implementations
 
-Each command follows the same pattern: create a `ClockManager`, connect to
-the device, call the relevant `ClockDevice` method, print the result.
+Each command follows the same pattern: define an `Args` struct, connect
+via `DeviceConnection`, call the relevant `ClockDevice` method, print
+the result. The `DeviceConnection` struct encapsulates transport
+creation, manager connection, and authentication.
 
 ```rust
 /// Scan command: discovers nearby CGD1 devices.
-async fn cmd_scan(duration: u64) -> Result<()> {
+pub async fn run(args: ScanArgs) -> Result<(), CliError> {
     let transport = Arc::new(BtleplugTransport::new().await?);
     let scanner = ClockScanner::new(transport);
 
-    println!("Scanning for {} seconds...", duration);
-    let devices = scanner.scan_active(Duration::from_secs(duration)).await?;
+    println!("Scanning for {}...", args.duration);
+    let devices = scanner.scan_active(Duration::from(args.duration)).await?;
 
     if devices.is_empty() {
         println!("No CGD1 devices found.");
@@ -2640,107 +2684,150 @@ async fn cmd_scan(duration: u64) -> Result<()> {
     for device in &devices {
         println!("  MAC: {}", device.address);
         if let Some(ad) = &device.advertisement {
-            println!("    Temperature: {:.1} C", ad.temperature);
-            println!("    Humidity: {:.1} %", ad.humidity);
-            println!("    Battery: {} %", ad.battery);
+            println!("    Temperature: {:.1} C", ad.temperature.value());
+            println!("    Humidity: {:.1} %", ad.humidity.value());
+            println!("    Battery: {} %", ad.battery.value());
         }
         if let Some(rssi) = device.rssi {
-            println!("    RSSI: {} dBm", rssi);
+            println!("    RSSI: {}", rssi.dbm());
         }
     }
 
     Ok(())
 }
+```
 
-/// Sync time command: synchronizes device clock to system time.
-///
-/// Token handling strategy:
-/// 1. Check FileTokenStore for an existing token for this MAC address.
-/// 2. If a token exists, use it — generating a new token without prior
-///    unpairing will cause the device to reject authentication.
-/// 3. If no token exists, generate a new one and attempt the full handshake.
-/// 4. Persist the token only after sync_time (privileged command) succeeds.
-/// 5. If authentication fails with an existing token, report that the device
-///    may need unpairing (factory reset) before a new token can be used.
-async fn cmd_sync_time(address: String) -> Result<()> {
-    let transport = Arc::new(BtleplugTransport::new().await?);
-    let manager = ClockManager::new(transport);
+#### DeviceConnection
 
-    let device = manager.connect(&DiscoveredDevice {
-        address: address.clone(),
-        advertisement: None,
-        rssi: None,
-    }).await?;
+The `DeviceConnection` struct encapsulates the transport and
+authenticated device handle. It handles token loading, generation, and
+authentication in a single `connect` call, so individual commands don't
+need to repeat boilerplate.
 
-    let store = FileTokenStore::new(token_directory());
-    let (token, is_new_token) = match store.load(&address) {
-        Some(existing) => {
-            debug!(address = %address, "found existing token in store");
-            (existing, false)
-        }
-        None => {
-            let token = AuthToken::generate();
-            debug!(address = %address, "no existing token, generated new one");
-            (token, true)
-        }
-    };
+```rust
+/// An authenticated connection to a CGD1 device.
+pub struct DeviceConnection {
+    /// The BLE transport (kept alive to maintain the connection).
+    transport: Arc<BtleplugTransport>,
+    /// The authenticated device handle.
+    device: ClockDevice,
+}
 
-    // Attempt authentication with the loaded or generated token.
-    if let Err(ClockError::AuthFailed(msg)) = device.authenticate(&token).await {
-        if is_new_token {
-            return Err(ClockError::AuthFailed(format!(
-                "authentication failed with new token: {}. \
-                The device may require unpairing (factory reset) before \
-                a new token can be accepted.",
-                msg
-            )));
-        } else {
-            return Err(ClockError::AuthFailed(format!(
-                "authentication failed with stored token: {}. \
-                The device may have been reset or re-paired. \
-                Remove the token file at '{}/{}' and retry.",
-                msg,
-                token_directory().display(),
-                address
-            )));
+impl DeviceConnection {
+    /// Get the device handle.
+    pub fn device(&self) -> &ClockDevice {
+        &self.device
+    }
+
+    /// Connect to a device by MAC address and authenticate.
+    ///
+    /// The token is loaded from the file store if available, or generated
+    /// if not. The token is persisted after `sync_time` succeeds (by the
+    /// `sync_time` command, which uses `connect_with_store`).
+    pub async fn connect(mac: &MacAddress) -> Result<Self, CliError> {
+        let transport = Arc::new(BtleplugTransport::new().await?);
+        let manager = ClockManager::new(transport.clone());
+        let device = manager.connect(mac).await?;
+
+        let store = Arc::new(FileTokenStore::default_directory());
+        let token_result = store.load_or_generate(mac);
+
+        device.set_token_store(store.clone() as Arc<dyn TokenStore>);
+
+        match device.authenticate(&token_result).await {
+            Ok(()) => Ok(Self { transport, device }),
+            Err(ClockError::AuthFailed(err)) => Err(ClockError::AuthFailed(AuthFailedError {
+                is_new_token: token_result.is_new(),
+                token_path: Some(store.directory()
+                    .join(mac.to_string().replace(':', "_"))
+                    .display().to_string()),
+                ..err
+            }).into()),
+            Err(e) => Err(e.into()),
         }
     }
 
-    // sync_time is the first privileged command — only persist the token
-    // after it succeeds. An Auth Confirm ACK alone does not prove the
-    // token was accepted by the device.
+    /// Connect with a token store reference for manual token management.
+    ///
+    /// Used by `sync_time` which needs to persist the token after a
+    /// successful time sync.
+    pub async fn connect_with_store(mac: &MacAddress)
+        -> Result<(Self, Arc<FileTokenStore>), CliError>
+    {
+        // ... same as connect() but returns the store for token persistence
+    }
+}
+```
+
+#### Sync Time Command
+
+The `sync_time` command uses `connect_with_store` so it can persist the
+token after the first privileged command succeeds:
+
+```rust
+/// Run the `sync-time` command.
+pub async fn run(args: SyncTimeArgs) -> Result<(), CliError> {
+    let (connection, store) = DeviceConnection::connect_with_store(&args.address).await?;
+
+    let device = connection.device();
     device.sync_time_now().await?;
 
-    if is_new_token {
-        save_token(&address, &token)?;
-        info!(address = %address, "new token persisted after successful sync_time");
+    let token_result = store.load_or_generate(&args.address);
+    if token_result.is_new() {
+        store.save(&args.address, &token_result)?;
+        info!(address = %args.address, "new token persisted after successful sync_time");
     }
 
-    println!("Time synchronized for {}.", address);
+    println!("Time synchronized for {}.", args.address);
     Ok(())
 }
+```
 
-/// Monitor command: streams sensor data in real-time.
-async fn cmd_monitor(address: String, duration: u64) -> Result<()> {
-    let transport = Arc::new(BtleplugTransport::new().await?);
-    let manager = ClockManager::new(transport);
+#### Settings Write Command
 
-    let device = manager.connect(&DiscoveredDevice {
-        address: address.clone(),
-        advertisement: None,
-        rssi: None,
-    }).await?;
+The `settings_write` command reads current settings, applies only the
+fields specified via CLI flags using builder methods, then writes back:
 
-    let token = load_or_generate_token(&address)?;
-    device.authenticate(&token).await?;
+```rust
+/// Run the `settings-write` command.
+pub async fn run(args: SettingsWriteArgs) -> Result<(), CliError> {
+    let connection = DeviceConnection::connect(&args.address).await?;
+    let mut settings = connection.device().read_settings().await?;
 
-    let mut receiver = device.subscribe();
+    if let Some(vol) = args.volume {
+        settings = settings.with_volume(vol)?;
+    }
+    if let Some(b) = args.brightness {
+        settings = settings.with_brightness(b)?;
+    }
+    if let Some(tz) = args.timezone {
+        settings = settings.with_timezone(tz)?;
+    }
+    if let Some(tf) = args.time_format {
+        settings = settings.with_time_format(tf);
+    }
+    // ... other optional fields
+
+    connection.device().write_settings(&settings).await?;
+    println!("Settings updated.");
+    Ok(())
+}
+```
+
+#### Monitor Command
+
+```rust
+/// Run the `monitor` command.
+pub async fn run(args: MonitorArgs) -> Result<(), CliError> {
+    let connection = DeviceConnection::connect(&args.address).await?;
+    let mut receiver = connection.device().subscribe();
+
     println!("Monitoring sensor data (Ctrl+C to stop)...");
 
-    let deadline = if duration > 0 {
-        Some(tokio::time::Instant::now() + Duration::from_secs(duration))
-    } else {
+    let deadline = if args.duration.is_indefinite() {
         None
+    } else {
+        Some(tokio::time::Instant::now() + Duration::from_secs(args.duration.seconds()))
     };
 
     loop {
@@ -2748,24 +2835,35 @@ async fn cmd_monitor(address: String, duration: u64) -> Result<()> {
             event = receiver.recv() => {
                 match event {
                     Ok(ClockEvent::SensorUpdate { temperature, humidity }) => {
-                        println!("{:.1} C  {:.1} %", temperature, humidity);
+                        println!("{:.1} C  {:.1} %", temperature.value(), humidity.value());
                     }
                     Ok(ClockEvent::BatteryLevel { level }) => {
-                        println!("Battery: {} %", level);
+                        println!("Battery: {} %", level.value());
                     }
                     Ok(ClockEvent::Disconnected) => {
                         println!("Device disconnected.");
                         break;
                     }
+                    Ok(ClockEvent::Reconnected) => {
+                        info!("Device reconnected.");
+                    }
+                    Ok(ClockEvent::Advertisement(_)) => {}
+                    Ok(ClockEvent::Ack { command, status }) => {
+                        debug!(?command, ?status, "ACK event");
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        warn!("Skipped {} events.", n);
+                        warn!("Skipped {n} events.");
                     }
                     Err(_) => break,
                 }
             }
-            _ = tokio::time::sleep_until(deadline.unwrap_or_else(|| {
-                tokio::time::Instant::now() + Duration::from_secs(u64::MAX)
-            })) => {
+            _ = async {
+                if let Some(dl) = deadline {
+                    tokio::time::sleep_until(dl).await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => {
                 println!("Monitoring duration elapsed.");
                 break;
             }
@@ -2778,75 +2876,91 @@ async fn cmd_monitor(address: String, duration: u64) -> Result<()> {
 
 #### Token Management
 
-The CLI manages auth tokens via a `FileTokenStore` in the user's config
-directory:
+Token management is handled by `DeviceConnection` in conjunction with
+the core library's `FileTokenStore`. The store uses
+`default_directory()` (no manual `dirs` crate dependency needed in the
+CLI). The `load_or_generate` method returns a `TokenResult` that
+indicates whether the token is new or existing.
+
+Key principles:
+
+- **Load first**: Always check `FileTokenStore` for an existing token
+  before generating a new one. Generating a new token without unpairing
+  will cause authentication to fail.
+- **Persist after `sync_time`**: The token is only saved after the first
+  privileged command (`sync_time`) succeeds, proving the device accepted
+  it.
+- **Auth failure context**: `AuthFailedError` includes `is_new_token` and
+  `token_path` fields so the CLI can provide actionable error messages
+  via `miette` diagnostics.
+
+#### Error Handling
+
+The CLI uses `CliError` with `miette::Diagnostic` and `thiserror::Error`
+for user-friendly error reporting:
 
 ```rust
-use std::path::PathBuf;
+#[derive(Debug, miette::Diagnostic, thiserror::Error)]
+pub enum CliError {
+    /// A core library error.
+    #[error(transparent)]
+    #[diagnostic(code(cgd1_cli::core))]
+    Core(#[from] ClockError),
 
-/// Get the token store directory.
-fn token_directory() -> PathBuf {
-    let config = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    config.join("cgd1-rs")
-}
+    /// Authentication failed with context about the token.
+    #[error(transparent)]
+    #[diagnostic(code(cgd1_cli::auth_failed))]
+    AuthFailed(#[from] AuthFailedError),
 
-/// Load an existing token or generate a new one.
-///
-/// **Warning**: Generating a new token when the device already has a paired
-/// token will cause authentication to fail. The device requires an explicit
-/// unpairing (factory reset) before accepting a new token. Always check
-/// the `FileTokenStore` first.
-fn load_or_generate_token(address: &str) -> Result<AuthToken> {
-    let store = FileTokenStore::new(token_directory());
-    if let Some(token) = store.load(address) {
-        Ok(token)
-    } else {
-        let token = AuthToken::generate();
-        Ok(token)
-    }
-}
-
-/// Save a token after successful authentication.
-fn save_token(address: &str, token: &AuthToken) -> Result<()> {
-    let store = FileTokenStore::new(token_directory());
-    store.save(address, token)
+    /// Audio file could not be read.
+    #[error("failed to read audio file '{}': {reason}", path.display())]
+    #[diagnostic(code(cgd1_cli::audio_read_failed))]
+    AudioReadFailed {
+        path: PathBuf,
+        reason: String,
+    },
 }
 ```
+
+The `main` function converts `CliError` into a `miette::Report` for
+rich, formatted terminal output.
 
 #### Output Formatting
 
-The CLI uses plain text output for human readability and optional JSON output
-for scripting:
-
-```rust
-/// Output format selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OutputFormat {
-    /// Human-readable text (default).
-    Text,
-    /// JSON for scripting and piping.
-    Json,
-}
-```
+The CLI uses plain text output for human readability. The `scan`
+command prints device addresses with sensor data from advertisements.
+The `monitor` command streams sensor readings in real-time. There is no
+separate `OutputFormat` enum — all output is human-readable text via
+`println!`.
 
 #### Dependencies
 
 ```toml
 [dependencies]
 cgd1-rs = { path = "../cgd1-rs" }
-clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-tracing = "0.1"
-tracing-subscriber = "0.3"
-serde_json = "1"
-dirs = "5"
-hex = "0.4"
+clap.workspace = true
+hex.workspace = true
+miette.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 ```
+
+Notable differences from the original concept:
+
+- **`miette`** and **`thiserror`** replace manual error formatting.
+- **`dirs`** is not needed — `FileTokenStore::default_directory()` handles
+  path resolution in the core library.
+- **`hex`** is used for ringtone signature parsing.
+- Workspace dependencies are used instead of inline versions.
 
 #### Testing Strategy
 
-- **Unit tests**: CLI argument parsing. Output formatting (text and JSON).
-  Token path resolution.
+- **Unit tests**: CLI argument parsing (all subcommands, newtype
+  validation, default values, error cases). `MonitorDuration` parsing
+  including ISO 8601 durations.
 - **Integration tests**: End-to-end command execution with `MockBleTransport`.
   Verify correct frame sequences for each subcommand.
 - **Hardware tests**: Real device CLI commands, `#[ignore]`.
@@ -2855,9 +2969,25 @@ hex = "0.4"
 
 | Type | File | Description |
 |---|---|---|
-| `Cli` | `main.rs` | Top-level clap CLI struct |
-| `Commands` | `main.rs` | Subcommand enum |
-| `OutputFormat` | `main.rs` | Text/JSON output selection |
+| `Cli` | `cli.rs` | Top-level clap CLI struct |
+| `Commands` | `cli.rs` | Subcommand enum |
+| `CliError` | `error.rs` | CLI error enum (miette + thiserror) |
+| `DeviceConnection` | `connection.rs` | Authenticated connection helper |
+| `MonitorDuration` | `monitor_duration.rs` | Duration newtype with ISO 8601 parsing |
+| `MonitorDurationParseError` | `monitor_duration.rs` | Parse error for `MonitorDuration` |
+| `ScanArgs` | `command/scan.rs` | Arguments for `scan` command |
+| `SyncTimeArgs` | `command/sync_time.rs` | Arguments for `sync-time` command |
+| `AlarmListArgs` | `command/alarm_list.rs` | Arguments for `alarm-list` command |
+| `AlarmSetArgs` | `command/alarm_set.rs` | Arguments for `alarm-set` command |
+| `AlarmDeleteArgs` | `command/alarm_delete.rs` | Arguments for `alarm-delete` command |
+| `SettingsReadArgs` | `command/settings_read.rs` | Arguments for `settings-read` command |
+| `SettingsWriteArgs` | `command/settings_write.rs` | Arguments for `settings-write` command |
+| `BrightnessArgs` | `command/brightness.rs` | Arguments for `brightness` command |
+| `RingtonePreviewArgs` | `command/ringtone_preview.rs` | Arguments for `ringtone-preview` command |
+| `RingtoneUploadArgs` | `command/ringtone_upload.rs` | Arguments for `ringtone-upload` command |
+| `FirmwareArgs` | `command/firmware.rs` | Arguments for `firmware` command |
+| `BatteryArgs` | `command/battery.rs` | Arguments for `battery` command |
+| `MonitorArgs` | `command/monitor.rs` | Arguments for `monitor` command |
 
 ---
 
@@ -3531,13 +3661,73 @@ tracing = "0.1"
 cgd1-rs-ws/
 ├── Cargo.toml
 └── src/
-    ├── main.rs              # Entry point, server startup
-    ├── server.rs            # Server state and listener
-    ├── session.rs           # WebSocket session management
-    ├── handler.rs           # Message handler (command dispatch)
-    ├── error.rs             # ServerError enum
-    └── routes.rs            # REST API route definitions
+    ├── main.rs              # Entry point, clap CLI, tracing init
+    ├── state.rs             # ServerState (transport, manager, token store)
+    ├── error.rs             # ServerError enum + IntoResponse impl
+    ├── routes.rs            # REST API route definitions (free functions)
+    ├── session/             # WebSocket session module (directory)
+    │   ├── mod.rs           # WsSession struct, ws_handler, run, handle_message
+    │   ├── dispatch.rs      # dispatch_command + subscribe_events methods
+    │   ├── event.rs         # convert_event: ClockEvent → WsEvent
+    │   └── ws.rs            # send_response method + WsSender type alias
+    ├── command/             # Command handler functions (one per file)
+    │   ├── mod.rs           # Module declarations + re-exports
+    │   ├── scan.rs          # scan()
+    │   ├── connect.rs       # connect()
+    │   ├── disconnect.rs    # disconnect()
+    │   ├── sync_time.rs     # sync_time()
+    │   ├── alarm_list.rs    # alarm_list()
+    │   ├── alarm_set.rs     # alarm_set()
+    │   ├── alarm_delete.rs  # alarm_delete()
+    │   ├── read_settings.rs # read_settings()
+    │   ├── write_settings.rs# write_settings()
+    │   ├── brightness.rs    # set_brightness()
+    │   ├── preview_ringtone.rs # preview_ringtone()
+    │   ├── firmware.rs      # read_firmware()
+    │   └── battery.rs       # read_battery()
+    └── protocol/            # JSON protocol types (directory module)
+        ├── mod.rs           # Re-exports
+        ├── command.rs       # WsCommand enum
+        ├── request.rs       # WsRequest struct
+        ├── event/           # Event types for push notifications
+        │   ├── mod.rs       # Re-exports
+        │   ├── ws.rs        # EventType enum + WsEvent<T> struct
+        │   ├── sensor_update.rs  # SensorUpdatePayload
+        │   ├── battery_level.rs  # BatteryLevelPayload
+        │   ├── ack.rs       # AckPayload
+        │   ├── empty.rs     # EmptyPayload
+        │   └── advertisement.rs  # (reserved for advertisement payload)
+        └── response/        # Response types (one per command)
+            ├── mod.rs       # Re-exports
+            ├── ws.rs        # WsResponse struct + ok/error constructors
+            ├── connect.rs   # ConnectResponse
+            ├── disconnect.rs# DisconnectResponse
+            ├── sync_time.rs # SyncTimeResponse
+            ├── alarm_set.rs # AlarmSetResponse
+            ├── alarm_delete.rs # AlarmDeleteResponse
+            ├── battery.rs   # BatteryResponse
+            ├── brightness.rs# BrightnessResponse
+            ├── firmware.rs  # FirmwareResponse
+            ├── preview_ringtone.rs # PreviewRingtoneResponse
+            ├── subscribe_events.rs # SubscribeEventsResponse
+            └── write_settings.rs   # WriteSettingsResponse
 ```
+
+Key structural differences from the original concept:
+
+- **Directory modules**: `session/` and `protocol/` are directory
+  modules with sub-modules, not single files. `protocol/` is further
+  split into `event/` and `response/` sub-modules.
+- **No `handler.rs`**: The message handler logic is split between
+  `session/mod.rs` (message loop + `handle_message`) and
+  `session/dispatch.rs` (command dispatch).
+- **No `server.rs`**: Server state lives in `state.rs`; server startup
+  is in `main.rs`.
+- **`command/` module**: Each command handler is a free function in its
+  own file, taking `&ServerState` and command-specific parameters.
+- **`routes.rs` remains free functions**: Axum handlers must conform to
+  the `Handler` trait, requiring them to be free functions that receive
+  state via the `State` extractor.
 
 #### Server Architecture
 
@@ -3545,90 +3735,263 @@ cgd1-rs-ws/
 flowchart TB
     subgraph wsServer["cgd1-rs-ws"]
         state["ServerState
-        (ClockManager)"]
+        (transport, manager, token_store)"]
         listener["WebSocket Listener
-        (axum + tungstenite)"]
-        session["Session
+        (axum)"]
+        session["WsSession
         (per-connection)"]
-        handler["MessageHandler
-        (JSON dispatch)"]
+        dispatch["dispatch_command
+        + subscribe_events"]
+        command["command/
+        (free functions)"]
         restRoutes["REST Routes
         (GET /devices, etc.)"]
     end
 
     client["WebSocket Client"] --> listener
     listener --> session
-    session --> handler
-    handler --> state
+    session --> dispatch
+    dispatch --> command
+    command --> state
     restRoutes --> state
 ```
 
 #### ServerState
 
-```rust
-use std::sync::Arc;
-use axum::extract::State;
+`ServerState` owns the BLE transport, manager, and token store. It
+provides convenience methods for connecting, authenticating, and
+retrieving devices by MAC address.
 
-/// Shared server state containing the BLE manager.
+```rust
+/// Shared server state containing the BLE manager and transport.
 #[derive(Clone)]
 pub struct ServerState {
-    /// Core library BLE manager.
-    pub manager: Arc<ClockManager>,
+    /// The BLE transport (kept alive to maintain the adapter connection).
+    transport: Arc<BtleplugTransport>,
+    /// Core library BLE manager for device connections.
+    manager: Arc<ClockManager>,
+    /// Token store for device authentication.
+    token_store: Arc<FileTokenStore>,
 }
 
 impl ServerState {
-    /// Create new server state with the given manager.
-    pub fn new(manager: Arc<ClockManager>) -> Self {
-        Self { manager }
+    /// Create new server state with a fresh transport.
+    pub async fn new() -> Result<Self, ClockError> {
+        let transport = Arc::new(BtleplugTransport::new().await?);
+        let manager = Arc::new(ClockManager::new(transport.clone()));
+        let token_store = Arc::new(FileTokenStore::default_directory());
+        Ok(Self { transport, manager, token_store })
+    }
+
+    /// Connect to a device by MAC address and authenticate.
+    pub async fn connect(&self, mac: &MacAddress) -> Result<ClockDevice, ServerError> {
+        let device = self.manager.connect(mac).await?;
+        device.set_token_store(self.token_store.clone() as Arc<dyn TokenStore>);
+        let token_result = self.token_store.load_or_generate(mac);
+        device.authenticate(&token_result).await?;
+        Ok(device)
+    }
+
+    /// Get a connected device by MAC address.
+    pub async fn device(&self, mac: &MacAddress) -> Result<ClockDevice, ServerError> {
+        self.manager.device(mac).await
+            .ok_or_else(|| ServerError::NotConnected { address: *mac })
+    }
+
+    /// Disconnect from a device.
+    pub async fn disconnect(&self, mac: &MacAddress) -> Result<(), ServerError> {
+        self.manager.disconnect(mac).await?;
+        Ok(())
     }
 }
 ```
 
 #### WebSocket Session
 
-```rust
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+The `WsSession` struct encapsulates the WebSocket sender and server
+state. It is defined inside `session/mod.rs` as a private struct with
+`pub(crate)` methods. The session loop spawns a task per incoming text
+message.
 
-/// Handle a WebSocket upgrade request.
-pub async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<ServerState>,
-) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_session(socket, state))
+```rust
+/// A WebSocket session that processes requests and sends responses.
+struct WsSession {
+    sender: WsSender,
+    state: ServerState,
 }
 
-/// Process a single WebSocket session.
-async fn handle_session(socket: WebSocket, state: ServerState) {
-    let (sender, mut receiver) = socket.split();
+/// Type alias for the WebSocket sender half.
+type WsSender = Arc<Mutex<SplitSink<WebSocket, Message>>>;
 
-    let sender = Arc::new(Mutex::new(sender));
+impl WsSession {
+    /// Run the WebSocket session loop.
+    async fn run(socket: WebSocket, state: ServerState) {
+        let (sender, mut receiver) = socket.split();
+        let sender = Arc::new(Mutex::new(sender));
+        let session = WsSession { sender, state };
 
-    while let Some(msg) = receiver.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                let sender_clone = sender.clone();
-                let state_clone = state.clone();
-                tokio::spawn(async move {
-                    let response = handle_message(&text, &state_clone).await;
-                    let json = serde_json::to_string(&response).unwrap_or_else(|e| {
-                        format!("{{\"error\":\"serialization failed: {}\"}}", e)
+        while let Some(msg) = receiver.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    let session = session.clone();
+                    tokio::spawn(async move {
+                        let response = session.handle_message(&text).await;
+                        session.send_response(response).await;
                     });
-                    let mut tx = sender_clone.lock().await;
-                    let _ = tx.send(Message::Text(json)).await;
-                });
+                }
+                Ok(Message::Close(_)) | Err(_) => break,
+                _ => {}
             }
-            Ok(Message::Close(_)) | Err(_) => break,
-            _ => {}
+        }
+    }
+
+    /// Handle a single text message: parse JSON, dispatch, build response.
+    async fn handle_message(&self, text: &str) -> WsResponse {
+        let request: WsRequest = match serde_json::from_str(text) {
+            Ok(req) => req,
+            Err(e) => return WsResponse::error(0, format!("invalid JSON: {e}")),
+        };
+
+        match self.dispatch_command(request.command).await {
+            Ok(value) => WsResponse { id: request.id, result: Some(value), error: None },
+            Err(e) => WsResponse::error(request.id, e.to_string()),
         }
     }
 }
 ```
 
-#### JSON Protocol
+`WsSession` is `Clone` because `ServerState` is `Clone` and `WsSender`
+(`Arc<Mutex<...>>`) is `Clone`. This allows spawning per-message tasks
+with a cloned session reference.
+
+#### Command Dispatch
+
+The `dispatch_command` method lives in `session/dispatch.rs`. It
+matches on `WsCommand` and delegates to the appropriate `command::*`
+free function. A helper function `to_value` extracts the repetitive
+`serde_json::to_value` + error conversion pattern:
 
 ```rust
-use serde::{Deserialize, Serialize};
+/// Serialize a result to `serde_json::Value`, mapping errors to `ServerError`.
+fn to_value(result: impl Serialize) -> Result<serde_json::Value, ServerError> {
+    Ok(serde_json::to_value(result)?)
+}
 
+impl WsSession {
+    /// Dispatch a WebSocket command to the appropriate handler.
+    pub(crate) async fn dispatch_command(
+        &self,
+        command: WsCommand,
+    ) -> Result<serde_json::Value, ServerError> {
+        let value = match command {
+            WsCommand::Scan { duration_secs } => to_value(command::scan(&self.state, duration_secs).await?)?,
+            WsCommand::Connect { address } => to_value(command::connect(&self.state, address).await?)?,
+            WsCommand::Disconnect { address } => to_value(command::disconnect(&self.state, address).await?)?,
+            WsCommand::SyncTime { address } => to_value(command::sync_time(&self.state, address).await?)?,
+            WsCommand::ReadAlarms { address } => to_value(command::alarm_list(&self.state, address).await?)?,
+            WsCommand::SetAlarm { address, slot, time, repeat_mask, enabled, snooze } => {
+                to_value(command::alarm_set(&self.state, address, slot, time, repeat_mask, enabled, snooze).await?)?
+            }
+            WsCommand::DeleteAlarm { address, slot } => to_value(command::alarm_delete(&self.state, address, slot).await?)?,
+            WsCommand::ReadSettings { address } => to_value(command::read_settings(&self.state, address).await?)?,
+            WsCommand::WriteSettings { address, settings } => to_value(command::write_settings(&self.state, address, settings).await?)?,
+            WsCommand::SetBrightness { address, value } => to_value(command::set_brightness(&self.state, address, value).await?)?,
+            WsCommand::PreviewRingtone { address, volume } => to_value(command::preview_ringtone(&self.state, address, volume).await?)?,
+            WsCommand::ReadFirmware { address } => to_value(command::read_firmware(&self.state, address).await?)?,
+            WsCommand::ReadBattery { address } => to_value(command::read_battery(&self.state, address).await?)?,
+            WsCommand::SubscribeEvents { address } => to_value(self.subscribe_events(address).await?)?,
+        };
+        Ok(value)
+    }
+}
+```
+
+#### Event Subscription
+
+The `subscribe_events` method (also in `dispatch.rs`) spawns a task
+that forwards `ClockEvent`s to the WebSocket client as `WsEvent` JSON:
+
+```rust
+impl WsSession {
+    /// Subscribe to device events and forward them to the WebSocket client.
+    async fn subscribe_events(&self, address: MacAddress) -> Result<SubscribeEventsResponse, ServerError> {
+        let device = self.state.device(&address).await?;
+        let mut receiver = device.subscribe();
+
+        let sender_clone = self.sender.clone();
+        tokio::spawn(async move {
+            loop {
+                match receiver.recv().await {
+                    Ok(event) => {
+                        if let Some(ws_event) = convert_event(&event) {
+                            let json = match serde_json::to_string(&ws_event) {
+                                Ok(j) => j,
+                                Err(e) => { warn!("Failed to serialize event: {e}"); continue; }
+                            };
+                            let mut tx = sender_clone.lock().await;
+                            if tx.send(Message::Text(json.into())).await.is_err() {
+                                debug!("WebSocket client disconnected, stopping event forwarding");
+                                break;
+                            }
+                        }
+                    }
+                    Err(RecvError::Lagged(n)) => warn!("Skipped {n} events"),
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Ok(SubscribeEventsResponse { address, subscribed: true })
+    }
+}
+```
+
+#### Event Conversion
+
+The `convert_event` function in `session/event.rs` maps `ClockEvent`
+variants to typed `WsEvent<Value>` instances. It uses an `EventType`
+enum (instead of string literals) for compile-time safety, and typed
+payload structs for each event kind:
+
+```rust
+/// Serialize a payload to `serde_json::Value`, returning `None` on failure.
+fn to_value(payload: impl Serialize) -> Option<Value> {
+    serde_json::to_value(payload).ok()
+}
+
+/// Convert a `ClockEvent` to a typed `WsEvent` for WebSocket push.
+pub(crate) fn convert_event(event: &ClockEvent) -> Option<WsEvent<Value>> {
+    let ws_event: WsEvent<_> = match event {
+        ClockEvent::SensorUpdate { temperature, humidity } => WsEvent::new(
+            EventType::SensorUpdate,
+            to_value(SensorUpdatePayload { temperature: *temperature, humidity: *humidity })?,
+        ),
+        ClockEvent::BatteryLevel { level } => WsEvent::new(
+            EventType::BatteryLevel,
+            to_value(BatteryLevelPayload { level: *level })?,
+        ),
+        ClockEvent::Disconnected => WsEvent::new(EventType::Disconnected, to_value(EmptyPayload {})?),
+        ClockEvent::Reconnected => WsEvent::new(EventType::Reconnected, to_value(EmptyPayload {})?),
+        ClockEvent::Ack { command, status } => WsEvent::new(
+            EventType::Ack,
+            to_value(AckPayload { command: *command, status: *status })?,
+        ),
+        ClockEvent::Advertisement(data) => WsEvent::new(EventType::Advertisement, to_value(data)?),
+    };
+    Some(ws_event)
+}
+```
+
+#### JSON Protocol
+
+The protocol types are split across `protocol/command.rs`,
+`protocol/request.rs`, `protocol/response/ws.rs`, and
+`protocol/event/ws.rs`. All address and value fields use core library
+newtypes (`MacAddress`, `ScanDuration`, `AlarmSlotIndex`, `ClockTime`,
+`DayMask`, `Brightness`, `Volume`, `DeviceSettings`) instead of raw
+primitives.
+
+```rust
 /// Incoming WebSocket request.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WsRequest {
@@ -3642,168 +4005,84 @@ pub struct WsRequest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsCommand {
-    /// Scan for devices.
-    Scan { duration_secs: u64 },
-    /// Connect to a device.
-    Connect { address: String },
-    /// Disconnect from a device.
-    Disconnect { address: String },
-    /// Synchronize device time.
-    SyncTime { address: String },
-    /// Read all alarms.
-    ReadAlarms { address: String },
-    /// Set an alarm.
-    SetAlarm { address: String, slot: u8, hour: u8, minute: u8, repeat_mask: u8, enabled: bool },
-    /// Delete an alarm.
-    DeleteAlarm { address: String, slot: u8 },
-    /// Read device settings.
-    ReadSettings { address: String },
-    /// Write device settings.
-    WriteSettings { address: String, settings: DeviceSettingsDto },
-    /// Set brightness preview.
-    SetBrightness { address: String, value: u8 },
-    /// Preview ringtone.
-    PreviewRingtone { address: String, volume: Option<u8> },
-    /// Read firmware version.
-    ReadFirmware { address: String },
-    /// Read battery level.
-    ReadBattery { address: String },
-    /// Subscribe to sensor events.
-    SubscribeEvents { address: String },
-}
-
-/// Outgoing WebSocket response.
-#[derive(Debug, Clone, Serialize)]
-pub struct WsResponse {
-    /// Request ID that this response corresponds to.
-    pub id: u32,
-    /// Response payload.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<serde_json::Value>,
-    /// Error message if the command failed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// Event pushed to subscribed clients.
-#[derive(Debug, Clone, Serialize)]
-pub struct WsEvent {
-    /// Event type.
-    pub event: String,
-    /// Event payload.
-    pub data: serde_json::Value,
-}
-
-/// DTO for DeviceSettings over the wire.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceSettingsDto {
-    /// Volume level (0–30).
-    pub volume: u8,
-    /// Brightness level (0–10).
-    pub brightness: u8,
-    /// Night mode brightness level (0–10).
-    pub night_brightness: u8,
-    /// Night mode start hour.
-    pub night_start_hour: u8,
-    /// Night mode start minute.
-    pub night_start_minute: u8,
-    /// Night mode end hour.
-    pub night_end_hour: u8,
-    /// Night mode end minute.
-    pub night_end_minute: u8,
-    /// Timezone offset.
-    pub timezone: i8,
-    /// Time format: "12h" or "24h".
-    pub time_format: String,
-    /// Temperature unit: "C" or "F".
-    pub temperature_unit: String,
-    /// Language: "en", "zh", "de", "ja".
-    pub language: String,
-    /// Ringtone index (0–7).
-    pub ringtone: u8,
+    Scan { duration_secs: ScanDuration },
+    Connect { address: MacAddress },
+    Disconnect { address: MacAddress },
+    SyncTime { address: MacAddress },
+    ReadAlarms { address: MacAddress },
+    SetAlarm { address: MacAddress, slot: AlarmSlotIndex, time: ClockTime, repeat_mask: DayMask, enabled: bool, snooze: bool },
+    DeleteAlarm { address: MacAddress, slot: AlarmSlotIndex },
+    ReadSettings { address: MacAddress },
+    WriteSettings { address: MacAddress, settings: DeviceSettings },
+    SetBrightness { address: MacAddress, value: Brightness },
+    PreviewRingtone { address: MacAddress, volume: Option<Volume> },
+    ReadFirmware { address: MacAddress },
+    ReadBattery { address: MacAddress },
+    SubscribeEvents { address: MacAddress },
 }
 ```
 
-#### Message Handler
+Key protocol differences from the original concept:
+
+- **Newtype fields**: All addresses, durations, slot indices, times,
+  brightness values, volumes, and settings use core library newtypes
+  instead of `String`/`u8`/`u64`. These types implement `Deserialize`
+  via `FromStr`, providing automatic validation.
+- **`SetAlarm` uses `time: ClockTime`** instead of separate `hour`/
+  `minute` fields, and includes a `snooze: bool` field.
+- **`WriteSettings` uses `DeviceSettings`** directly instead of a
+  separate `DeviceSettingsDto` — the core library type implements
+  `Serialize`/`Deserialize`.
+- **`EventType` enum** replaces `event: String` in `WsEvent`. The enum
+  uses `#[serde(rename_all = "snake_case")]` for wire compatibility.
+- **`WsEvent<T>` is generic** over the payload type, with
+  `WsEvent<Value>` used at the boundary. Each event has a typed payload
+  struct (`SensorUpdatePayload`, `BatteryLevelPayload`, `AckPayload`,
+  `EmptyPayload`).
+- **`Advertisement` event**: `ClockEvent::Advertisement` is forwarded as
+  a `WsEvent` with `EventType::Advertisement` and the
+  `AdvertisementData` serialized directly as the payload.
+- **`WsResponse` has `ok`/`error` constructors** for ergonomic response
+  building.
+- **Typed response structs**: Each command has a dedicated response
+  struct (e.g., `ConnectResponse`, `SyncTimeResponse`,
+  `SubscribeEventsResponse`) instead of returning raw `serde_json::Value`.
+
+#### Error Handling
+
+`ServerError` implements `IntoResponse` for REST endpoints and is
+convertible from `ClockError` and `serde_json::Error`:
 
 ```rust
-/// Handle a single WebSocket message and return a response.
-async fn handle_message(text: &str, state: &ServerState) -> WsResponse {
-    let request: WsRequest = match serde_json::from_str(text) {
-        Ok(req) => req,
-        Err(e) => {
-            return WsResponse {
-                id: 0,
-                result: None,
-                error: Some(format!("invalid JSON: {}", e)),
-            };
-        }
-    };
+#[derive(Debug, thiserror::Error)]
+pub enum ServerError {
+    #[error(transparent)]
+    Core(#[from] ClockError),
 
-    let result = match request.command {
-        WsCommand::Scan { duration_secs } => {
-            cmd_scan(state, duration_secs).await
-        }
-        WsCommand::Connect { address } => {
-            cmd_connect(state, &address).await
-        }
-        WsCommand::SyncTime { address } => {
-            cmd_sync_time(state, &address).await
-        }
-        WsCommand::ReadAlarms { address } => {
-            cmd_read_alarms(state, &address).await
-        }
-        WsCommand::SetAlarm { address, slot, hour, minute, repeat_mask, enabled } => {
-            cmd_set_alarm(state, &address, slot, hour, minute, repeat_mask, enabled).await
-        }
-        WsCommand::DeleteAlarm { address, slot } => {
-            cmd_delete_alarm(state, &address, slot).await
-        }
-        WsCommand::ReadSettings { address } => {
-            cmd_read_settings(state, &address).await
-        }
-        WsCommand::WriteSettings { address, settings } => {
-            cmd_write_settings(state, &address, settings).await
-        }
-        WsCommand::SetBrightness { address, value } => {
-            cmd_set_brightness(state, &address, value).await
-        }
-        WsCommand::PreviewRingtone { address, volume } => {
-            cmd_preview_ringtone(state, &address, volume).await
-        }
-        WsCommand::ReadFirmware { address } => {
-            cmd_read_firmware(state, &address).await
-        }
-        WsCommand::ReadBattery { address } => {
-            cmd_read_battery(state, &address).await
-        }
-        WsCommand::Disconnect { address } => {
-            cmd_disconnect(state, &address).await
-        }
-        WsCommand::SubscribeEvents { address } => {
-            cmd_subscribe_events(state, &address).await
-        }
-    };
+    #[error("device {address} is not connected")]
+    NotConnected { address: MacAddress },
 
-    match result {
-        Ok(value) => WsResponse {
-            id: request.id,
-            result: Some(value),
-            error: None,
-        },
-        Err(e) => WsResponse {
-            id: request.id,
-            result: None,
-            error: Some(e.to_string()),
-        },
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> Response {
+        let status = match self.status_code() {
+            404 => StatusCode::NOT_FOUND,
+            400 => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorBody { error: self.to_string() })).into_response()
     }
 }
 ```
 
 #### REST API Endpoints
 
-In addition to the WebSocket interface, the server exposes REST endpoints
-for simple queries:
+The REST endpoints are free functions in `routes.rs` (required by
+Axum's `Handler` trait). They use `Path<MacAddress>` extraction for
+address parameters:
 
 | Method | Path | Description |
 |---|---|---|
@@ -3816,46 +4095,49 @@ for simple queries:
 | `GET` | `/health` | Server health check |
 
 ```rust
-use axum::{routing::get, Router};
-
-/// Build the REST API router.
+/// Build the axum router with all REST and WebSocket routes.
 pub fn build_router(state: ServerState) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/api/devices", get(list_devices))
-        .route("/api/devices/:address/sensors", get(get_sensors))
-        .route("/api/devices/:address/battery", get(get_battery))
-        .route("/api/devices/:address/firmware", get(get_firmware))
-        .route("/api/devices/:address/alarms", get(get_alarms))
-        .route("/api/devices/:address/settings", get(get_settings))
+        .route("/api/devices/{address}/sensors", get(get_sensors))
+        .route("/api/devices/{address}/battery", get(get_battery))
+        .route("/api/devices/{address}/firmware", get(get_firmware))
+        .route("/api/devices/{address}/alarms", get(get_alarms))
+        .route("/api/devices/{address}/settings", get(get_settings))
         .route("/ws", get(ws_handler))
         .with_state(state)
 }
-
-/// Health check endpoint.
-async fn health_check() -> impl IntoResponse {
-    axum::Json(serde_json::json!({ "status": "ok" }))
-}
-
-/// List all connected devices.
-async fn list_devices(State(state): State<ServerState>) -> impl IntoResponse {
-    let addresses = state.manager.connected_addresses().await;
-    axum::Json(serde_json::json!({ "devices": addresses }))
-}
 ```
+
+Note: Axum 0.7+ uses `{address}` path syntax (not `:address`).
 
 #### Server Startup
 
+Server startup is in `main.rs` with clap for CLI arguments:
+
 ```rust
-/// Start the WebSocket + REST server.
-pub async fn run_server(addr: &str, manager: Arc<ClockManager>) -> Result<()> {
-    let state = ServerState::new(manager);
-    let router = build_router(state);
+#[derive(Parser, Debug)]
+#[command(name = "cgd1-ws", about = "WebSocket and REST server for the Qingping CGD1 alarm clock")]
+struct Cli {
+    #[arg(long, default_value = "0.0.0.0")]
+    address: String,
+    #[arg(long, default_value_t = 3000)]
+    port: u16,
+    #[arg(short, long, default_value_t = 0)]
+    verbose: u8,
+}
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!(addr, "WebSocket server listening");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+    // ... tracing init ...
+    let state = ServerState::new().await?;
+    let router = routes::build_router(state);
+    let bind_addr = format!("{}:{}", cli.address, cli.port);
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    tracing::info!(addr = %bind_addr, "WebSocket server listening");
     axum::serve(listener, router).await?;
-
     Ok(())
 }
 ```
@@ -3865,35 +4147,68 @@ pub async fn run_server(addr: &str, manager: Arc<ClockManager>) -> Result<()> {
 ```toml
 [dependencies]
 cgd1-rs = { path = "../cgd1-rs" }
-axum = { version = "0.7", features = ["ws"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
-tracing-subscriber = "0.3"
-tower = "0.5"
+axum.workspace = true
+clap.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tokio-tungstenite = "0.26"
 ```
+
+Notable differences from the original concept:
+
+- **`clap`** is used for server CLI arguments (address, port, verbose).
+- **`futures`** is needed for `StreamExt`/`SinkExt` on WebSocket
+  splitting.
+- **`thiserror`** for `ServerError` derive.
+- **`tower`** is not directly needed (transitive via axum).
+- **`tokio-tungstenite`** dev-dependency for WebSocket integration tests.
+- Workspace dependencies are used instead of inline versions.
 
 #### Testing Strategy
 
-- **Unit tests**: JSON protocol serialization/deserialization. Message
-  handler dispatch with mock state.
-- **Integration tests**: Start server on a test port, connect via WebSocket
-  client, send commands, verify responses. REST endpoint tests with
-  `reqwest`.
+- **Unit tests**: JSON protocol serialization/deserialization. Command
+  dispatch with mock state. Event conversion (`convert_event`).
+- **Integration tests**: Start server on a test port, connect via
+  WebSocket client (`tokio-tungstenite`), send commands, verify
+  responses. REST endpoint tests.
 - **Hardware tests**: Full server with real device, `#[ignore]`.
 
 #### Types Defined in Phase 9
 
 | Type | File | Description |
 |---|---|---|
-| `ServerState` | `server.rs` | Shared server state |
-| `WsRequest` | `handler.rs` | Incoming WebSocket request |
-| `WsCommand` | `handler.rs` | Command enum |
-| `WsResponse` | `handler.rs` | Outgoing WebSocket response |
-| `WsEvent` | `handler.rs` | Push event for subscribers |
-| `DeviceSettingsDto` | `handler.rs` | Settings DTO for JSON |
-| `ServerError` | `error.rs` | Server error enum |
+| `ServerState` | `state.rs` | Shared server state (transport, manager, token store) |
+| `ServerError` | `error.rs` | Server error enum + `IntoResponse` |
+| `ServerResult` | `error.rs` | Type alias for `Result<T, ServerError>` |
+| `WsSession` | `session/mod.rs` | WebSocket session (sender + state) |
+| `WsSender` | `session/ws.rs` | Type alias for `Arc<Mutex<SplitSink<WebSocket, Message>>>` |
+| `WsRequest` | `protocol/request.rs` | Incoming WebSocket request |
+| `WsCommand` | `protocol/command.rs` | Command enum (newtype fields) |
+| `WsResponse` | `protocol/response/ws.rs` | Outgoing WebSocket response + `ok`/`error` constructors |
+| `WsEvent<T>` | `protocol/event/ws.rs` | Generic push event struct |
+| `EventType` | `protocol/event/ws.rs` | Event type enum (serde snake_case) |
+| `SensorUpdatePayload` | `protocol/event/sensor_update.rs` | Sensor event payload |
+| `BatteryLevelPayload` | `protocol/event/battery_level.rs` | Battery event payload |
+| `AckPayload` | `protocol/event/ack.rs` | ACK event payload |
+| `EmptyPayload` | `protocol/event/empty.rs` | Empty payload for disconnected/reconnected |
+| `ConnectResponse` | `protocol/response/connect.rs` | Response for `connect` command |
+| `DisconnectResponse` | `protocol/response/disconnect.rs` | Response for `disconnect` command |
+| `SyncTimeResponse` | `protocol/response/sync_time.rs` | Response for `sync_time` command |
+| `AlarmSetResponse` | `protocol/response/alarm_set.rs` | Response for `set_alarm` command |
+| `AlarmDeleteResponse` | `protocol/response/alarm_delete.rs` | Response for `delete_alarm` command |
+| `BatteryResponse` | `protocol/response/battery.rs` | Response for `read_battery` command |
+| `BrightnessResponse` | `protocol/response/brightness.rs` | Response for `set_brightness` command |
+| `FirmwareResponse` | `protocol/response/firmware.rs` | Response for `read_firmware` command |
+| `PreviewRingtoneResponse` | `protocol/response/preview_ringtone.rs` | Response for `preview_ringtone` command |
+| `SubscribeEventsResponse` | `protocol/response/subscribe_events.rs` | Response for `subscribe_events` command |
+| `WriteSettingsResponse` | `protocol/response/write_settings.rs` | Response for `write_settings` command |
 
 ---
 
