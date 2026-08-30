@@ -1,3 +1,4 @@
+use crate::AckStatus;
 use crate::command::AlarmSlotIndexParseError;
 use crate::command::BrightnessParseError;
 use crate::command::DayMaskParseError;
@@ -15,30 +16,15 @@ use crate::types::MacAddressParseError;
 use crate::types::TemperatureParseError;
 use thiserror::Error;
 
-/// Library-level result alias.
-pub type Result<T> = std::result::Result<T, ClockError>;
-
-/// Authentication failure details.
-///
-/// Carries the original device-side reason and optional context about
-/// whether the token was newly generated or loaded from storage.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("{reason}")]
-pub struct AuthFailedError {
-    /// The original reason from the device (e.g. status code).
-    pub reason: String,
-    /// Whether the token was newly generated (not found in storage).
-    pub is_new_token: bool,
-    /// Filesystem path to the token file, if applicable.
-    pub token_path: Option<String>,
-}
+use super::auth::AuthFailedError;
+use super::transport::TransportError;
 
 /// Errors returned by the cgd1-rs library.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum ClockError {
     /// BLE transport error.
-    #[error("BLE transport error: {0}")]
-    Transport(String),
+    #[error(transparent)]
+    Transport(#[from] TransportError),
 
     /// Authentication failed (token rejected by device).
     #[error("{0}")]
@@ -54,7 +40,7 @@ pub enum ClockError {
         /// The command byte that was rejected.
         command: u8,
         /// The ACK status from the device.
-        status: crate::command::AckStatus,
+        status: AckStatus,
     },
 
     /// Timeout waiting for a response from the device.

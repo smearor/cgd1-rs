@@ -9,8 +9,8 @@ use uuid::Uuid;
 use crate::ble::advertisement::AdvertisementData;
 use crate::ble::characteristic::CharacteristicUuid;
 use crate::ble::transport::BleTransport;
-use crate::error::ClockError;
 use crate::error::Result;
+use crate::error::TransportError;
 use crate::types::MacAddress;
 
 /// In-memory mock BLE transport for testing.
@@ -158,7 +158,7 @@ impl BleTransport for MockBleTransport {
         if let Some(idx) = pos {
             Ok(read_values.remove(idx).1)
         } else {
-            Err(ClockError::Transport("no read value set for characteristic".into()))
+            Err(TransportError::NoReadValue.into())
         }
     }
 

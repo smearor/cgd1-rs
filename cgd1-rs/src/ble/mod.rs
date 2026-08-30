@@ -6,8 +6,7 @@ mod mock_transport;
 mod sensor_notification;
 mod transport;
 mod transport_state;
-mod virtual_device_state;
-mod virtual_transport;
+mod virt;
 
 pub use advertisement::AdvertisementData;
 pub use backend::Backend;
@@ -18,4 +17,4 @@ pub use mock_transport::MockBleTransport;
 pub use sensor_notification::SensorNotification;
 pub use transport::BleTransport;
 pub use transport_state::TransportState;
-pub use virtual_transport::VirtualClockTransport;
+pub use virt::VirtualClockTransport;

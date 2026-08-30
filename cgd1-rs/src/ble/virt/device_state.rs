@@ -12,6 +12,7 @@ use crate::command::TemperatureUnit;
 use crate::command::TimeFormat;
 use crate::command::Timezone;
 use crate::command::Volume;
+use std::time::Instant;
 
 /// Number of alarm slots supported by the CGD1 device.
 pub const ALARM_SLOT_COUNT: usize = 16;
@@ -40,6 +41,10 @@ pub struct VirtualDeviceState {
     pub audio_upload_received: usize,
     /// Audio packets received in the current block (for ACK every 4 packets).
     pub audio_block_packets: usize,
+    /// Unix timestamp set by the last Time Sync command.
+    pub synced_time: Option<u32>,
+    /// Instant when the last Time Sync command was received.
+    pub synced_at: Option<Instant>,
 }
 
 impl Default for VirtualDeviceState {
@@ -73,6 +78,8 @@ impl Default for VirtualDeviceState {
             audio_upload_total: 0,
             audio_upload_received: 0,
             audio_block_packets: 0,
+            synced_time: None,
+            synced_at: None,
         }
     }
 }

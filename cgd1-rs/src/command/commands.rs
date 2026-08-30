@@ -189,9 +189,6 @@ mod tests {
             Some(Command::SetSettings)
         );
         // Unknown byte returns None.
-        assert_eq!(
-            Command::from_id_for_characteristic(CommandId::new(0xFF), CharacteristicUuid::AuthWrite),
-            None
-        );
+        assert_eq!(Command::from_id_for_characteristic(CommandId::new(0xFF), CharacteristicUuid::AuthWrite), None);
     }
 }

@@ -5,9 +5,10 @@ use axum::response::Response;
 use cgd1_rs::ClockError;
 use cgd1_rs::MacAddress;
 use serde::Serialize;
+use thiserror::Error;
 
 /// Errors returned by the WebSocket server.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum ServerError {
     /// A core library error.
     #[error(transparent)]

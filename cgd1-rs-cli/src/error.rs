@@ -1,10 +1,10 @@
-use std::path::PathBuf;
-
 use cgd1_rs::AuthFailedError;
 use cgd1_rs::ClockError;
+use std::path::PathBuf;
+use thiserror::Error;
 
 /// Errors returned by the CLI.
-#[derive(Debug, miette::Diagnostic, thiserror::Error)]
+#[derive(Debug, miette::Diagnostic, Error)]
 pub enum CliError {
     /// A core library error.
     #[error(transparent)]
