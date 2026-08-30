@@ -1,14 +1,6 @@
-mod command;
-mod error;
-mod protocol;
-mod routes;
-mod session;
-mod state;
-
 use cgd1_rs::Backend;
+use cgd1_rs_ws::ServerState;
 use clap::Parser;
-
-use state::ServerState;
 
 /// Command-line arguments for the WebSocket server.
 #[derive(Parser, Debug)]
@@ -44,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let state = ServerState::new(cli.backend).await?;
-    let router = routes::build_router(state);
+    let router = cgd1_rs_ws::build_router(state);
 
     let bind_addr = format!("{}:{}", cli.address, cli.port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;

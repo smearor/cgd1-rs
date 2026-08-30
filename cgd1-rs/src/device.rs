@@ -172,8 +172,8 @@ impl ClockDevice {
     ///
     /// When set, the token is saved after the first privileged command
     /// (e.g., `sync_time`) succeeds, confirming the device accepted it.
-    pub fn set_token_store(&self, store: Arc<dyn TokenStore>) {
-        let mut guard = self.token_store.blocking_lock();
+    pub async fn set_token_store(&self, store: Arc<dyn TokenStore>) {
+        let mut guard = self.token_store.lock().await;
         *guard = Some(store);
     }
 

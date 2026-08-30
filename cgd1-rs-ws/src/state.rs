@@ -58,7 +58,7 @@ impl ServerState {
     /// if not. After a successful `sync_time`, the token is persisted.
     pub async fn connect(&self, mac: &MacAddress) -> Result<ClockDevice, ServerError> {
         let device = self.manager.connect(mac).await?;
-        device.set_token_store(self.token_store.clone() as Arc<dyn TokenStore>);
+        device.set_token_store(self.token_store.clone() as Arc<dyn TokenStore>).await;
         let token_result = self.token_store.load_or_generate(mac);
         device.authenticate(&token_result).await?;
         Ok(device)
