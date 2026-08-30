@@ -1,3 +1,4 @@
+use cgd1_rs::Backend;
 use cgd1_rs::MacAddress;
 
 use crate::connection::DeviceConnection;
@@ -7,11 +8,13 @@ use crate::error::CliError;
 pub struct AlarmListArgs {
     /// Device MAC address.
     pub address: MacAddress,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `alarm-list` command.
 pub async fn run(args: AlarmListArgs) -> Result<(), CliError> {
-    let connection = DeviceConnection::connect(&args.address).await?;
+    let connection = DeviceConnection::connect(&args.address, args.backend).await?;
     let slots = connection.device().read_alarms().await?;
 
     if slots.is_empty() {

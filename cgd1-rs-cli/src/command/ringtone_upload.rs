@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use cgd1_rs::Backend;
 use cgd1_rs::MacAddress;
 use cgd1_rs::RingtoneSignature;
 
@@ -14,6 +15,8 @@ pub struct RingtoneUploadArgs {
     pub file: PathBuf,
     /// 4-byte signature as hex string (e.g., "deadbeef").
     pub signature: RingtoneSignature,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `ringtone-upload` command.
@@ -23,7 +26,7 @@ pub async fn run(args: RingtoneUploadArgs) -> Result<(), CliError> {
         reason: e.to_string(),
     })?;
 
-    let connection = DeviceConnection::connect(&args.address).await?;
+    let connection = DeviceConnection::connect(&args.address, args.backend).await?;
     connection.device().upload_ringtone(&audio, args.signature.bytes()).await?;
 
     println!("Ringtone uploaded (signature: {}).", args.signature);

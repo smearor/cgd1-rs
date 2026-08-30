@@ -1,3 +1,4 @@
+use cgd1_rs::Backend;
 use cgd1_rs::MacAddress;
 use cgd1_rs::TokenStore;
 use tracing::info;
@@ -9,11 +10,13 @@ use crate::error::CliError;
 pub struct SyncTimeArgs {
     /// Device MAC address.
     pub address: MacAddress,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `sync-time` command.
 pub async fn run(args: SyncTimeArgs) -> Result<(), CliError> {
-    let (connection, store) = DeviceConnection::connect_with_store(&args.address).await?;
+    let (connection, store) = DeviceConnection::connect_with_store(&args.address, args.backend).await?;
 
     let device = connection.device();
     device.sync_time_now().await?;

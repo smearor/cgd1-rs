@@ -1,3 +1,4 @@
+use cgd1_rs::Backend;
 use cgd1_rs::Brightness;
 use cgd1_rs::Language;
 use cgd1_rs::MacAddress;
@@ -27,11 +28,13 @@ pub struct SettingsWriteArgs {
     pub temp_unit: Option<TemperatureUnit>,
     /// Language: en or zh.
     pub language: Option<Language>,
+    /// BLE backend to use.
+    pub backend: Backend,
 }
 
 /// Run the `settings-write` command.
 pub async fn run(args: SettingsWriteArgs) -> Result<(), CliError> {
-    let connection = DeviceConnection::connect(&args.address).await?;
+    let connection = DeviceConnection::connect(&args.address, args.backend).await?;
     let mut settings = connection.device().read_settings().await?;
 
     if let Some(vol) = args.volume {
