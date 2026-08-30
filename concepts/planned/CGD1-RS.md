@@ -384,13 +384,23 @@ cgd1-rs/
 ├── Cargo.toml
 └── src/
     ├── lib.rs                 # Module declarations + pub use re-exports
-    ├── error.rs               # ClockError enum (thiserror)
+    ├── error/                # Error types (directory module)
+    │   ├── mod.rs             # Module declarations + pub use re-exports
+    │   ├── auth.rs            # AuthFailedError struct
+    │   ├── transport.rs       # TransportError enum
+    │   └── clock.rs           # ClockError enum (thiserror)
     ├── ble/
     │   ├── mod.rs             # Module declarations + pub use re-exports
     │   ├── transport.rs       # BleTransport trait
     │   ├── btleplug_transport.rs # BtleplugTransport implementation
-    │   ├── characteristic.rs  # CharacteristicUuid type
-    │   └── advertisement.rs   # AdvertisementData parser
+    │   ├── characteristic.rs  # CharacteristicUuid type (with Display)
+    │   ├── advertisement.rs   # AdvertisementData parser
+    │   ├── sensor_notification.rs # SensorNotification (parse + encode)
+    │   ├── mock_transport.rs  # MockBleTransport for testing
+    │   └── virt/              # Virtual device transport (directory module)
+    │       ├── mod.rs         # Module declarations + re-exports
+    │       ├── transport.rs   # VirtualClockTransport (multi-device)
+    │       └── device_state.rs # VirtualDeviceState
     ├── scanner.rs             # ClockScanner struct
     ├── manager.rs             # ClockManager struct
     ├── device.rs              # ClockDevice handle
@@ -415,6 +425,10 @@ cgd1-rs/
         │   ├── temperature_unit.rs # TemperatureUnit enum (Celsius, Fahrenheit)
         │   ├── time_format.rs      # TimeFormat enum (12h, 24h)
         │   └── timezone.rs         # Timezone newtype (6-minute unit encoding)
+        ├── commands.rs        # Command enum + CommandId + from_id_for_characteristic
+        ├── command_id.rs      # CommandId newtype (single byte)
+        ├── frame.rs           # CommandFrame (length + command + payload)
+        ├── ack.rs             # Ack parsing (04 ff [cmd] [status] [payload])
         ├── firmware.rs        # ReadFirmware command
         └── audio.rs           # AudioInit, AudioDataPacket commands
 ```
@@ -473,6 +487,8 @@ pub trait BleTransport: Send + Sync {
 #### CharacteristicUuid
 
 ```rust
+use std::fmt::Display;
+use std::fmt::Formatter;
 use uuid::Uuid;
 
 /// CGD1 GATT characteristic identifiers.
@@ -496,14 +512,68 @@ impl CharacteristicUuid {
     /// Convert to the full 128-bit UUID.
     pub fn uuid(self) -> Uuid {
         match self {
-            Self::AuthWrite => Uuid::parse_str("00000001-0000-1000-8000-00805f9b34fb").unwrap(),
-            Self::AuthNotify => Uuid::parse_str("00000002-0000-1000-8000-00805f9b34fb").unwrap(),
-            Self::DataWrite => Uuid::parse_str("0000000b-0000-1000-8000-00805f9b34fb").unwrap(),
-            Self::DataNotify => Uuid::parse_str("0000000c-0000-1000-8000-00805f9b34fb").unwrap(),
-            Self::SensorNotify => Uuid::parse_str("00000100-0000-1000-8000-00805f9b34fb").unwrap(),
-            Self::BatteryLevel => Uuid::from_u16(0x2a19),
+            Self::AuthWrite => Uuid::from_fields(0x00000001, 0x0000, 0x1000, &BLE_BASE_UUID),
+            Self::AuthNotify => Uuid::from_fields(0x00000002, 0x0000, 0x1000, &BLE_BASE_UUID),
+            Self::DataWrite => Uuid::from_fields(0x0000000b, 0x0000, 0x1000, &BLE_BASE_UUID),
+            Self::DataNotify => Uuid::from_fields(0x0000000c, 0x0000, 0x1000, &BLE_BASE_UUID),
+            Self::SensorNotify => Uuid::from_fields(0x00000100, 0x0000, 0x1000, &BLE_BASE_UUID),
+            Self::BatteryLevel => Uuid::from_fields(0x00002a19, 0x0000, 0x1000, &BLE_BASE_UUID),
         }
     }
+}
+
+impl Display for CharacteristicUuid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AuthWrite => write!(f, "AuthWrite"),
+            Self::AuthNotify => write!(f, "AuthNotify"),
+            Self::DataWrite => write!(f, "DataWrite"),
+            Self::DataNotify => write!(f, "DataNotify"),
+            Self::SensorNotify => write!(f, "SensorNotify"),
+            Self::BatteryLevel => write!(f, "BatteryLevel"),
+        }
+    }
+}
+```
+
+#### Command Enum
+
+The `Command` enum maps command names to their raw byte `CommandId` and
+associated `CharacteristicUuid`. Since the CGD1 protocol reuses command
+byte values across characteristics (e.g. `0x01` is `AuthInit` on Auth
+Write but `SetSettings` on Data Write), `Command::from_id_for_characteristic`
+disambiguates based on which characteristic the frame was received on.
+
+```rust
+/// BLE protocol command identifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Command {
+    AuthInit,
+    AuthConfirm,
+    TimeSync,
+    ReadFirmware,
+    SetSettings,
+    ReadSettings,
+    SetBrightness,
+    PreviewRingtone,
+    SetAlarm,
+    ReadAlarms,
+    AudioInit,
+    AudioData,
+}
+
+impl Command {
+    /// Get the raw command byte.
+    pub const fn command_id(self) -> CommandId;
+
+    /// Get the GATT characteristic to write this command to.
+    pub const fn characteristic(self) -> CharacteristicUuid;
+
+    /// Resolve a CommandId to a Command given the GATT characteristic context.
+    pub const fn from_id_for_characteristic(
+        id: CommandId,
+        characteristic: CharacteristicUuid,
+    ) -> Option<Self>;
 }
 ```
 
@@ -828,19 +898,93 @@ pub enum ClockEvent {
 }
 ```
 
+#### Error Module Structure
+
+The error types are organized in a directory module:
+
+```
+error/
+├── mod.rs       # Module declarations, pub use re-exports, Result<T> alias
+├── auth.rs      # AuthFailedError struct
+├── transport.rs # TransportError enum
+└── clock.rs     # ClockError enum
+```
+
+#### TransportError
+
+Structured error type for BLE transport failures, replacing the former
+`Transport(String)` variant. Uses typed fields (`MacAddress`,
+`CharacteristicUuid`) instead of raw strings.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum TransportError {
+    #[error("no Bluetooth adapter found")]
+    NoAdapter,
+
+    #[error("device not found: {address}")]
+    DeviceNotFound { address: MacAddress },
+
+    #[error("characteristic not found: {characteristic}")]
+    CharacteristicNotFound { characteristic: CharacteristicUuid },
+
+    #[error("no read value set for characteristic")]
+    NoReadValue,
+
+    #[error("pending request canceled")]
+    RequestCanceled,
+
+    #[error("{context} response canceled")]
+    ResponseCanceled { context: String },
+
+    #[error("reconnect with state recovery failed")]
+    ReconnectFailed,
+
+    #[error("not connected")]
+    NotConnected,
+
+    #[error("unknown device MAC: {mac}")]
+    UnknownDeviceMac { mac: MacAddress },
+
+    #[error("transport does not support read for characteristic {characteristic}")]
+    UnsupportedRead { characteristic: CharacteristicUuid },
+
+    #[error("system time error: {0}")]
+    SystemTime(String),
+
+    #[error("{0}")]
+    Other(String),
+}
+```
+
+#### AuthFailedError
+
+Structured authentication error carrying the device-side reason, token
+context, and optional filesystem path.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{reason}")]
+pub struct AuthFailedError {
+    pub reason: String,
+    pub is_new_token: bool,
+    pub token_path: Option<String>,
+}
+```
+
 #### ClockError
 
 ```rust
 /// Errors returned by the cgd1-rs library.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum ClockError {
-    /// BLE transport error.
-    #[error("BLE transport error: {0}")]
-    Transport(String),
+    /// BLE transport error (structured).
+    #[error(transparent)]
+    Transport(#[from] TransportError),
 
     /// Authentication failed (token rejected by device).
-    #[error("authentication failed: {0}")]
-    AuthFailed(String),
+    #[error("{0}")]
+    AuthFailed(AuthFailedError),
 
     /// No authentication token available for this device.
     #[error("no auth token: device not paired")]
@@ -849,9 +993,7 @@ pub enum ClockError {
     /// Command was rejected by the device (non-zero ACK status).
     #[error("command rejected: command={command:#04x}, status={status}")]
     CommandRejected {
-        /// The command byte that was rejected.
         command: u8,
-        /// The ACK status from the device.
         status: AckStatus,
     },
 
@@ -867,6 +1009,10 @@ pub enum ClockError {
     #[error("already connected")]
     AlreadyConnected,
 
+    /// Invalid alarm slot index (must be 0-15).
+    #[error("invalid alarm slot: {0}")]
+    InvalidAlarmSlot(u8),
+
     /// Invalid settings value (out of range).
     #[error("invalid settings value: {0}")]
     InvalidSettings(String),
@@ -874,6 +1020,8 @@ pub enum ClockError {
     /// Failed to parse an advertisement or notification.
     #[error("parse error: {0}")]
     Parse(String),
+
+    // ... parse error variants for each newtype (DayMask, MacAddress, etc.) ...
 
     /// I/O error.
     #[error("IO error: {0}")]
@@ -1112,7 +1260,15 @@ is detected, it:
 | `ClockDevice` | `device.rs` | Connected device handle |
 | `AuthToken` | `token.rs` | 16-byte auth token |
 | `ClockEvent` | `event.rs` | Device event enum |
-| `ClockError` | `error.rs` | Library error enum |
+| `ClockError` | `error/clock.rs` | Library error enum |
+| `TransportError` | `error/transport.rs` | Structured BLE transport error |
+| `AuthFailedError` | `error/auth.rs` | Authentication failure details |
+| `Command` | `command/commands.rs` | BLE protocol command enum |
+| `CommandId` | `command/command_id.rs` | Command byte newtype |
+| `CommandFrame` | `command/frame.rs` | Command frame (length + command + payload) |
+| `SensorNotification` | `ble/sensor_notification.rs` | Sensor notify payload (parse + encode) |
+| `VirtualClockTransport` | `ble/virt/transport.rs` | Virtual multi-device transport |
+| `VirtualDeviceState` | `ble/virt/device_state.rs` | Virtual device internal state |
 | `Ack` | `device.rs` | Parsed ACK frame |
 | `PendingRequest` | `device.rs` | Pending request-response state |
 
@@ -2055,6 +2211,28 @@ pub struct SensorNotification {
 }
 
 impl SensorNotification {
+    /// Create a new sensor notification from temperature and humidity values.
+    pub const fn new(temperature: Temperature, humidity: Humidity) -> Self {
+        Self { temperature, humidity }
+    }
+
+    /// Encode the sensor notification into the 5-byte payload format.
+    ///
+    /// Format: `[0x00] [TempLo] [TempHi] [HumLo] [HumHi]` (5 bytes).
+    /// Temperature is a signed 16-bit little-endian value, scaled by * 100.
+    /// Humidity is an unsigned 16-bit little-endian value, scaled by * 100.
+    pub fn encode(&self) -> [u8; 5] {
+        let temp_raw = (self.temperature.value() * 100.0) as i16;
+        let hum_raw = (self.humidity.value() * 100.0) as u16;
+        [
+            0x00,
+            (temp_raw & 0xFF) as u8,
+            ((temp_raw >> 8) & 0xFF) as u8,
+            (hum_raw & 0xFF) as u8,
+            ((hum_raw >> 8) & 0xFF) as u8,
+        ]
+    }
+
     /// Parse a raw sensor notification payload.
     ///
     /// The first byte must be `0x00` (sensor data header).
@@ -2207,6 +2385,8 @@ match notification_source {
 |---|---|---|
 | `ClockDevice::read_battery()` | `async -> Result<BatteryLevel>` | Read battery via GATT Battery Service |
 | `SensorNotification::parse()` | `fn -> Result<Self>` | Parse 5-byte sensor notify payload |
+| `SensorNotification::new()` | `const fn -> Self` | Create from Temperature + Humidity |
+| `SensorNotification::encode()` | `fn -> [u8; 5]` | Encode to 5-byte payload |
 
 ---
 
@@ -4329,6 +4509,42 @@ pub struct MockBleTransport {
     connected: Arc<Mutex<bool>>,
 }
 ```
+
+### VirtualClockTransport
+
+A simulated CGD1 device implementing `BleTransport` for testing without
+physical hardware. Supports multiple virtual devices with independent
+state, keyed by MAC address.
+
+```rust
+/// Virtual CGD1 transport simulating up to 5 devices.
+pub struct VirtualClockTransport {
+    /// Device states keyed by MAC address.
+    devices: Arc<Mutex<HashMap<MacAddress, Arc<Mutex<VirtualDeviceState>>>>>,
+    /// Currently connected device MAC.
+    connected_mac: Arc<Mutex<Option<MacAddress>>>,
+    /// Scan iteration index.
+    scan_index: Mutex<usize>,
+    /// Notification channel.
+    notifications_tx: mpsc::Sender<(Uuid, Vec<u8>)>,
+    /// Background sensor task handle.
+    sensor_task_handle: Mutex<Option<JoinHandle<()>>>,
+}
+```
+
+Key features:
+- **Multi-device**: 5 default virtual devices with distinct MAC addresses
+  (`AA:BB:CC:DD:E0:01` through `E0:05`), each with independent state.
+- **Sensor drift**: Simulated temperature/humidity drift via sine functions.
+- **Battery drain**: 1% every 5 minutes, low notification at 20%, reset
+  to 80% at 0%.
+- **Time sync**: Stores `synced_time` and `synced_at` for relative device
+  time calculation.
+- **Command dispatch**: Uses `Command::from_id_for_characteristic` to
+  match incoming frames to `Command` enum variants, dispatching via
+  `match command { Command::AuthInit => ... }`.
+- **Sensor notifications**: Uses `SensorNotification::new().encode()`
+  instead of manual byte packing.
 
 ### Test Coverage Goals
 
