@@ -15,9 +15,7 @@ const VIRTUAL_MAC: &str = "AA:BB:CC:DD:E0:01";
 
 /// Path to the built CLI binary.
 fn cli_binary() -> PathBuf {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| format!("{manifest_dir}/../target"));
-    PathBuf::from(target_dir).join("debug").join("cgd1")
+    PathBuf::from(env!("CARGO_BIN_EXE_cgd1"))
 }
 
 /// Set `XDG_DATA_HOME` to a temp dir so token files don't pollute the user's
