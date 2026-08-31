@@ -32,7 +32,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libdbus-1-dev
+          sudo apt-get install -y pkg-config libdbus-1-dev libgtk-4-dev
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -49,9 +49,12 @@ jobs:
         run: cargo msrv --output-format json verify --path cgd1-rs-cli
       - name: Verify MSRV cgd1-rs-ws
         run: cargo msrv --output-format json verify --path cgd1-rs-ws
+      - name: Verify MSRV cgd1-rs-controller
+        run: cargo msrv --output-format json verify --path cgd1-rs-controller
       - name: Find MSRV on verify failure
         if: ${{ failure() }}
         run: |
           cargo msrv find --output-format json --path cgd1-rs || true
           cargo msrv find --output-format json --path cgd1-rs-cli || true
           cargo msrv find --output-format json --path cgd1-rs-ws || true
+          cargo msrv find --output-format json --path cgd1-rs-controller || true
