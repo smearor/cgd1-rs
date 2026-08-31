@@ -12,8 +12,15 @@ path = "src/main.rs"
 
 [dependencies]
 cgd1-rs = { path = "../cgd1-rs" }
-gtk4.workspace = true
+clap.workspace = true
 gio.workspace = true
 glib.workspace = true
+gtk4 = { workspace = true, features = ["v4_6"] }
+pango = { version = "0.22", features = ["v1_56"] }
 tokio.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[features]
+default = ["btleplug"]
+btleplug = []
