@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+rust-version = "1.92"
 description = "GTK 4 desktop application for the Qingping CGD1 Bluetooth alarm clock"
 
 [[bin]]
