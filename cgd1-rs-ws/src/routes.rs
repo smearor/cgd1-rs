@@ -2,6 +2,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::Path;
 use axum::extract::State;
+use axum::response::Html;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use cgd1_rs::MacAddress;
@@ -14,6 +15,7 @@ use crate::state::ServerState;
 /// Build the axum router with all REST and WebSocket routes.
 pub fn build_router(state: ServerState) -> Router {
     Router::new()
+        .route("/", get(index_page))
         .route("/health", get(health_check))
         .route("/api/devices", get(list_devices))
         .route("/api/devices/{address}/sensors", get(get_sensors))
@@ -23,6 +25,11 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/devices/{address}/settings", get(get_settings))
         .route("/ws", get(ws_handler))
         .with_state(state)
+}
+
+/// Serve the single-file HTML web app.
+async fn index_page() -> impl IntoResponse {
+    Html(include_str!("../static/index.html"))
 }
 
 /// Health check endpoint.

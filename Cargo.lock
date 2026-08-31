@@ -367,11 +367,14 @@ name = "cgd1-rs-controller"
 version = "0.1.0"
 dependencies = [
  "cgd1-rs",
+ "clap",
  "gio",
  "glib",
  "gtk4",
+ "pango",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
