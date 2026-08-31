@@ -14,3 +14,5 @@
 - [Controller](./controller.md)
 - [WebSocket Server](./websocket.md)
 - [Platform Notes](./platform-notes.md)
+- [Examples](./examples.md)
+- [Troubleshooting](./troubleshooting.md)
