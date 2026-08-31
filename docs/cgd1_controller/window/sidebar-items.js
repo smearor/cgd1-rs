@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["WINDOW_CSS"],"fn":["create_header_bar"],"struct":["MainWindow"]};

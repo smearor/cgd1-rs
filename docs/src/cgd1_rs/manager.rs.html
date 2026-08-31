@@ -126,7 +126,7 @@
 <a href=#126 id=126 data-nosnippet>126</a>    /// only after `sync_time` succeeds, confirming the device accepted it.
 <a href=#127 id=127 data-nosnippet>127</a>    </span><span class="kw">pub async fn </span>connect_authenticate_and_sync(<span class="kw-2">&amp;</span><span class="self">self</span>, address: <span class="kw-2">&amp;</span>MacAddress, token: <span class="kw-2">&amp;</span>AuthToken, token_store: Arc&lt;<span class="kw">dyn </span>TokenStore&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;ClockDevice&gt; {
 <a href=#128 id=128 data-nosnippet>128</a>        <span class="kw">let </span>device = <span class="self">self</span>.connect(address).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#129 id=129 data-nosnippet>129</a>        device.set_token_store(token_store);
+<a href=#129 id=129 data-nosnippet>129</a>        device.set_token_store(token_store).<span class="kw">await</span>;
 <a href=#130 id=130 data-nosnippet>130</a>        device.authenticate(token).<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#131 id=131 data-nosnippet>131</a>        device.sync_time_now().<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#132 id=132 data-nosnippet>132</a>        <span class="prelude-val">Ok</span>(device)

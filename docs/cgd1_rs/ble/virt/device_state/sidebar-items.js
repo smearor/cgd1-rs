@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["ALARM_SLOT_COUNT"],"struct":["VirtualDeviceState"]};

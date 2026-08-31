@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["build_router","get_alarms","get_battery","get_firmware","get_sensors","get_settings","health_check","list_devices"]};
