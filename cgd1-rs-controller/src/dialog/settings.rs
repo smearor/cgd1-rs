@@ -303,8 +303,16 @@ impl SettingsDialog {
                         return;
                     }
                 };
-                let time_format = if time_format_12h.is_active() { TimeFormat::TwelveHour } else { TimeFormat::TwentyFourHour };
-                let temp_unit = if temp_f.is_active() { TemperatureUnit::Fahrenheit } else { TemperatureUnit::Celsius };
+                let time_format = if time_format_12h.is_active() {
+                    TimeFormat::TwelveHour
+                } else {
+                    TimeFormat::TwentyFourHour
+                };
+                let temp_unit = if temp_f.is_active() {
+                    TemperatureUnit::Fahrenheit
+                } else {
+                    TemperatureUnit::Celsius
+                };
                 let language = if lang_en.is_active() { Language::English } else { Language::Chinese };
                 let night_mode_enabled = night_mode_toggle.is_active();
                 let screen_light_duration = match ScreenLightDuration::new(screen_duration_spin.value() as u8) {
