@@ -209,36 +209,37 @@ impl ClockDevice {
         });
     }
 
-    /// Wait for an ACK with the given command byte.
+    /// Register a pending ACK request for a command.
     ///
-    /// Registers a pending request and waits up to `RESPONSE_TIMEOUT_SECS`
-    /// for the notification task to deliver the ACK.
-    async fn wait_for_ack(&self, command: Command) -> Result<Ack> {
+    /// Returns a receiver that is fulfilled when the notification task
+    /// processes the matching ACK. Must be called BEFORE sending the
+    /// command frame to prevent a race where the ACK is processed before
+    /// the pending request is registered.
+    async fn prepare_ack(&self, command: Command) -> oneshot::Receiver<Result<Ack>> {
         let command_id = command.command_id();
         let (sender, receiver) = oneshot::channel();
         register_pending(&self.pending, command_id, sender).await;
+        receiver
+    }
 
-        match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver).await {
+    /// Wait for a pending ACK with a custom timeout.
+    async fn wait_ack(&self, receiver: oneshot::Receiver<Result<Ack>>, timeout_secs: u64) -> Result<Ack> {
+        match timeout(Duration::from_secs(timeout_secs), receiver).await {
             Ok(Ok(ack)) => ack,
             Ok(Err(_)) => Err(TransportError::RequestCanceled.into()),
             Err(_) => Err(ClockError::Timeout),
         }
     }
 
-    /// Wait for an ACK with a custom timeout duration.
+    /// Send a command frame and wait for the ACK.
     ///
-    /// Used by audio upload where per-packet ACKs may take longer than
-    /// the default timeout.
-    async fn wait_for_ack_with_timeout(&self, command: Command, timeout_secs: u64) -> Result<Ack> {
-        let command_id = command.command_id();
-        let (sender, receiver) = oneshot::channel();
-        register_pending(&self.pending, command_id, sender).await;
-
-        match timeout(Duration::from_secs(timeout_secs), receiver).await {
-            Ok(Ok(ack)) => ack,
-            Ok(Err(_)) => Err(TransportError::RequestCanceled.into()),
-            Err(_) => Err(ClockError::Timeout),
-        }
+    /// Registers the pending request BEFORE sending the frame to prevent
+    /// a race where the notification task processes the ACK before the
+    /// pending request is registered.
+    async fn send_and_wait(&self, command: Command, payload: &[u8]) -> Result<Ack> {
+        let receiver = self.prepare_ack(command).await;
+        self.transport.write_frame(command, payload).await?;
+        self.wait_ack(receiver, RESPONSE_TIMEOUT_SECS).await
     }
 
     /// Authenticate with the device using a 16-byte token.
@@ -252,9 +253,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         // Step 1: Auth Init
-        self.transport.write_frame(Command::AuthInit, token.payload()).await?;
-
-        let ack = self.wait_for_ack(Command::AuthInit).await?;
+        let ack = self.send_and_wait(Command::AuthInit, token.payload()).await?;
         if let AckStatus::Failure(code) = ack.status {
             return Err(ClockError::AuthFailed(AuthFailedError {
                 reason: format!("init status: {code:#04x}"),
@@ -264,9 +263,7 @@ impl ClockDevice {
         }
 
         // Step 2: Auth Confirm
-        self.transport.write_frame(Command::AuthConfirm, token.payload()).await?;
-
-        let ack = self.wait_for_ack(Command::AuthConfirm).await?;
+        let ack = self.send_and_wait(Command::AuthConfirm, token.payload()).await?;
         if let AckStatus::Failure(code) = ack.status {
             return Err(ClockError::AuthFailed(AuthFailedError {
                 reason: format!("confirm status: {code:#04x}"),
@@ -296,9 +293,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = timestamp.to_le_bytes();
-        self.transport.write_frame(Command::TimeSync, &payload).await?;
-
-        let ack = self.wait_for_ack(Command::TimeSync).await?;
+        let ack = self.send_and_wait(Command::TimeSync, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x09,
@@ -374,9 +369,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = alarm.encode_set_payload(slot);
-        self.transport.write_frame(Command::SetAlarm, &payload).await?;
-
-        let ack = self.wait_for_ack(Command::SetAlarm).await?;
+        let ack = self.send_and_wait(Command::SetAlarm, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x05,
@@ -395,9 +388,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = [slot.value(), 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-        self.transport.write_frame(Command::SetAlarm, &payload).await?;
-
-        let ack = self.wait_for_ack(Command::SetAlarm).await?;
+        let ack = self.send_and_wait(Command::SetAlarm, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x05,
@@ -528,9 +519,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = settings.encode();
-        self.transport.write_frame(Command::SetSettings, &payload).await?;
-
-        let ack = self.wait_for_ack(Command::SetSettings).await?;
+        let ack = self.send_and_wait(Command::SetSettings, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x01,
@@ -549,9 +538,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = [value.nibble()];
-        self.transport.write_frame(Command::SetBrightness, &payload).await?;
-
-        let ack = self.wait_for_ack(Command::SetBrightness).await?;
+        let ack = self.send_and_wait(Command::SetBrightness, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x03,
@@ -573,9 +560,7 @@ impl ClockDevice {
             Some(v) => vec![v.value()],
             None => vec![],
         };
-        self.transport.write_frame(Command::PreviewRingtone, &payload).await?;
-
-        let ack = self.wait_for_ack(Command::PreviewRingtone).await?;
+        let ack = self.send_and_wait(Command::PreviewRingtone, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x04,
@@ -638,9 +623,10 @@ impl ClockDevice {
         init_frame.extend_from_slice(&total_size.to_le_bytes()[0..3]);
         init_frame.extend_from_slice(&signature);
 
+        let init_receiver = self.prepare_ack(Command::AudioInit).await;
         self.transport.write(CharacteristicUuid::DataWrite, &init_frame).await?;
 
-        let init_ack = self.wait_for_ack_with_timeout(Command::AudioInit, AUDIO_ACK_TIMEOUT_SECS).await?;
+        let init_ack = self.wait_ack(init_receiver, AUDIO_ACK_TIMEOUT_SECS).await?;
         if let AckStatus::Failure(_) = init_ack.status {
             return Err(ClockError::CommandRejected {
                 command: 0x10,
@@ -663,20 +649,23 @@ impl ClockDevice {
             frame.push(0x08); // Command: Audio Data Packet
             frame.extend_from_slice(&payload);
 
-            self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+            let is_block_end = (packet_index + 1).is_multiple_of(AUDIO_PACKETS_PER_BLOCK) || (packet_index + 1) == total_packets;
 
-            packet_index += 1;
-
-            // Wait for ACK at end of each block of 4 packets
-            if packet_index.is_multiple_of(AUDIO_PACKETS_PER_BLOCK) || packet_index == total_packets {
-                let ack = self.wait_for_ack_with_timeout(Command::AudioData, AUDIO_ACK_TIMEOUT_SECS).await?;
+            if is_block_end {
+                let receiver = self.prepare_ack(Command::AudioData).await;
+                self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+                let ack = self.wait_ack(receiver, AUDIO_ACK_TIMEOUT_SECS).await?;
                 if let AckStatus::Failure(_) = ack.status {
                     return Err(ClockError::CommandRejected {
                         command: 0x08,
                         status: ack.status,
                     });
                 }
+            } else {
+                self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
             }
+
+            packet_index += 1;
 
             if packet_index.is_multiple_of(100) {
                 debug!(packet_index, total_packets, "audio upload progress");
