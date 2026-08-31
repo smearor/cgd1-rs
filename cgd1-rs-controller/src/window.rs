@@ -569,11 +569,7 @@ fn create_header_bar(scan_button: &Button, device_dropdown: &DropDown, connect_b
     header.pack_start(scan_button);
 
     // Split-button: [DropDown] [Connect] linked together
-    let split_button = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(0)
-        .css_classes(["linked"])
-        .build();
+    let split_button = Box::builder().orientation(Orientation::Horizontal).spacing(0).css_classes(["linked"]).build();
     split_button.append(device_dropdown);
     split_button.append(connect_button);
     header.pack_start(&split_button);
