@@ -23,4 +23,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.29"
