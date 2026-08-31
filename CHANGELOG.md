@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Infrastructure
 
+- Bumped all GitHub Actions CI runners from `ubuntu-24.04` to
+  `ubuntu-26.04` (including `ubuntu-24.04-arm` → `ubuntu-26.04-arm`)
+
 
 ## 0.1.0 - 2026-xx-xx
 
