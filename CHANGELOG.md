@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scaffolded entry points for all crates
 - mdBook `SUMMARY.md` with 14 chapter outline and stub chapters
 - README.md with project description and crate overview
+- Web frontend
 
 ### Changed
 
