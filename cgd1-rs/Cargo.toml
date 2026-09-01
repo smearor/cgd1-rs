@@ -4,8 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/cgd1-rs"
 rust-version = "1.88"
 description = "Rust library for the Qingping CGD1 Bluetooth alarm clock"
+keywords = ["bluetooth", "ble", "alarm-clock", "qingping", "iot"]
+categories = ["hardware-support", "embedded"]
 
 [dependencies]
 async-trait.workspace = true
