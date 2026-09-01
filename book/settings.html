@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Device Settings - cgd1-rs Documentation</title>
+        <title>Device Settings - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,136 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="device-settings"><a class="header" href="#device-settings">Device Settings</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 stores all configuration in a single 18-byte settings payload, read and written via the Data characteristics.</p>
+<h2 id="settings-payload"><a class="header" href="#settings-payload">Settings Payload</a></h2>
+<pre><code>13 01 [Vol] [Hdr1] [Hdr2] [Flags] [TZ] [Duration] [Brightness] [NightStartH] [NightStartM] [NightEndH] [NightEndM] [TzSign] [NightEn] [Reserved] [Sig 4B]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Offset</th><th>Field</th><th>Bytes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Header</td><td>1</td><td><code>0x13</code> (length byte)</td></tr>
+<tr><td>1</td><td>Command</td><td>1</td><td><code>0x01</code> (set) or <code>0x02</code> (read response)</td></tr>
+<tr><td>2</td><td>Volume</td><td>1</td><td>Sound volume (1–5)</td></tr>
+<tr><td>3</td><td>Hdr1</td><td>1</td><td>Fixed <code>0x58</code></td></tr>
+<tr><td>4</td><td>Hdr2</td><td>1</td><td>Fixed <code>0x02</code></td></tr>
+<tr><td>5</td><td>Flags</td><td>1</td><td>Mode bitfield (see below)</td></tr>
+<tr><td>6</td><td>Timezone</td><td>1</td><td>Offset in 6-minute units (minutes / 6)</td></tr>
+<tr><td>7</td><td>Duration</td><td>1</td><td>Screen light duration in seconds</td></tr>
+<tr><td>8</td><td>Brightness</td><td>1</td><td>Packed brightness (see below)</td></tr>
+<tr><td>9</td><td>NightStartH</td><td>1</td><td>Night mode start hour (0–23)</td></tr>
+<tr><td>10</td><td>NightStartM</td><td>1</td><td>Night mode start minute (0–59)</td></tr>
+<tr><td>11</td><td>NightEndH</td><td>1</td><td>Night mode end hour (0–23)</td></tr>
+<tr><td>12</td><td>NightEndM</td><td>1</td><td>Night mode end minute (0–59)</td></tr>
+<tr><td>13</td><td>TzSign</td><td>1</td><td><code>0x01</code> = positive, <code>0x00</code> = negative</td></tr>
+<tr><td>14</td><td>NightEn</td><td>1</td><td><code>0x01</code> = enabled, <code>0x00</code> = disabled</td></tr>
+<tr><td>15</td><td>Reserved</td><td>1</td><td>Set to <code>0xFF</code></td></tr>
+<tr><td>16–19</td><td>Signature</td><td>4</td><td>Ringtone signature (<code>0xFFFFFFFF</code> when unused)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="flags-bitfield-byte-5"><a class="header" href="#flags-bitfield-byte-5">Flags Bitfield (Byte 5)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Bit</th><th>Mask</th><th>Field</th><th>0</th><th>1</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>0x01</code></td><td>Language</td><td>Chinese</td><td>English</td></tr>
+<tr><td>1</td><td><code>0x02</code></td><td>Time Format</td><td>24-hour</td><td>12-hour</td></tr>
+<tr><td>2</td><td><code>0x04</code></td><td>Temperature Unit</td><td>Celsius</td><td>Fahrenheit</td></tr>
+<tr><td>4</td><td><code>0x10</code></td><td>Alarms</td><td>Enabled</td><td>Disabled</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="brightness-encoding-byte-8"><a class="header" href="#brightness-encoding-byte-8">Brightness Encoding (Byte 8)</a></h3>
+<p>Two nibbles packed into one byte:</p>
+<pre><code>High nibble = daytime_brightness / 10
+Low nibble  = nighttime_brightness / 10
+</code></pre>
+<p>Each value must be 0–150 and a multiple of 10. Typical range is 0–100.</p>
+<p>Example: Daytime 80%, Nighttime 30% → <code>(8 &lt;&lt; 4) | 3 = 0x83</code></p>
+<h3 id="night-mode-workaround"><a class="header" href="#night-mode-workaround">Night Mode Workaround</a></h3>
+<p>Disabling night mode is done by setting a 1-minute night mode window (<code>00:00</code>–<code>00:01</code>). Even the official app does this.</p>
+<h2 id="protocol"><a class="header" href="#protocol">Protocol</a></h2>
+<h3 id="read-settings"><a class="header" href="#read-settings">Read Settings</a></h3>
+<p>Send <code>01 02</code> to Data Write. Response on Data Notify: <code>13 02 [Settings Payload 18B]</code></p>
+<h3 id="write-settings"><a class="header" href="#write-settings">Write Settings</a></h3>
+<p>Send <code>13 01 [Settings Payload 18B]</code> to Data Write. ACK: <code>04 ff 01 00 00</code></p>
+<h3 id="set-immediate-brightness-preview"><a class="header" href="#set-immediate-brightness-preview">Set Immediate Brightness (Preview)</a></h3>
+<p>Send <code>02 03 [Value]</code> to Data Write, where Value is brightness / 10 (0–15).</p>
+<p>ACK: <code>04 ff 03 00 00</code></p>
+<h3 id="preview-ringtone"><a class="header" href="#preview-ringtone">Preview Ringtone</a></h3>
+<p>Plays a generic beep sound for testing volume.</p>
+<ul>
+<li>Current volume: <code>01 04</code></li>
+<li>Specific volume: <code>02 04 [Vol]</code> (volume 1–5)</li>
+</ul>
+<p>ACK: <code>04 ff 04 00 00</code></p>
+<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
+<h3 id="read-settings-1"><a class="header" href="#read-settings-1">Read settings</a></h3>
+<pre><code class="language-bash">cgd1 settings-read AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="write-settings-1"><a class="header" href="#write-settings-1">Write settings</a></h3>
+<p>Only specified fields are updated; unspecified fields are read from the device first and preserved:</p>
+<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF \
+    --volume 3 \
+    --brightness 80 \
+    --night-brightness 30 \
+    --timezone 60 \
+    --time-format 24 \
+    --temp-unit C \
+    --language en
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Values</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--volume</code></td><td>1–5</td><td>Sound volume</td></tr>
+<tr><td><code>--brightness</code></td><td>0–150 (multiple of 10)</td><td>Daytime brightness</td></tr>
+<tr><td><code>--night-brightness</code></td><td>0–150 (multiple of 10)</td><td>Nighttime brightness</td></tr>
+<tr><td><code>--timezone</code></td><td>-720 to +840 (minutes)</td><td>Timezone offset</td></tr>
+<tr><td><code>--time-format</code></td><td>12 or 24</td><td>Time display format</td></tr>
+<tr><td><code>--temp-unit</code></td><td>C or F</td><td>Temperature unit</td></tr>
+<tr><td><code>--language</code></td><td>en, zh, de, ja</td><td>Display language</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="set-brightness-preview"><a class="header" href="#set-brightness-preview">Set brightness (preview)</a></h3>
+<pre><code class="language-bash">cgd1 brightness AA:BB:CC:DD:EE:FF 80
+</code></pre>
+<h3 id="preview-ringtone-1"><a class="header" href="#preview-ringtone-1">Preview ringtone</a></h3>
+<pre><code class="language-bash">cgd1 ringtone-preview AA:BB:CC:DD:EE:FF --volume 3
+</code></pre>
+<h2 id="library-api"><a class="header" href="#library-api">Library API</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{Brightness, Language, TemperatureUnit, TimeFormat, Timezone, Volume};
+
+// Read current settings
+let settings = device.read_settings().await?;
+println!("Volume: {}", settings.volume);
+println!("Brightness: {}", settings.brightness);
+
+// Modify and write
+let mut settings = device.read_settings().await?;
+settings.volume = Volume::new(3)?;
+settings.brightness = Brightness::new(80)?;
+settings.time_format = TimeFormat::TwentyFourHour;
+settings.temperature_unit = TemperatureUnit::Celsius;
+settings.language = Language::English;
+device.write_settings(&amp;settings).await?;
+
+// Set immediate brightness (preview)
+device.set_brightness(Brightness::new(80)?).await?;
+
+// Preview ringtone
+device.preview_ringtone(Some(Volume::new(3)?)).await?;
+<span class="boring">}</span></code></pre>
 
                     </main>
 

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Audio Upload - cgd1-rs Documentation</title>
+        <title>Audio Upload - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,165 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="audio-upload"><a class="header" href="#audio-upload">Audio Upload</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 supports uploading custom ringtones via a block-based BLE transfer protocol. Audio is sent as 8-bit unsigned PCM at 8 kHz mono.</p>
+<h2 id="audio-format"><a class="header" href="#audio-format">Audio Format</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Property</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Format</td><td>8-bit unsigned PCM</td></tr>
+<tr><td>Sample rate</td><td>8000 Hz</td></tr>
+<tr><td>Channels</td><td>Mono</td></tr>
+<tr><td>Max size</td><td>~98 KB (~12 seconds)</td></tr>
+<tr><td>Padding</td><td>Multiple of 512 bytes (<code>00</code> end marker + <code>FF</code> fill)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="ringtone-signatures"><a class="header" href="#ringtone-signatures">Ringtone Signatures</a></h2>
+<h3 id="built-in-ringtones"><a class="header" href="#built-in-ringtones">Built-in Ringtones</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Signature</th><th>Name</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fdc366a5</code></td><td>Beep</td></tr>
+<tr><td><code>0961bb77</code></td><td>Digital Ringtone</td></tr>
+<tr><td><code>ba2c2c8c</code></td><td>Digital Ringtone 2</td></tr>
+<tr><td><code>ea2d4c02</code></td><td>Cuckoo</td></tr>
+<tr><td><code>791bacb3</code></td><td>Telephone Ringtone</td></tr>
+<tr><td><code>1d019fd6</code></td><td>Exotic Guitar</td></tr>
+<tr><td><code>6e70b659</code></td><td>Lively Piano</td></tr>
+<tr><td><code>8f004886</code></td><td>Story Piano</td></tr>
+<tr><td><code>26522519</code></td><td>Forest Piano</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="custom-slots"><a class="header" href="#custom-slots">Custom Slots</a></h3>
+<p>Two alternating slot signatures are used for custom uploads:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Signature</th><th>Name</th><th>Constant</th></tr>
+</thead>
+<tbody>
+<tr><td><code>deaddead</code></td><td>Custom Slot A</td><td><code>RingtoneSignature::CustomSlotA</code></td></tr>
+<tr><td><code>beefbeef</code></td><td>Custom Slot B</td><td><code>RingtoneSignature::CustomSlotB</code></td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p>Always alternate between slots when uploading new custom audio. The device may reject uploads if the target signature matches the currently active ringtone.</p>
+</blockquote>
+<h2 id="upload-protocol"><a class="header" href="#upload-protocol">Upload Protocol</a></h2>
+<pre class="mermaid">sequenceDiagram
+    participant App as Application
+    participant Device as ClockDevice
+    participant CGD1 as CGD1 Device
+
+    Note over App,CGD1: Step 0: Prepare audio
+    App-&gt;&gt;App: Validate + pad to 512-byte multiple
+
+    Note over App,CGD1: Step 1: MTU Exchange
+    App-&gt;&gt;CGD1: Request MTU 247
+    CGD1--&gt;&gt;App: Negotiated MTU
+
+    Note over App,CGD1: Step 2: Audio Init
+    App-&gt;&gt;Device: upload_ringtone(audio, signature)
+    Device-&gt;&gt;CGD1: 08 10 [Size 3B LE] [Signature 4B]
+    CGD1--&gt;&gt;Device: ACK 04 ff 10 00 [Payload]
+
+    Note over App,CGD1: Step 3: Audio Data (block-based)
+    loop Every 4 packets (512 bytes)
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        CGD1--&gt;&gt;App: ACK 04 ff 08 00 [Payload]
+    end
+
+    Note over App,CGD1: Step 4: Completion
+    Note over CGD1: Device stores audio under signature
+</pre>
+
+<h3 id="step-0--prepare-the-payload"><a class="header" href="#step-0--prepare-the-payload">Step 0 — Prepare the Payload</a></h3>
+<ol>
+<li>Decode/resample the source file to 8-bit unsigned PCM, 8000 Hz, mono</li>
+<li>Pad to a multiple of 512 bytes: first padding byte is <code>00</code> (end-of-audio marker), remaining are <code>FF</code></li>
+<li>Keep the total under ~98 KB</li>
+</ol>
+<p>The <code>validate_audio</code> function checks these constraints and returns an error if they are violated.</p>
+<h3 id="step-1--mtu-exchange"><a class="header" href="#step-1--mtu-exchange">Step 1 — MTU Exchange</a></h3>
+<p>Before uploading, an MTU exchange is performed to ensure the 130-byte packets (128 bytes audio + 2-byte header) fit within a single BLE packet:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mtu = transport.request_mtu(247).await?;
+if mtu &lt; 130 {
+    return Err(ClockError::MtuTooSmall { mtu });
+}
+<span class="boring">}</span></code></pre>
+<h3 id="step-2--audio-init"><a class="header" href="#step-2--audio-init">Step 2 — Audio Init</a></h3>
+<p>Send <code>08 10 [Size 3B LE] [Signature 4B]</code> to Data Write.</p>
+<ul>
+<li><strong>Size</strong>: Padded audio length in bytes (Little Endian, 3 bytes)</li>
+<li><strong>Signature</strong>: Target ringtone slot signature</li>
+</ul>
+<p>Wait for ACK: <code>04 ff 10 [Status] [Payload]</code> (status <code>00</code> = success)</p>
+<h3 id="step-3--send-audio-data"><a class="header" href="#step-3--send-audio-data">Step 3 — Send Audio Data</a></h3>
+<ul>
+<li><strong>Packet format</strong>: <code>81 08 [Audio 128B]</code> (130 bytes on the wire)</li>
+<li>A trailing packet shorter than 128 bytes is padded with <code>FF</code></li>
+<li><strong>Packets per block</strong>: 4 (512 bytes of audio per block)</li>
+<li>After every 4th packet (or the last packet), wait for block ACK: <code>04 ff 08 [Status] [Payload]</code></li>
+<li>Each packet is written with write-with-response</li>
+</ul>
+<h3 id="step-4--completion"><a class="header" href="#step-4--completion">Step 4 — Completion</a></h3>
+<p>After the last block ACK, the device stores the audio under the given signature. Select it as the active ringtone by writing the same signature in the settings payload (bytes 16–19).</p>
+<blockquote>
+<p><strong>Important</strong>: The transfer must own the connection. Alarm reads, settings reads, RSSI polling, or notification re-subscriptions issued in parallel can abort the upload. The library holds a mutex for the whole transfer.</p>
+</blockquote>
+<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
+<pre><code class="language-bash">cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>file</code></td><td>Path to 8-bit PCM audio file (8 kHz, mono)</td></tr>
+<tr><td><code>--signature</code></td><td>Ringtone name (<code>CustomSlotA</code>, <code>CustomSlotB</code>) or 4-byte hex (e.g., <code>deadbeef</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<p>After uploading, select the ringtone by writing its signature to the device settings:</p>
+<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF --volume 3
+</code></pre>
+<blockquote>
+<p>The CLI does not yet support writing the ringtone signature directly via <code>settings-write</code>. Use the library API or the GTK controller for this.</p>
+</blockquote>
+<h2 id="library-api"><a class="header" href="#library-api">Library API</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::RingtoneSignature;
+use std::path::Path;
+
+// Upload from file
+let audio = std::fs::read("audio.pcm")?;
+device.upload_ringtone(&amp;audio, RingtoneSignature::CustomSlotA).await?;
+
+// Or upload from bytes
+let audio: Vec&lt;u8&gt; = generate_pcm_audio();
+device.upload_ringtone(&amp;audio, RingtoneSignature::CustomSlotA).await?;
+
+// Select as active ringtone
+let mut settings = device.read_settings().await?;
+settings.ringtone_signature = RingtoneSignature::CustomSlotA;
+device.write_settings(&amp;settings).await?;
+<span class="boring">}</span></code></pre>
 
                     </main>
 

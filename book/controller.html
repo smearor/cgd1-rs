@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Controller - cgd1-rs Documentation</title>
+        <title>Controller - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,139 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="controller"><a class="header" href="#controller">Controller</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The <code>cgd1-rs-controller</code> crate is a GTK 4 desktop application for managing CGD1 devices. It provides a graphical interface for scanning, connecting, viewing sensor data, editing alarms, adjusting settings, and uploading ringtones.</p>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<pre><code class="language-bash"># Install GTK 4 development libraries first (see Getting Started)
+cargo build --release -p cgd1-rs-controller
+</code></pre>
+<p>Run the application:</p>
+<pre><code class="language-bash">cargo run --release -p cgd1-rs-controller
+</code></pre>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre class="mermaid">flowchart TB
+    subgraph App["ClockControllerApp"]
+        Window["MainWindow&lt;br/&gt;(sidebar + device tabs)"]
+        subgraph Dialogs["Dialog System"]
+            Alarms["Alarms Dialog"]
+            Audio["Audio Dialog"]
+            Info["Info Dialog"]
+            Settings["Settings Dialog"]
+        end
+        Display["Display Module&lt;br/&gt;(Seven-segment clock)"]
+    end
+
+    Core["cgd1-rs&lt;br/&gt;(Core Library)"]
+    Device["CGD1 Device"]
+
+    Window --&gt; Dialogs
+    Window --&gt; Display
+    Window --&gt; Core
+    Core --&gt; Device
+</pre>
+
+<h3 id="clockcontrollerapp"><a class="header" href="#clockcontrollerapp">ClockControllerApp</a></h3>
+<p>The main <code>gtk4::Application</code> subclass. Manages the application lifecycle, window creation, and device connections.</p>
+<h3 id="mainwindow"><a class="header" href="#mainwindow">MainWindow</a></h3>
+<p>The main window features a sidebar for device management and a tabbed content area. Each connected device gets its own tab showing:</p>
+<ul>
+<li><strong>Clock display</strong> — Seven-segment style time display using a custom font</li>
+<li><strong>Sensor cards</strong> — Temperature, humidity, and battery</li>
+<li><strong>Device info</strong> — Firmware version, MAC address</li>
+</ul>
+<h3 id="dialog-system"><a class="header" href="#dialog-system">Dialog System</a></h3>
+<p>Instead of separate widget files, the controller uses a modular <code>dialog/</code> directory:</p>
+<ul>
+<li><strong><code>dialog/alarms.rs</code></strong> — Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle</li>
+<li><strong><code>dialog/audio.rs</code></strong> — Ringtone upload dialog with file picker and signature selection</li>
+<li><strong><code>dialog/info.rs</code></strong> — Device information dialog (firmware, battery, MAC)</li>
+<li><strong><code>dialog/settings.rs</code></strong> — Settings panel with sliders, spin buttons, and combo boxes for all device settings</li>
+</ul>
+<h3 id="display-module"><a class="header" href="#display-module">Display Module</a></h3>
+<p>The <code>display/</code> directory contains a custom seven-segment clock widget (<code>seven_segment.rs</code>) that renders the time using a DSEG7 font. The font files are bundled as assets:</p>
+<ul>
+<li><code>assets/fonts/DSEG7Classic-Regular.ttf</code></li>
+<li><code>assets/fonts/DSEG7Classic-Light.ttf</code></li>
+</ul>
+<h2 id="event-loop-integration"><a class="header" href="#event-loop-integration">Event Loop Integration</a></h2>
+<p>The GTK controller bridges async BLE operations with the GTK event loop using <code>glib::MainContext::spawn_local</code>. All spawned tasks accept a <code>CancellationToken</code> so they can be aborted when the associated view is closed:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn watch_sensor_events(
+    device: ClockDevice,
+    sensor_card: SensorCard,
+    cancel_token: tokio_util::sync::CancellationToken,
+) {
+    let mut receiver = device.subscribe();
+    spawn_local(async move {
+        loop {
+            tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() =&gt; break,
+                event = receiver.recv() =&gt; {
+                    match event {
+                        Ok(ClockEvent::SensorUpdate { temperature, humidity }) =&gt; {
+                            glib::idle_add_local_once(move || {
+                                sensor_card.update(temperature, humidity);
+                            });
+                        }
+                        Ok(ClockEvent::Disconnected) =&gt; break,
+                        _ =&gt; {}
+                    }
+                }
+            }
+        }
+    });
+}
+<span class="boring">}</span></code></pre>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<h3 id="device-scanning"><a class="header" href="#device-scanning">Device Scanning</a></h3>
+<p>The scan dialog shows nearby devices with their advertisement data (temperature, humidity, battery). Clicking a device initiates connection and authentication.</p>
+<h3 id="sensor-monitoring"><a class="header" href="#sensor-monitoring">Sensor Monitoring</a></h3>
+<p>Real-time temperature and humidity are displayed via sensor cards that update from the <code>ClockEvent</code> stream. Battery level is shown with a percentage label.</p>
+<h3 id="alarm-editing"><a class="header" href="#alarm-editing">Alarm Editing</a></h3>
+<p>The alarm editor dialog shows all 16 slots in a list. Each row displays:</p>
+<ul>
+<li>Slot index</li>
+<li>Time (HH:MM)</li>
+<li>Repeat mask (as day names)</li>
+<li>Enabled toggle</li>
+<li>Snooze toggle</li>
+</ul>
+<p>Editing a row sends the updated alarm to the device immediately.</p>
+<h3 id="settings-panel"><a class="header" href="#settings-panel">Settings Panel</a></h3>
+<p>The settings dialog provides graphical controls for all device settings:</p>
+<ul>
+<li><strong>Volume</strong> — Slider (1–5)</li>
+<li><strong>Brightness</strong> — Slider (0–100, step 10)</li>
+<li><strong>Night brightness</strong> — Slider (0–100, step 10)</li>
+<li><strong>Night mode window</strong> — Hour/minute spin buttons for start and end</li>
+<li><strong>Timezone</strong> — Spin button (-720 to +840 minutes)</li>
+<li><strong>Time format</strong> — Combo box (12h / 24h)</li>
+<li><strong>Temperature unit</strong> — Combo box (°C / °F)</li>
+<li><strong>Language</strong> — Combo box (English, Chinese, German, Japanese)</li>
+<li><strong>Ringtone</strong> — Combo box with built-in and custom ringtones</li>
+</ul>
+<p>Changes are applied immediately to the device.</p>
+<h3 id="ringtone-upload"><a class="header" href="#ringtone-upload">Ringtone Upload</a></h3>
+<p>The audio dialog provides a file picker for selecting a PCM audio file and a signature selector for choosing the target slot. The upload progress is shown with a progress bar.</p>
+<h2 id="css-styling"><a class="header" href="#css-styling">CSS Styling</a></h2>
+<p>The application uses CSS classes for styling:</p>
+<pre><code class="language-css">.sensor-card {
+    padding: 12px;
+    border-radius: 8px;
+    background-color: @theme_base_color;
+}
+
+.alarm-slot-row {
+    padding: 6px 12px;
+}
+
+.settings-panel scale {
+    margin: 6px 0;
+}
+</code></pre>
+<h2 id="platform-support"><a class="header" href="#platform-support">Platform Support</a></h2>
+<p>The GTK 4 controller requires Linux with GTK 4 development libraries. It is not supported on macOS or Windows.</p>
 
                     </main>
 

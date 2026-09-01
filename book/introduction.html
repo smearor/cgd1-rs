@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - cgd1-rs Documentation</title>
+        <title>Introduction - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,69 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p><strong>cgd1-rs</strong> is a Rust library and toolkit for the Qingping CGD1 Bluetooth alarm clock. It provides a complete BLE transport layer, command protocol implementation, and three frontends: a command-line tool, a GTK 4 desktop application, and a WebSocket/REST server.</p>
+<h2 id="supported-hardware"><a class="header" href="#supported-hardware">Supported Hardware</a></h2>
+<p>The Qingping CGD1 is a Bluetooth 5.0 LCD alarm clock with built-in temperature and humidity sensors. It is manufactured by ClearGrass/Qingping.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Property</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Model</td><td>CGD1</td></tr>
+<tr><td>Connectivity</td><td>Bluetooth 5.0 (BLE)</td></tr>
+<tr><td>Sensors</td><td>Temperature, humidity (Sensirion)</td></tr>
+<tr><td>Power</td><td>2 × AA batteries, &gt; 1 year standby</td></tr>
+<tr><td>Display</td><td>LCD with adjustable backlight</td></tr>
+<tr><td>Alarm slots</td><td>Up to 16</td></tr>
+<tr><td>Custom ringtones</td><td>2 slots, ~12 s / 98 KB max</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="https://github.com/smearor/cgd1-rs/blob/main/docs/HARDWARE.md">Hardware Notes</a> for full specifications.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<ul>
+<li><strong>BLE transport</strong>: Scan, connect, authenticate, and communicate with the CGD1 via Bluetooth Low Energy</li>
+<li><strong>Time synchronization</strong>: Sync the device clock to the current system time</li>
+<li><strong>Alarm management</strong>: Read, set, and delete up to 16 alarms with day-of-week repeat masks and snooze</li>
+<li><strong>Device settings</strong>: Read and write volume, brightness, timezone, time format, temperature unit, language, night mode, and screen duration</li>
+<li><strong>Sensor monitoring</strong>: Real-time temperature and humidity via BLE notifications, plus passive advertisement parsing</li>
+<li><strong>Battery monitoring</strong>: Read battery level via the standard GATT battery service</li>
+<li><strong>Audio upload</strong>: Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol</li>
+<li><strong>Firmware query</strong>: Read the device firmware version string</li>
+<li><strong>Reconnection</strong>: Automatic reconnection with exponential backoff and full state recovery</li>
+</ul>
+<h2 id="crates"><a class="header" href="#crates">Crates</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Crate</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cgd1-rs</code></td><td>Core library: BLE transport, auth, commands, events, device handle</td></tr>
+<tr><td><code>cgd1-rs-cli</code></td><td>Command-line tool with 14 subcommands and interactive REPL</td></tr>
+<tr><td><code>cgd1-rs-controller</code></td><td>GTK 4 desktop application with sensor display, alarm editor, and settings panel</td></tr>
+<tr><td><code>cgd1-rs-ws</code></td><td>WebSocket and REST server for network access to the device</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h2>
+<pre class="mermaid">graph TD
+    Core["cgd1-rs&lt;br/&gt;(Core Library)"]
+    CLI["cgd1-rs-cli&lt;br/&gt;(CLI Tool)"]
+    Controller["cgd1-rs-controller&lt;br/&gt;(GTK 4 App)"]
+    WS["cgd1-rs-ws&lt;br/&gt;(WebSocket Server)"]
+    Device["CGD1 Device&lt;br/&gt;(BLE)"]
+
+    CLI --&gt; Core
+    Controller --&gt; Core
+    WS --&gt; Core
+    Core --&gt; Device
+</pre>
+
+<p>All three frontends build on the same core library, which abstracts the BLE protocol, authentication, and command/response handling. See <a href="./architecture.html">Architecture</a> for details.</p>
+<h2 id="license"><a class="header" href="#license">License</a></h2>
+<p>MIT. See <a href="https://github.com/smearor/cgd1-rs/blob/main/LICENSE">LICENSE</a>.</p>
 
                     </main>
 

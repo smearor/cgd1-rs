@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>BLE Protocol - cgd1-rs User Guide</title>
+        <title>Troubleshooting - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -177,97 +177,150 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="ble-protocol"><a class="header" href="#ble-protocol">BLE Protocol</a></h1>
-<p>This chapter summarizes the Qingping CGD1 BLE protocol as implemented by <code>cgd1-rs</code>. For the full reverse-engineered specification, see <a href="https://github.com/smearor/cgd1-rs/blob/main/docs/BLE.md">BLE.md</a>.</p>
-<h2 id="gatt-service--characteristics"><a class="header" href="#gatt-service--characteristics">GATT Service &amp; Characteristics</a></h2>
-<h3 id="custom-primary-service"><a class="header" href="#custom-primary-service">Custom Primary Service</a></h3>
-<pre><code>22210000-554a-4546-5542-46534450466d
+                        <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
+<h2 id="ble-connection-issues"><a class="header" href="#ble-connection-issues">BLE Connection Issues</a></h2>
+<h3 id="device-not-found-during-scan"><a class="header" href="#device-not-found-during-scan">Device not found during scan</a></h3>
+<p><strong>Symptom</strong>: <code>cgd1 scan</code> returns no devices.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Ensure the CGD1 is powered on (batteries inserted)</li>
+<li>Move closer to the device (within 5 meters)</li>
+<li>Verify Bluetooth is enabled on the host:
+<pre><code class="language-bash">bluetoothctl power on
 </code></pre>
-<h3 id="characteristics"><a class="header" href="#characteristics">Characteristics</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Name</th><th>UUID</th><th>Direction</th></tr>
-</thead>
-<tbody>
-<tr><td>Auth Write</td><td><code>00000001-0000-1000-8000-00805f9b34fb</code></td><td>Host → Device</td></tr>
-<tr><td>Auth Notify</td><td><code>00000002-0000-1000-8000-00805f9b34fb</code></td><td>Device → Host</td></tr>
-<tr><td>Data Write</td><td><code>0000000b-0000-1000-8000-00805f9b34fb</code></td><td>Host → Device</td></tr>
-<tr><td>Data Notify</td><td><code>0000000c-0000-1000-8000-00805f9b34fb</code></td><td>Device → Host</td></tr>
-<tr><td>Sensor Notify</td><td><code>00000100-0000-1000-8000-00805f9b34fb</code></td><td>Device → Host</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="standard-services"><a class="header" href="#standard-services">Standard Services</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Service</th><th>UUID</th><th>Characteristic</th><th>UUID</th><th>Format</th></tr>
-</thead>
-<tbody>
-<tr><td>Battery</td><td><code>0x180f</code></td><td>Battery Level</td><td><code>0x2a19</code></td><td>1 byte (0–100%)</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="frame-format"><a class="header" href="#frame-format">Frame Format</a></h2>
-<p>Every frame follows the same structure:</p>
-<pre><code>Request:  [Length] [Command] [Payload...]
-ACK:      04 ff [Command] [Status] [Payload 1B]
+</li>
+<li>Check that the BLE adapter is available:
+<pre><code class="language-bash">hciconfig
 </code></pre>
-<p>The length byte counts the bytes that follow it. An ACK is always exactly 5 bytes: <code>04 ff [Command] [Status] [Payload]</code>. Status <code>00</code> means success.</p>
-<h2 id="command-summary"><a class="header" href="#command-summary">Command Summary</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Length</th><th>Command</th><th>Operation</th><th>Characteristic</th></tr>
-</thead>
-<tbody>
-<tr><td><code>0x11</code></td><td><code>0x01</code></td><td>Auth Init</td><td>Auth Write</td></tr>
-<tr><td><code>0x11</code></td><td><code>0x02</code></td><td>Auth Confirm</td><td>Auth Write</td></tr>
-<tr><td><code>0x05</code></td><td><code>0x09</code></td><td>Time Sync</td><td>Auth Write</td></tr>
-<tr><td><code>0x01</code></td><td><code>0x0d</code></td><td>Read Firmware</td><td>Auth Write</td></tr>
-<tr><td><code>0x01</code></td><td><code>0x02</code></td><td>Read Settings</td><td>Data Write</td></tr>
-<tr><td><code>0x13</code></td><td><code>0x01</code></td><td>Set Settings</td><td>Data Write</td></tr>
-<tr><td><code>0x02</code></td><td><code>0x03</code></td><td>Set Brightness</td><td>Data Write</td></tr>
-<tr><td><code>0x01</code></td><td><code>0x04</code></td><td>Preview Ringtone (current vol)</td><td>Data Write</td></tr>
-<tr><td><code>0x02</code></td><td><code>0x04</code></td><td>Preview Ringtone (specific vol)</td><td>Data Write</td></tr>
-<tr><td><code>0x01</code></td><td><code>0x06</code></td><td>Read Alarms</td><td>Data Write</td></tr>
-<tr><td><code>0x07</code></td><td><code>0x05</code></td><td>Set/Delete Alarm</td><td>Data Write</td></tr>
-<tr><td><code>0x08</code></td><td><code>0x10</code></td><td>Audio Init</td><td>Data Write</td></tr>
-<tr><td><code>0x81</code></td><td><code>0x08</code></td><td>Audio Data Packet</td><td>Data Write</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="connection-lifecycle"><a class="header" href="#connection-lifecycle">Connection Lifecycle</a></h2>
-<pre class="mermaid">graph TD
-    Scan["Scan (FDCD)"] --&gt; Connect["Connect (GATT)"]
-    Connect --&gt; Auth["Auth (Token)"]
-    Auth --&gt; SyncTime["Sync Time"]
-    SyncTime --&gt; ReadConfig["Read Config / Sensors"]
-    ReadConfig --&gt; Operate["Operate Alarms / Settings"]
-    Operate --&gt; Idle["Idle"]
-    Idle --&gt; Disconnect["Disconnect"]
-    Disconnect --&gt; Scan
-</pre>
-
-<h3 id="passive-vs-connected"><a class="header" href="#passive-vs-connected">Passive vs Connected</a></h3>
+</li>
+<li>Stop other BLE applications that may be holding the adapter (e.g., other scanning tools)</li>
+</ol>
+<h3 id="connection-fails"><a class="header" href="#connection-fails">Connection fails</a></h3>
+<p><strong>Symptom</strong>: <code>Error: Transport(NotConnected)</code> or <code>Error: Transport(Timeout)</code>.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Ensure the device is not currently connected to another host (the CGD1 supports only one active BLE connection)</li>
+<li>Restart Bluetooth:
+<pre><code class="language-bash">sudo systemctl restart bluetooth
+</code></pre>
+</li>
+<li>Remove any existing pairing from the OS Bluetooth manager:
+<pre><code class="language-bash">bluetoothctl remove AA:BB:CC:DD:EE:FF
+</code></pre>
+</li>
+<li>Try connecting again after a few seconds</li>
+</ol>
+<h3 id="connection-drops-unexpectedly"><a class="header" href="#connection-drops-unexpectedly">Connection drops unexpectedly</a></h3>
+<p><strong>Symptom</strong>: <code>ClockEvent::Disconnected</code> events or <code>Error: Transport(Timeout)</code> during operations.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Check battery level — low batteries can cause disconnections</li>
+<li>Reduce distance between host and device</li>
+<li>Avoid 2.4 GHz Wi-Fi interference (switch to 5 GHz or change Wi-Fi channel)</li>
+<li>The library will attempt automatic reconnection with exponential backoff</li>
+</ol>
+<h2 id="authentication-issues"><a class="header" href="#authentication-issues">Authentication Issues</a></h2>
+<h3 id="authentication-fails-on-first-connection"><a class="header" href="#authentication-fails-on-first-connection">Authentication fails on first connection</a></h3>
+<p><strong>Symptom</strong>: <code>Error: AuthFailed</code> with <code>is_new_token: true</code>.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>This should not happen on a fresh device. Ensure you are connecting to the correct MAC address</li>
+<li>Try generating a new token by deleting the token file:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
+</code></pre>
+</li>
+<li>Run <code>sync-time</code> again to generate and store a new token</li>
+</ol>
+<h3 id="authentication-fails-after-previously-working"><a class="header" href="#authentication-fails-after-previously-working">Authentication fails after previously working</a></h3>
+<p><strong>Symptom</strong>: <code>Error: AuthFailed</code> with <code>is_new_token: false</code>.</p>
+<p><strong>Cause</strong>: The device was likely paired with a different app (e.g., the official Qingping app), which overwrites the authentication token.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Delete the stored token:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
+</code></pre>
+</li>
+<li>Reconnect with <code>sync-time</code> to generate a new token</li>
+<li>Note: The official app and <code>cgd1-rs</code> cannot share the same token. Using one will invalidate the other’s token</li>
+</ol>
+<h3 id="sync-time-succeeds-but-other-commands-fail"><a class="header" href="#sync-time-succeeds-but-other-commands-fail"><code>sync-time</code> succeeds but other commands fail</a></h3>
+<p><strong>Symptom</strong>: <code>sync-time</code> works, but <code>alarm-set</code> or <code>settings-write</code> returns errors.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify the device is still connected (<code>cgd1 battery &lt;mac&gt;</code>)</li>
+<li>Check that the token was persisted (look for the token file in <code>~/.local/share/cgd1-rs/tokens/</code>)</li>
+<li>Try disconnecting and reconnecting</li>
+</ol>
+<h2 id="audio-upload-issues"><a class="header" href="#audio-upload-issues">Audio Upload Issues</a></h2>
+<h3 id="upload-fails-with-mtu-error"><a class="header" href="#upload-fails-with-mtu-error">Upload fails with MTU error</a></h3>
+<p><strong>Symptom</strong>: <code>Error: MtuTooSmall { mtu: ... }</code>.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>The device or host does not support a sufficient MTU. This is a hardware limitation</li>
+<li>Try restarting Bluetooth and reconnecting</li>
+<li>Some BLE adapters negotiate a lower MTU on first connection; disconnect and reconnect</li>
+</ol>
+<h3 id="upload-aborts-mid-transfer"><a class="header" href="#upload-aborts-mid-transfer">Upload aborts mid-transfer</a></h3>
+<p><strong>Symptom</strong>: Upload starts but fails partway through.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Ensure no other BLE operations are running concurrently (alarm reads, settings reads, RSSI polling)</li>
+<li>Keep the device close to the host during the entire transfer</li>
+<li>Verify the audio file is valid 8-bit unsigned PCM at 8 kHz mono</li>
+<li>Check the file size is under 98 KB</li>
+</ol>
+<h3 id="audio-plays-incorrectly-after-upload"><a class="header" href="#audio-plays-incorrectly-after-upload">Audio plays incorrectly after upload</a></h3>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify the source audio is 8-bit unsigned PCM (not signed, not 16-bit)</li>
+<li>Verify the sample rate is exactly 8000 Hz</li>
+<li>Verify the audio is mono</li>
+<li>Try alternating the signature slot (<code>CustomSlotA</code> → <code>CustomSlotB</code>)</li>
+</ol>
+<h2 id="gtk-controller-issues"><a class="header" href="#gtk-controller-issues">GTK Controller Issues</a></h2>
+<h3 id="application-fails-to-start"><a class="header" href="#application-fails-to-start">Application fails to start</a></h3>
+<p><strong>Symptom</strong>: <code>error: failed to run command: cgd1-rs-controller</code> or GTK warnings.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify GTK 4 is installed:
+<pre><code class="language-bash">pkg-config --modversion gtk4
+</code></pre>
+</li>
+<li>Check for missing CSS or font resources</li>
+</ol>
+<h3 id="sensor-cards-not-updating"><a class="header" href="#sensor-cards-not-updating">Sensor cards not updating</a></h3>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify the device is connected (check the sidebar)</li>
+<li>Try disconnecting and reconnecting</li>
+<li>Check the application logs with verbosity enabled</li>
+</ol>
+<h2 id="virtual-backend"><a class="header" href="#virtual-backend">Virtual Backend</a></h2>
+<h3 id="using-the-virtual-backend-for-testing"><a class="header" href="#using-the-virtual-backend-for-testing">Using the virtual backend for testing</a></h3>
+<p>The <code>--backend virtual</code> flag uses an in-memory device simulation:</p>
+<pre><code class="language-bash">cgd1 --backend virtual scan
+cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
+cgd1 --backend virtual alarm-list AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>This works without any BLE hardware and is useful for testing CLI behavior, scripts, and the WebSocket server.</p>
+<h2 id="reporting-issues"><a class="header" href="#reporting-issues">Reporting Issues</a></h2>
+<p>If you encounter a bug or have a feature request, please open an issue on <a href="https://github.com/smearor/cgd1-rs/issues">GitHub</a>.</p>
+<p>Include:</p>
 <ul>
-<li><strong>Passive (no connection)</strong>: Sensor data (temperature, humidity, battery) via BLE advertisements with <code>FDCD</code> service-data UUID. No authentication required.</li>
-<li><strong>Connected</strong>: Authentication required for all write operations. Sensor data also available via real-time notify characteristic. Battery via standard GATT battery service.</li>
+<li>The command or code that triggered the issue</li>
+<li>The full error output (use <code>-vvv</code> for maximum verbosity)</li>
+<li>Your OS and Bluetooth adapter model</li>
+<li>The device firmware version (<code>cgd1 firmware &lt;mac&gt;</code>)</li>
 </ul>
-<p>For protocol details on each operation, see the dedicated chapters: <a href="./authentication.html">Authentication</a>, <a href="./alarms.html">Alarms</a>, <a href="./settings.html">Settings</a>, <a href="./sensors.html">Sensors &amp; Battery</a>, <a href="./audio.html">Audio Upload</a>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="architecture.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="examples.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="connecting.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -275,13 +328,10 @@ ACK:      04 ff [Command] [Status] [Payload 1B]
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="architecture.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="examples.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="connecting.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
-                    </a>
             </nav>
 
         </div>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>cgd1-rs Documentation</title>
+        <title>cgd1-rs User Guide</title>
         <meta name="robots" content="noindex">
 
 
@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -138,7 +138,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -179,46 +179,2052 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p><strong>cgd1-rs</strong> is a Rust library and toolkit for the Qingping CGD1 Bluetooth alarm clock. It provides a complete BLE transport layer, command protocol implementation, and three frontends: a command-line tool, a GTK 4 desktop application, and a WebSocket/REST server.</p>
+<h2 id="supported-hardware"><a class="header" href="#supported-hardware">Supported Hardware</a></h2>
+<p>The Qingping CGD1 is a Bluetooth 5.0 LCD alarm clock with built-in temperature and humidity sensors. It is manufactured by ClearGrass/Qingping.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Property</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Model</td><td>CGD1</td></tr>
+<tr><td>Connectivity</td><td>Bluetooth 5.0 (BLE)</td></tr>
+<tr><td>Sensors</td><td>Temperature, humidity (Sensirion)</td></tr>
+<tr><td>Power</td><td>2 × AA batteries, &gt; 1 year standby</td></tr>
+<tr><td>Display</td><td>LCD with adjustable backlight</td></tr>
+<tr><td>Alarm slots</td><td>Up to 16</td></tr>
+<tr><td>Custom ringtones</td><td>2 slots, ~12 s / 98 KB max</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="https://github.com/smearor/cgd1-rs/blob/main/docs/HARDWARE.md">Hardware Notes</a> for full specifications.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<ul>
+<li><strong>BLE transport</strong>: Scan, connect, authenticate, and communicate with the CGD1 via Bluetooth Low Energy</li>
+<li><strong>Time synchronization</strong>: Sync the device clock to the current system time</li>
+<li><strong>Alarm management</strong>: Read, set, and delete up to 16 alarms with day-of-week repeat masks and snooze</li>
+<li><strong>Device settings</strong>: Read and write volume, brightness, timezone, time format, temperature unit, language, night mode, and screen duration</li>
+<li><strong>Sensor monitoring</strong>: Real-time temperature and humidity via BLE notifications, plus passive advertisement parsing</li>
+<li><strong>Battery monitoring</strong>: Read battery level via the standard GATT battery service</li>
+<li><strong>Audio upload</strong>: Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol</li>
+<li><strong>Firmware query</strong>: Read the device firmware version string</li>
+<li><strong>Reconnection</strong>: Automatic reconnection with exponential backoff and full state recovery</li>
+</ul>
+<h2 id="crates"><a class="header" href="#crates">Crates</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Crate</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cgd1-rs</code></td><td>Core library: BLE transport, auth, commands, events, device handle</td></tr>
+<tr><td><code>cgd1-rs-cli</code></td><td>Command-line tool with 14 subcommands and interactive REPL</td></tr>
+<tr><td><code>cgd1-rs-controller</code></td><td>GTK 4 desktop application with sensor display, alarm editor, and settings panel</td></tr>
+<tr><td><code>cgd1-rs-ws</code></td><td>WebSocket and REST server for network access to the device</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h2>
+<pre class="mermaid">graph TD
+    Core["cgd1-rs&lt;br/&gt;(Core Library)"]
+    CLI["cgd1-rs-cli&lt;br/&gt;(CLI Tool)"]
+    Controller["cgd1-rs-controller&lt;br/&gt;(GTK 4 App)"]
+    WS["cgd1-rs-ws&lt;br/&gt;(WebSocket Server)"]
+    Device["CGD1 Device&lt;br/&gt;(BLE)"]
+
+    CLI --&gt; Core
+    Controller --&gt; Core
+    WS --&gt; Core
+    Core --&gt; Device
+</pre>
+
+<p>All three frontends build on the same core library, which abstracts the BLE protocol, authentication, and command/response handling. See <a href="#architecture">Architecture</a> for details.</p>
+<h2 id="license"><a class="header" href="#license">License</a></h2>
+<p>MIT. See <a href="https://github.com/smearor/cgd1-rs/blob/main/LICENSE">LICENSE</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<h3 id="rust"><a class="header" href="#rust">Rust</a></h3>
+<p>A working Rust toolchain is required. The project uses Rust Edition 2024.</p>
+<pre><code class="language-bash">curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+</code></pre>
+<h3 id="minimum-supported-rust-version-msrv"><a class="header" href="#minimum-supported-rust-version-msrv">Minimum Supported Rust Version (MSRV)</a></h3>
+<p>Each crate declares its own MSRV in its <code>Cargo.toml</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Crate</th><th>MSRV</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cgd1-rs</code></td><td>1.88</td></tr>
+<tr><td><code>cgd1-rs-cli</code></td><td>1.89</td></tr>
+<tr><td><code>cgd1-rs-ws</code></td><td>1.88</td></tr>
+<tr><td><code>cgd1-rs-controller</code></td><td>1.92</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="linux-system-dependencies"><a class="header" href="#linux-system-dependencies">Linux System Dependencies</a></h3>
+<p>The project requires BlueZ for BLE access via <code>btleplug</code>. The GTK 4 controller additionally requires GTK 4 development libraries.</p>
+<p><strong>Ubuntu/Debian:</strong></p>
+<pre><code class="language-bash"># Core + CLI + WebSocket server
+sudo apt-get install -y pkg-config libdbus-1-dev
+
+# GTK 4 controller (optional)
+sudo apt-get install -y libgtk-4-dev
+
+# mdBook documentation (optional)
+cargo install mdbook
+cargo install mdbook-mermaid
+</code></pre>
+<p><strong>Fedora:</strong></p>
+<pre><code class="language-bash">sudo dnf install -y pkg-config dbus-devel gtk4-devel
+</code></pre>
+<p><strong>Arch Linux:</strong></p>
+<pre><code class="language-bash">sudo pacman -S dbus gtk4
+</code></pre>
+<h3 id="macos"><a class="header" href="#macos">macOS</a></h3>
+<p>macOS uses CoreBluetooth internally. No extra system packages are needed for the core library or CLI. The GTK 4 controller is not supported on macOS.</p>
+<pre><code class="language-bash">brew install gtk4
+</code></pre>
+<h2 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h2>
+<p>Clone the repository and build all crates:</p>
+<pre><code class="language-bash">git clone https://github.com/smearor/cgd1-rs.git
+cd cgd1-rs
+cargo build --release
+</code></pre>
+<p>To build only a specific crate:</p>
+<pre><code class="language-bash">cargo build --release -p cgd1-rs-cli
+cargo build --release -p cgd1-rs-ws
+cargo build --release -p cgd1-rs-controller
+</code></pre>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<h3 id="from-source"><a class="header" href="#from-source">From Source</a></h3>
+<pre><code class="language-bash">cargo install --path cgd1-rs-cli
+cargo install --path cgd1-rs-ws
+</code></pre>
+<p>This installs the <code>cgd1</code> and <code>cgd1-ws</code> binaries into <code>~/.cargo/bin/</code>.</p>
+<h3 id="from-cratesio"><a class="header" href="#from-cratesio">From crates.io</a></h3>
+<p><em>Not yet published. Build from source for now.</em></p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<h3 id="1-scan-for-devices"><a class="header" href="#1-scan-for-devices">1. Scan for Devices</a></h3>
+<pre><code class="language-bash">cgd1 scan --duration 10
+</code></pre>
+<p>Output:</p>
+<pre><code>Scanning for 10s...
+Found 1 device(s):
+  MAC: AA:BB:CC:DD:EE:FF
+    Temperature: 23.4 C
+    Humidity: 45.6 %
+    Battery: 87 %
+</code></pre>
+<h3 id="2-synchronize-time"><a class="header" href="#2-synchronize-time">2. Synchronize Time</a></h3>
+<p>The first command after scanning should be time synchronization. This also confirms that the authentication token is accepted by the device.</p>
+<pre><code class="language-bash">cgd1 sync-time AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="3-read-alarms"><a class="header" href="#3-read-alarms">3. Read Alarms</a></h3>
+<pre><code class="language-bash">cgd1 alarm-list AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="4-set-an-alarm"><a class="header" href="#4-set-an-alarm">4. Set an Alarm</a></h3>
+<pre><code class="language-bash">cgd1 alarm-set AA:BB:CC:DD:EE:FF 3 07:30 --repeat 3e --no-snooze
+</code></pre>
+<p>This sets alarm slot 3 to 07:30, repeating on weekdays (Mon–Fri), with snooze disabled.</p>
+<h3 id="5-monitor-sensors"><a class="header" href="#5-monitor-sensors">5. Monitor Sensors</a></h3>
+<pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60
+</code></pre>
+<p>Streams temperature and humidity data for 60 seconds.</p>
+<h2 id="running-tests"><a class="header" href="#running-tests">Running Tests</a></h2>
+<pre><code class="language-bash"># All tests (unit + integration)
+cargo test --all
+
+# Only core library tests
+cargo test -p cgd1-rs
+
+# CLI integration tests
+cargo test -p cgd1-rs-cli
+
+# WebSocket integration tests
+cargo test -p cgd1-rs-ws
+</code></pre>
+<p>All 240 tests run without hardware. Hardware-dependent tests are behind <code>#[ignore]</code> and can be run with <code>cargo test -- --ignored</code>.</p>
+<h2 id="building-the-documentation"><a class="header" href="#building-the-documentation">Building the Documentation</a></h2>
+<pre><code class="language-bash">cd book
+mdbook build
+</code></pre>
+<p>The rendered HTML is placed in <code>book/book/</code>. Open <code>book/book/index.html</code> in a browser, or run <code>mdbook serve</code> for live preview during development.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="workspace-layout"><a class="header" href="#workspace-layout">Workspace Layout</a></h2>
+<pre><code>cgd1-rs/
+├── cgd1-rs/              # Core library
+│   └── src/
+│       ├── ble/          # BLE transport layer
+│       ├── command/      # Protocol commands, alarm, settings types
+│       ├── error/        # Error types (transport, auth, clock)
+│       ├── token/        # Auth token + file store
+│       ├── types/        # Newtypes (MAC, temperature, humidity, etc.)
+│       ├── device.rs     # ClockDevice: connected device handle
+│       ├── event.rs      # ClockEvent enum
+│       ├── manager.rs    # ClockManager: multi-device connection manager
+│       └── scanner.rs    # ClockScanner: device discovery
+├── cgd1-rs-cli/          # Command-line tool
+├── cgd1-rs-controller/   # GTK 4 desktop application
+├── cgd1-rs-ws/           # WebSocket + REST server
+└── book/                 # This documentation
+</code></pre>
+<h2 id="core-library-cgd1-rs"><a class="header" href="#core-library-cgd1-rs">Core Library (<code>cgd1-rs</code>)</a></h2>
+<h3 id="ble-transport-layer"><a class="header" href="#ble-transport-layer">BLE Transport Layer</a></h3>
+<p>The <code>BleTransport</code> trait abstracts all BLE operations, enabling testing with <code>MockBleTransport</code> and <code>VirtualClockTransport</code> without real hardware.</p>
+<pre class="mermaid">classDiagram
+    class BleTransport {
+    &lt;&lt;trait&gt;&gt;
+    +scan_active(duration) Vec~DiscoveredDevice~
+    +connect(address) Result
+    +disconnect(address) Result
+    +subscribe(characteristic) Result
+    +write_frame(command, payload) Result
+    +read(characteristic) Vec~u8~
+    +request_mtu(mtu) u16
+    }
+
+    class BtleplugTransport {
+    +new() Self
+    }
+    class MockBleTransport
+    class VirtualClockTransport
+
+    BleTransport &lt;|.. BtleplugTransport
+    BleTransport &lt;|.. MockBleTransport
+    BleTransport &lt;|.. VirtualClockTransport
+</pre>
+
+<p><strong><code>BtleplugTransport</code></strong> — Real hardware backend using the <code>btleplug</code> crate. Works on Linux (BlueZ), macOS (CoreBluetooth), and Windows.</p>
+<p><strong><code>MockBleTransport</code></strong> — In-memory mock with channels for advertisements and notifications. Used in unit tests.</p>
+<p><strong><code>VirtualClockTransport</code></strong> — Full in-memory simulation of the CGD1 device. Responds to commands with appropriate ACKs, maintains alarm/settings state, and emits sensor notifications. Used in integration tests for CLI and WebSocket server.</p>
+<h3 id="device-lifecycle"><a class="header" href="#device-lifecycle">Device Lifecycle</a></h3>
+<pre class="mermaid">flowchart LR
+    Scan["ClockScanner&lt;br/&gt;.scan_active()"] --&gt; Connect["ClockManager&lt;br/&gt;.connect(mac)"]
+    Connect --&gt; Auth["ClockDevice&lt;br/&gt;.authenticate(token)"]
+    Auth --&gt; SyncTime["ClockDevice&lt;br/&gt;.sync_time_now()"]
+    SyncTime --&gt; Ready["Ready for commands"]
+    Ready --&gt; Operate["read_alarms&lt;br/&gt;set_alarm&lt;br/&gt;read_settings&lt;br/&gt;write_settings&lt;br/&gt;upload_ringtone&lt;br/&gt;..."]
+    Ready --&gt; Monitor["subscribe() →&lt;br/&gt;ClockEvent stream"]
+</pre>
+
+<h3 id="clockdevice"><a class="header" href="#clockdevice">ClockDevice</a></h3>
+<p><code>ClockDevice</code> is the primary handle for interacting with a connected CGD1. It owns:</p>
+<ul>
+<li><strong>Transport reference</strong> — For sending commands and reading data</li>
+<li><strong>Pending ACK map</strong> — <code>HashMap&lt;u8, VecDeque&lt;oneshot::Sender&gt;&gt;</code> for matching ACKs to pending requests by command byte</li>
+<li><strong>Pending data response channel</strong> — <code>mpsc::Sender</code> for multi-packet responses (e.g., alarm read, settings read)</li>
+<li><strong>Event broadcast sender</strong> — <code>broadcast::Sender&lt;ClockEvent&gt;</code> for sensor, battery, and connection events</li>
+<li><strong>Auth token</strong> — Stored after successful authentication</li>
+<li><strong>Notification task</strong> — Background <code>tokio::task</code> that processes BLE notifications</li>
+</ul>
+<h4 id="notification-task"><a class="header" href="#notification-task">Notification Task</a></h4>
+<p>A background task per connected device listens for BLE notifications and dispatches them:</p>
+<pre class="mermaid">flowchart TB
+    NotifyTask["Notification Task"]
+    AuthNotify["Auth Notify&lt;br/&gt;(ACKs)"]
+    DataNotify["Data Notify&lt;br/&gt;(ACKs, Settings, Alarms)"]
+    SensorNotify["Sensor Notify&lt;br/&gt;(Temp, Humidity)"]
+    Battery["Battery Level&lt;br/&gt;(GATT)"]
+    EventChannel["broadcast::Sender&lt;br/&gt;&lt;ClockEvent&gt;"]
+    AckMap["Oneshot Senders&lt;br/&gt;(pending ACKs)"]
+    DataChannel["mpsc::Sender&lt;br/&gt;(pending data)"]
+
+    NotifyTask --&gt; AuthNotify
+    NotifyTask --&gt; DataNotify
+    NotifyTask --&gt; SensorNotify
+    NotifyTask --&gt; Battery
+    AuthNotify --&gt; AckMap
+    DataNotify --&gt; AckMap
+    DataNotify --&gt; DataChannel
+    SensorNotify --&gt; EventChannel
+    Battery --&gt; EventChannel
+</pre>
+
+<h4 id="request-response-pattern"><a class="header" href="#request-response-pattern">Request-Response Pattern</a></h4>
+<p>Commands that expect an ACK use a <code>oneshot::channel</code>. The pending request is registered <strong>before</strong> the command frame is sent to prevent a race condition where the ACK arrives before the receiver is set up:</p>
+<ol>
+<li><code>prepare_ack(command)</code> — Registers a <code>oneshot::Sender</code> in the pending map</li>
+<li><code>transport.write_frame(command, payload)</code> — Sends the command</li>
+<li><code>wait_ack(receiver, timeout)</code> — Waits for the ACK with a 10-second timeout</li>
+</ol>
+<p>Multi-packet responses (e.g., <code>read_alarms</code>, <code>read_settings</code>) use an <code>mpsc::Sender</code> instead, allowing the notification task to forward data packets as they arrive.</p>
+<h3 id="reconnection"><a class="header" href="#reconnection">Reconnection</a></h3>
+<p>If the device disconnects unexpectedly, the library attempts reconnection with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped). After a successful BLE reconnect, the full state recovery sequence is performed:</p>
+<ol>
+<li><strong>BLE Reconnect</strong> via <code>transport.connect(address)</code></li>
+<li><strong>GATT Re-subscription</strong> for Auth Notify, Data Notify, and Sensor Notify</li>
+<li><strong>Re-authentication</strong> using the stored token</li>
+<li><strong>Flag reset</strong> — <code>is_authenticated</code> set to <code>true</code></li>
+</ol>
+<p><code>ClockEvent::Disconnected</code> and <code>ClockEvent::Reconnected</code> are broadcast to subscribers.</p>
+<h3 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h3>
+<p>The library uses structured error types:</p>
+<ul>
+<li><strong><code>TransportError</code></strong> — BLE-level errors (not connected, characteristic not found, timeout, etc.)</li>
+<li><strong><code>ClockError</code></strong> — Library-level errors (auth failed, command rejected, timeout, invalid alarm slot, parse errors, IO errors)</li>
+<li><strong><code>AuthFailedError</code></strong> — Authentication failure with context (reason, is_new_token, token_path)</li>
+</ul>
+<p>All errors implement <code>std::error::Error</code> and <code>Display</code>. The CLI additionally uses <code>miette::Diagnostic</code> for rich terminal output.</p>
+<h3 id="newtypes"><a class="header" href="#newtypes">Newtypes</a></h3>
+<p>The library uses newtypes for compile-time validation at the API boundary:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Validation</th><th>Used By</th></tr>
+</thead>
+<tbody>
+<tr><td><code>MacAddress</code></td><td>6-byte MAC, colon-separated hex</td><td>All commands</td></tr>
+<tr><td><code>ScanDuration</code></td><td>1–600 seconds</td><td><code>scan</code></td></tr>
+<tr><td><code>AlarmSlotIndex</code></td><td>0–15</td><td><code>alarm-set</code>, <code>alarm-delete</code></td></tr>
+<tr><td><code>ClockTime</code></td><td>HH:MM (0–23, 0–59)</td><td><code>alarm-set</code></td></tr>
+<tr><td><code>DayMask</code></td><td>u8 bitmask</td><td><code>alarm-set</code></td></tr>
+<tr><td><code>Brightness</code></td><td>0–150, multiple of 10</td><td><code>brightness</code>, <code>settings-write</code></td></tr>
+<tr><td><code>Volume</code></td><td>1–5</td><td><code>settings-write</code>, <code>ringtone-preview</code></td></tr>
+<tr><td><code>Timezone</code></td><td>-720 to +840 minutes</td><td><code>settings-write</code></td></tr>
+<tr><td><code>RingtoneSignature</code></td><td>4 bytes or named slot</td><td><code>ringtone-upload</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>All newtypes implement <code>FromStr</code> for CLI/JSON parsing and <code>Display</code> for output.</p>
+<h2 id="frontends"><a class="header" href="#frontends">Frontends</a></h2>
+<h3 id="cli-cgd1-rs-cli"><a class="header" href="#cli-cgd1-rs-cli">CLI (<code>cgd1-rs-cli</code>)</a></h3>
+<p>Each subcommand connects, authenticates, executes one operation, and disconnects. The <code>repl</code> subcommand keeps a persistent connection. See <a href="#cli-tool">CLI Tool</a>.</p>
+<h3 id="gtk-4-controller-cgd1-rs-controller"><a class="header" href="#gtk-4-controller-cgd1-rs-controller">GTK 4 Controller (<code>cgd1-rs-controller</code>)</a></h3>
+<p>A desktop application with a sidebar for device management and tabbed views for sensors, alarms, and settings. Uses <code>glib::MainContext::spawn_local</code> to bridge async BLE operations with the GTK event loop. See <a href="#controller">Controller</a>.</p>
+<h3 id="websocket-server-cgd1-rs-ws"><a class="header" href="#websocket-server-cgd1-rs-ws">WebSocket Server (<code>cgd1-rs-ws</code>)</a></h3>
+<p>An Axum-based server exposing a WebSocket endpoint for command/response and event streaming, plus REST endpoints for read operations. See <a href="#websocket-server">WebSocket Server</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="ble-protocol"><a class="header" href="#ble-protocol">BLE Protocol</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>This chapter summarizes the Qingping CGD1 BLE protocol as implemented by <code>cgd1-rs</code>. For the full reverse-engineered specification, see <a href="https://github.com/smearor/cgd1-rs/blob/main/docs/BLE.md">BLE.md</a>.</p>
+<h2 id="gatt-service--characteristics"><a class="header" href="#gatt-service--characteristics">GATT Service &amp; Characteristics</a></h2>
+<h3 id="custom-primary-service"><a class="header" href="#custom-primary-service">Custom Primary Service</a></h3>
+<pre><code>22210000-554a-4546-5542-46534450466d
+</code></pre>
+<h3 id="characteristics"><a class="header" href="#characteristics">Characteristics</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Name</th><th>UUID</th><th>Direction</th></tr>
+</thead>
+<tbody>
+<tr><td>Auth Write</td><td><code>00000001-0000-1000-8000-00805f9b34fb</code></td><td>Host → Device</td></tr>
+<tr><td>Auth Notify</td><td><code>00000002-0000-1000-8000-00805f9b34fb</code></td><td>Device → Host</td></tr>
+<tr><td>Data Write</td><td><code>0000000b-0000-1000-8000-00805f9b34fb</code></td><td>Host → Device</td></tr>
+<tr><td>Data Notify</td><td><code>0000000c-0000-1000-8000-00805f9b34fb</code></td><td>Device → Host</td></tr>
+<tr><td>Sensor Notify</td><td><code>00000100-0000-1000-8000-00805f9b34fb</code></td><td>Device → Host</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="standard-services"><a class="header" href="#standard-services">Standard Services</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Service</th><th>UUID</th><th>Characteristic</th><th>UUID</th><th>Format</th></tr>
+</thead>
+<tbody>
+<tr><td>Battery</td><td><code>0x180f</code></td><td>Battery Level</td><td><code>0x2a19</code></td><td>1 byte (0–100%)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="frame-format"><a class="header" href="#frame-format">Frame Format</a></h2>
+<p>Every frame follows the same structure:</p>
+<pre><code>Request:  [Length] [Command] [Payload...]
+ACK:      04 ff [Command] [Status] [Payload 1B]
+</code></pre>
+<p>The length byte counts the bytes that follow it. An ACK is always exactly 5 bytes: <code>04 ff [Command] [Status] [Payload]</code>. Status <code>00</code> means success.</p>
+<h2 id="command-summary"><a class="header" href="#command-summary">Command Summary</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Length</th><th>Command</th><th>Operation</th><th>Characteristic</th></tr>
+</thead>
+<tbody>
+<tr><td><code>0x11</code></td><td><code>0x01</code></td><td>Auth Init</td><td>Auth Write</td></tr>
+<tr><td><code>0x11</code></td><td><code>0x02</code></td><td>Auth Confirm</td><td>Auth Write</td></tr>
+<tr><td><code>0x05</code></td><td><code>0x09</code></td><td>Time Sync</td><td>Auth Write</td></tr>
+<tr><td><code>0x01</code></td><td><code>0x0d</code></td><td>Read Firmware</td><td>Auth Write</td></tr>
+<tr><td><code>0x01</code></td><td><code>0x02</code></td><td>Read Settings</td><td>Data Write</td></tr>
+<tr><td><code>0x13</code></td><td><code>0x01</code></td><td>Set Settings</td><td>Data Write</td></tr>
+<tr><td><code>0x02</code></td><td><code>0x03</code></td><td>Set Brightness</td><td>Data Write</td></tr>
+<tr><td><code>0x01</code></td><td><code>0x04</code></td><td>Preview Ringtone (current vol)</td><td>Data Write</td></tr>
+<tr><td><code>0x02</code></td><td><code>0x04</code></td><td>Preview Ringtone (specific vol)</td><td>Data Write</td></tr>
+<tr><td><code>0x01</code></td><td><code>0x06</code></td><td>Read Alarms</td><td>Data Write</td></tr>
+<tr><td><code>0x07</code></td><td><code>0x05</code></td><td>Set/Delete Alarm</td><td>Data Write</td></tr>
+<tr><td><code>0x08</code></td><td><code>0x10</code></td><td>Audio Init</td><td>Data Write</td></tr>
+<tr><td><code>0x81</code></td><td><code>0x08</code></td><td>Audio Data Packet</td><td>Data Write</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="connection-lifecycle"><a class="header" href="#connection-lifecycle">Connection Lifecycle</a></h2>
+<pre class="mermaid">graph TD
+    Scan["Scan (FDCD)"] --&gt; Connect["Connect (GATT)"]
+    Connect --&gt; Auth["Auth (Token)"]
+    Auth --&gt; SyncTime["Sync Time"]
+    SyncTime --&gt; ReadConfig["Read Config / Sensors"]
+    ReadConfig --&gt; Operate["Operate Alarms / Settings"]
+    Operate --&gt; Idle["Idle"]
+    Idle --&gt; Disconnect["Disconnect"]
+    Disconnect --&gt; Scan
+</pre>
+
+<h3 id="passive-vs-connected"><a class="header" href="#passive-vs-connected">Passive vs Connected</a></h3>
+<ul>
+<li><strong>Passive (no connection)</strong>: Sensor data (temperature, humidity, battery) via BLE advertisements with <code>FDCD</code> service-data UUID. No authentication required.</li>
+<li><strong>Connected</strong>: Authentication required for all write operations. Sensor data also available via real-time notify characteristic. Battery via standard GATT battery service.</li>
+</ul>
+<p>For protocol details on each operation, see the dedicated chapters: <a href="#authentication">Authentication</a>, <a href="#alarms">Alarms</a>, <a href="#device-settings">Settings</a>, <a href="#sensors--battery">Sensors &amp; Battery</a>, <a href="#audio-upload">Audio Upload</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="scanning--connecting"><a class="header" href="#scanning--connecting">Scanning &amp; Connecting</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="device-discovery"><a class="header" href="#device-discovery">Device Discovery</a></h2>
+<p>The CGD1 broadcasts BLE advertisements with the ClearGrass/Qingping service-data UUID <code>0xFDCD</code>. These advertisements carry sensor data (temperature, humidity, battery) and the device MAC address, allowing discovery without a connection.</p>
+<h3 id="scanning-with-the-cli"><a class="header" href="#scanning-with-the-cli">Scanning with the CLI</a></h3>
+<pre><code class="language-bash">cgd1 scan --duration 10
+</code></pre>
+<p>The <code>--duration</code> flag accepts values from 1 to 600 seconds (default: 10).</p>
+<p>Output:</p>
+<pre><code>Scanning for 10s...
+Found 1 device(s):
+  MAC: AA:BB:CC:DD:EE:FF
+    Temperature: 23.4 C
+    Humidity: 45.6 %
+    Battery: 87 %
+</code></pre>
+<h3 id="scanning-with-the-library"><a class="header" href="#scanning-with-the-library">Scanning with the Library</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{BtleplugTransport, ClockScanner, BleTransport};
+use std::sync::Arc;
+use std::time::Duration;
+
+let transport = Arc::new(BtleplugTransport::new().await?);
+let scanner = ClockScanner::new(transport);
+
+let devices = scanner.scan_active(Duration::from_secs(10)).await?;
+
+for device in &amp;devices {
+    println!("MAC: {}", device.address);
+    if let Some(ad) = &amp;device.advertisement {
+        println!("  Temperature: {:.1} C", ad.temperature.value());
+        println!("  Humidity: {:.1} %", ad.humidity.value());
+        println!("  Battery: {} %", ad.battery.value());
+    }
+}
+<span class="boring">}</span></code></pre>
+<h3 id="advertisement-data"><a class="header" href="#advertisement-data">Advertisement Data</a></h3>
+<p>The <code>AdvertisementData</code> struct is parsed from the raw service-data payload:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Scaling</th></tr>
+</thead>
+<tbody>
+<tr><td>MAC</td><td>6 bytes (reversed)</td><td>—</td></tr>
+<tr><td>Temperature</td><td>Int16 BE</td><td>/ 10 (°C)</td></tr>
+<tr><td>Humidity</td><td>UInt16 BE</td><td>/ 10 (%)</td></tr>
+<tr><td>Battery</td><td>UInt8</td><td>&amp; 0x7F (mask bit 7)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="connecting"><a class="header" href="#connecting">Connecting</a></h2>
+<h3 id="connection-flow"><a class="header" href="#connection-flow">Connection Flow</a></h3>
+<pre class="mermaid">sequenceDiagram
+    participant App as Application
+    participant Manager as ClockManager
+    participant Transport as BleTransport
+    participant CGD1 as CGD1 Device
+
+    App-&gt;&gt;Manager: connect(mac)
+    Manager-&gt;&gt;Transport: connect(address)
+    Transport-&gt;&gt;CGD1: BLE connection
+    CGD1--&gt;&gt;Transport: Connected
+    Transport--&gt;&gt;Manager: Ok
+    Manager--&gt;&gt;App: ClockDevice
+</pre>
+
+<h3 id="connecting-with-the-library"><a class="header" href="#connecting-with-the-library">Connecting with the Library</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{BtleplugTransport, ClockManager, MacAddress};
+use std::sync::Arc;
+
+let transport = Arc::new(BtleplugTransport::new().await?);
+let manager = ClockManager::new(transport);
+
+let mac: MacAddress = "AA:BB:CC:DD:EE:FF".parse()?;
+let device = manager.connect(&amp;mac).await?;
+<span class="boring">}</span></code></pre>
+<p><code>ClockManager</code> tracks connected devices by MAC address. Calling <code>connect</code> on an already-connected device returns the existing handle.</p>
+<h3 id="multi-device-management"><a class="header" href="#multi-device-management">Multi-Device Management</a></h3>
+<p><code>ClockManager</code> supports simultaneous connections to multiple CGD1 devices:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let device_a = manager.connect(&amp;mac_a).await?;
+let device_b = manager.connect(&amp;mac_b).await?;
+
+// Both devices are now connected and can be operated independently
+device_a.sync_time_now().await?;
+device_b.read_alarms().await?;
+<span class="boring">}</span></code></pre>
+<h3 id="disconnecting"><a class="header" href="#disconnecting">Disconnecting</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>manager.disconnect(&amp;mac).await?;
+<span class="boring">}</span></code></pre>
+<p>This tears down the BLE connection and stops the notification task for that device.</p>
+<h3 id="virtual-backend-testing"><a class="header" href="#virtual-backend-testing">Virtual Backend (Testing)</a></h3>
+<p>For testing without hardware, use the <code>virtual</code> backend:</p>
+<pre><code class="language-bash">cgd1 --backend virtual scan
+cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>The virtual backend simulates a CGD1 device in memory, responding to all commands with appropriate ACKs and maintaining alarm/settings state.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="authentication"><a class="header" href="#authentication">Authentication</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 uses a two-step token handshake on the Auth characteristics. Once paired, the same 16-byte token must be used for all future connections.</p>
+<h2 id="protocol"><a class="header" href="#protocol">Protocol</a></h2>
+<pre class="mermaid">sequenceDiagram
+    participant App as Application
+    participant Device as ClockDevice
+    participant Transport as BleTransport
+    participant CGD1 as CGD1 Device
+
+    App-&gt;&gt;Device: authenticate(token)
+    Device-&gt;&gt;Transport: subscribe(Auth Notify)
+    Device-&gt;&gt;Transport: write(Auth Write, 11 01 [Token 16B])
+    Transport-&gt;&gt;CGD1: GATT write
+    CGD1--&gt;&gt;Transport: notification (04 ff 01 00 [Payload])
+    Transport--&gt;&gt;Device: Ack { command: 01, status: 00 }
+    Device-&gt;&gt;Transport: write(Auth Write, 11 02 [Token 16B])
+    Transport-&gt;&gt;CGD1: GATT write
+    CGD1--&gt;&gt;Transport: notification (04 ff 02 00 00)
+    Transport--&gt;&gt;Device: Ack { command: 02, status: 00 }
+    Device--&gt;&gt;App: Ok (authenticated)
+</pre>
+
+<h3 id="steps"><a class="header" href="#steps">Steps</a></h3>
+<ol>
+<li><strong>Subscribe</strong> to Auth Notify (<code>00000002-...</code>)</li>
+<li><strong>Auth Init</strong>: Send <code>11 01 [Token 16B]</code> to Auth Write</li>
+<li><strong>Wait for ACK</strong>: <code>04 ff 01 00 [Payload]</code> (status <code>00</code> = success)</li>
+<li><strong>Auth Confirm</strong>: Send <code>11 02 [Token 16B]</code> to Auth Write</li>
+<li><strong>Wait for final ACK</strong>: <code>04 ff 02 00 00</code></li>
+</ol>
+<h2 id="token-management"><a class="header" href="#token-management">Token Management</a></h2>
+<h3 id="token-generation"><a class="header" href="#token-generation">Token Generation</a></h3>
+<p>A new 16-byte random token is generated for first-time pairing using <code>rand::random()</code>.</p>
+<h3 id="token-persistence"><a class="header" href="#token-persistence">Token Persistence</a></h3>
+<p>Tokens are stored in a file-based store, keyed by MAC address. The default directory is platform-dependent (via <code>dirs</code> crate):</p>
+<ul>
+<li><strong>Linux</strong>: <code>~/.local/share/cgd1-rs/tokens/</code></li>
+<li><strong>macOS</strong>: <code>~/Library/Application Support/cgd1-rs/tokens/</code></li>
+</ul>
+<h3 id="persistence-rule"><a class="header" href="#persistence-rule">Persistence Rule</a></h3>
+<blockquote>
+<p>A newly generated token is only persisted after a privileged command (e.g., <code>sync_time</code>) succeeds. An Auth Confirm ACK alone does not prove the token was accepted — the device may send an ACK even with a bad token.</p>
+</blockquote>
+<p>The <code>sync-time</code> CLI command uses <code>connect_with_store</code>, which persists the token only after <code>sync_time_now()</code> succeeds:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let (connection, store) = DeviceConnection::connect_with_store(&amp;args.address).await?;
+connection.device().sync_time_now().await?;
+
+if token_result.is_new() {
+    store.save(&amp;args.address, &amp;token_result)?;
+}
+<span class="boring">}</span></code></pre>
+<h3 id="auth-failure"><a class="header" href="#auth-failure">Auth Failure</a></h3>
+<p>If authentication fails, <code>AuthFailedError</code> provides actionable context:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>reason</code></td><td>Human-readable failure reason</td></tr>
+<tr><td><code>is_new_token</code></td><td>Whether the token was newly generated (not yet paired)</td></tr>
+<tr><td><code>token_path</code></td><td>Filesystem path where the token would be stored</td></tr>
+</tbody>
+</table>
+</div>
+<p>The CLI renders this as a <code>miette</code> diagnostic with suggestions.</p>
+<h2 id="using-the-library"><a class="header" href="#using-the-library">Using the Library</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{BtleplugTransport, ClockManager, FileTokenStore, MacAddress, TokenStore};
+use std::sync::Arc;
+
+let transport = Arc::new(BtleplugTransport::new().await?);
+let manager = ClockManager::new(transport.clone());
+let device = manager.connect(&amp;mac).await?;
+
+let store = Arc::new(FileTokenStore::default_directory());
+let token_result = store.load_or_generate(&amp;mac);
+
+device.set_token_store(store.clone() as Arc&lt;dyn TokenStore&gt;);
+device.authenticate(&amp;token_result).await?;
+
+// Token is confirmed only after a privileged command succeeds
+device.sync_time_now().await?;
+
+if token_result.is_new() {
+    store.save(&amp;mac, &amp;token_result)?;
+}
+<span class="boring">}</span></code></pre>
+<h2 id="firmware-version"><a class="header" href="#firmware-version">Firmware Version</a></h2>
+<p>After authentication, the firmware version can be queried:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let firmware: String = device.read_firmware().await?;
+println!("Firmware: {}", firmware);
+<span class="boring">}</span></code></pre>
+<p>Protocol: Send <code>01 0d</code> to Auth Write, receive <code>0b [Byte] [ASCII String]</code> on Auth Notify.</p>
+<p>Known firmware versions: <code>1.0.1_0046</code>, <code>1.0.1_0063</code>, <code>1.0.1_0067</code>, <code>1.0.1_0126</code>, <code>1.0.1_0130</code>, <code>1.0.1_0132</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="alarms"><a class="header" href="#alarms">Alarms</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 supports up to 16 independent alarm slots (indexed 0–15). Each alarm has a time, day-of-week repeat mask, and snooze setting.</p>
+<h2 id="alarm-structure"><a class="header" href="#alarm-structure">Alarm Structure</a></h2>
+<h3 id="alarmentry-5-bytes"><a class="header" href="#alarmentry-5-bytes">AlarmEntry (5 bytes)</a></h3>
+<pre><code>[Enabled] [HH] [MM] [Days] [Snooze]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Bytes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>Enabled</td><td>1</td><td><code>0x01</code> = on, <code>0x00</code> = off</td></tr>
+<tr><td>HH</td><td>1</td><td>Hour (0–23)</td></tr>
+<tr><td>MM</td><td>1</td><td>Minute (0–59)</td></tr>
+<tr><td>Days</td><td>1</td><td>Day bitmask (see below)</td></tr>
+<tr><td>Snooze</td><td>1</td><td><code>0x01</code> = on, <code>0x00</code> = off</td></tr>
+</tbody>
+</table>
+</div>
+<p>An empty/unused slot has all bytes set to <code>0xFF</code>: <code>FF FF FF FF FF</code>.</p>
+<h3 id="daymask-bitmask"><a class="header" href="#daymask-bitmask">DayMask Bitmask</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Bit</th><th>Value</th><th>Day</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>0x01</code></td><td>Monday</td></tr>
+<tr><td>1</td><td><code>0x02</code></td><td>Tuesday</td></tr>
+<tr><td>2</td><td><code>0x04</code></td><td>Wednesday</td></tr>
+<tr><td>3</td><td><code>0x08</code></td><td>Thursday</td></tr>
+<tr><td>4</td><td><code>0x10</code></td><td>Friday</td></tr>
+<tr><td>5</td><td><code>0x20</code></td><td>Saturday</td></tr>
+<tr><td>6</td><td><code>0x40</code></td><td>Sunday</td></tr>
+<tr><td>—</td><td><code>0x00</code></td><td>Once (no repeat)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Common patterns:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Name</th><th>Value</th><th>Days</th></tr>
+</thead>
+<tbody>
+<tr><td>Every day</td><td><code>0x7F</code></td><td>Mon–Sun</td></tr>
+<tr><td>Weekdays</td><td><code>0x3E</code></td><td>Mon–Fri</td></tr>
+<tr><td>Weekends</td><td><code>0x41</code></td><td>Sat–Sun</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="protocol-1"><a class="header" href="#protocol-1">Protocol</a></h2>
+<h3 id="set-alarm"><a class="header" href="#set-alarm">Set Alarm</a></h3>
+<p>Send <code>07 05 [ID] [Enabled] [HH] [MM] [Days] [Snooze]</code> to Data Write.</p>
+<p>ACK: <code>04 ff 05 00 00</code> (success)</p>
+<h3 id="delete-alarm"><a class="header" href="#delete-alarm">Delete Alarm</a></h3>
+<p>Overwrite the slot with <code>FF</code> values: <code>07 05 [ID] FF FF FF FF FF</code></p>
+<p>ACK: <code>04 ff 05 00 00</code> (success)</p>
+<h3 id="read-alarms"><a class="header" href="#read-alarms">Read Alarms</a></h3>
+<p>Send <code>01 06</code> to Data Write.</p>
+<p>Response: The device sends 6 packets on Data Notify, each carrying 3 alarm entries:</p>
+<pre><code>11 06 [Base Index] [Entry 1 (5B)] [Entry 2 (5B)] [Entry 3 (5B)]
+</code></pre>
+<p>Each packet is 18 bytes. All 16 slots are returned (empty slots have <code>FF FF FF FF FF</code>).</p>
+<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
+<h3 id="read-all-alarms"><a class="header" href="#read-all-alarms">Read all alarms</a></h3>
+<pre><code class="language-bash">cgd1 alarm-list AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="set-an-alarm"><a class="header" href="#set-an-alarm">Set an alarm</a></h3>
+<pre><code class="language-bash">cgd1 alarm-set AA:BB:CC:DD:EE:FF 3 07:30 --repeat 3e
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>slot</code></td><td>Slot index 0–15</td></tr>
+<tr><td><code>time</code></td><td>Alarm time in HH:MM format</td></tr>
+<tr><td><code>--repeat</code></td><td>Day mask as hex (default: <code>7f</code> = every day)</td></tr>
+<tr><td><code>--no-snooze</code></td><td>Disable snooze for this alarm</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="delete-an-alarm"><a class="header" href="#delete-an-alarm">Delete an alarm</a></h3>
+<pre><code class="language-bash">cgd1 alarm-delete AA:BB:CC:DD:EE:FF 3
+</code></pre>
+<h2 id="library-api"><a class="header" href="#library-api">Library API</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{AlarmSlotIndex, ClockTime, DayMask};
+
+// Set an alarm
+device.set_alarm(
+    AlarmSlotIndex::new(3)?,
+    ClockTime::new(7, 30)?,
+    DayMask::WEEKDAYS,
+    true,  // enabled
+    true,  // snooze
+).await?;
+
+// Read all alarms
+let slots = device.read_alarms().await?;
+for slot in &amp;slots {
+    if slot.is_empty() {
+        continue;
+    }
+    println!(
+        "Slot {}: {:02}:{:02} repeat={:#04x} enabled={} snooze={}",
+        slot.index(),
+        slot.entry().hour(),
+        slot.entry().minute(),
+        slot.entry().day_mask(),
+        slot.entry().enabled(),
+        slot.entry().snooze(),
+    );
+}
+
+// Delete an alarm
+device.delete_alarm(AlarmSlotIndex::new(3)?).await?;
+<span class="boring">}</span></code></pre>
+<h2 id="daymask-constants"><a class="header" href="#daymask-constants">DayMask Constants</a></h2>
+<p>The <code>DayMask</code> newtype provides common constants:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constant</th><th>Value</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DayMask::ONCE</code></td><td><code>0x00</code></td><td>No repeat (one-shot)</td></tr>
+<tr><td><code>DayMask::EVERY_DAY</code></td><td><code>0x7F</code></td><td>Monday through Sunday</td></tr>
+<tr><td><code>DayMask::WEEKDAYS</code></td><td><code>0x3E</code></td><td>Monday through Friday</td></tr>
+<tr><td><code>DayMask::WEEKENDS</code></td><td><code>0x41</code></td><td>Saturday and Sunday</td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="device-settings"><a class="header" href="#device-settings">Device Settings</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 stores all configuration in a single 18-byte settings payload, read and written via the Data characteristics.</p>
+<h2 id="settings-payload"><a class="header" href="#settings-payload">Settings Payload</a></h2>
+<pre><code>13 01 [Vol] [Hdr1] [Hdr2] [Flags] [TZ] [Duration] [Brightness] [NightStartH] [NightStartM] [NightEndH] [NightEndM] [TzSign] [NightEn] [Reserved] [Sig 4B]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Offset</th><th>Field</th><th>Bytes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Header</td><td>1</td><td><code>0x13</code> (length byte)</td></tr>
+<tr><td>1</td><td>Command</td><td>1</td><td><code>0x01</code> (set) or <code>0x02</code> (read response)</td></tr>
+<tr><td>2</td><td>Volume</td><td>1</td><td>Sound volume (1–5)</td></tr>
+<tr><td>3</td><td>Hdr1</td><td>1</td><td>Fixed <code>0x58</code></td></tr>
+<tr><td>4</td><td>Hdr2</td><td>1</td><td>Fixed <code>0x02</code></td></tr>
+<tr><td>5</td><td>Flags</td><td>1</td><td>Mode bitfield (see below)</td></tr>
+<tr><td>6</td><td>Timezone</td><td>1</td><td>Offset in 6-minute units (minutes / 6)</td></tr>
+<tr><td>7</td><td>Duration</td><td>1</td><td>Screen light duration in seconds</td></tr>
+<tr><td>8</td><td>Brightness</td><td>1</td><td>Packed brightness (see below)</td></tr>
+<tr><td>9</td><td>NightStartH</td><td>1</td><td>Night mode start hour (0–23)</td></tr>
+<tr><td>10</td><td>NightStartM</td><td>1</td><td>Night mode start minute (0–59)</td></tr>
+<tr><td>11</td><td>NightEndH</td><td>1</td><td>Night mode end hour (0–23)</td></tr>
+<tr><td>12</td><td>NightEndM</td><td>1</td><td>Night mode end minute (0–59)</td></tr>
+<tr><td>13</td><td>TzSign</td><td>1</td><td><code>0x01</code> = positive, <code>0x00</code> = negative</td></tr>
+<tr><td>14</td><td>NightEn</td><td>1</td><td><code>0x01</code> = enabled, <code>0x00</code> = disabled</td></tr>
+<tr><td>15</td><td>Reserved</td><td>1</td><td>Set to <code>0xFF</code></td></tr>
+<tr><td>16–19</td><td>Signature</td><td>4</td><td>Ringtone signature (<code>0xFFFFFFFF</code> when unused)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="flags-bitfield-byte-5"><a class="header" href="#flags-bitfield-byte-5">Flags Bitfield (Byte 5)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Bit</th><th>Mask</th><th>Field</th><th>0</th><th>1</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>0x01</code></td><td>Language</td><td>Chinese</td><td>English</td></tr>
+<tr><td>1</td><td><code>0x02</code></td><td>Time Format</td><td>24-hour</td><td>12-hour</td></tr>
+<tr><td>2</td><td><code>0x04</code></td><td>Temperature Unit</td><td>Celsius</td><td>Fahrenheit</td></tr>
+<tr><td>4</td><td><code>0x10</code></td><td>Alarms</td><td>Enabled</td><td>Disabled</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="brightness-encoding-byte-8"><a class="header" href="#brightness-encoding-byte-8">Brightness Encoding (Byte 8)</a></h3>
+<p>Two nibbles packed into one byte:</p>
+<pre><code>High nibble = daytime_brightness / 10
+Low nibble  = nighttime_brightness / 10
+</code></pre>
+<p>Each value must be 0–150 and a multiple of 10. Typical range is 0–100.</p>
+<p>Example: Daytime 80%, Nighttime 30% → <code>(8 &lt;&lt; 4) | 3 = 0x83</code></p>
+<h3 id="night-mode-workaround"><a class="header" href="#night-mode-workaround">Night Mode Workaround</a></h3>
+<p>Disabling night mode is done by setting a 1-minute night mode window (<code>00:00</code>–<code>00:01</code>). Even the official app does this.</p>
+<h2 id="protocol-2"><a class="header" href="#protocol-2">Protocol</a></h2>
+<h3 id="read-settings"><a class="header" href="#read-settings">Read Settings</a></h3>
+<p>Send <code>01 02</code> to Data Write. Response on Data Notify: <code>13 02 [Settings Payload 18B]</code></p>
+<h3 id="write-settings"><a class="header" href="#write-settings">Write Settings</a></h3>
+<p>Send <code>13 01 [Settings Payload 18B]</code> to Data Write. ACK: <code>04 ff 01 00 00</code></p>
+<h3 id="set-immediate-brightness-preview"><a class="header" href="#set-immediate-brightness-preview">Set Immediate Brightness (Preview)</a></h3>
+<p>Send <code>02 03 [Value]</code> to Data Write, where Value is brightness / 10 (0–15).</p>
+<p>ACK: <code>04 ff 03 00 00</code></p>
+<h3 id="preview-ringtone"><a class="header" href="#preview-ringtone">Preview Ringtone</a></h3>
+<p>Plays a generic beep sound for testing volume.</p>
+<ul>
+<li>Current volume: <code>01 04</code></li>
+<li>Specific volume: <code>02 04 [Vol]</code> (volume 1–5)</li>
+</ul>
+<p>ACK: <code>04 ff 04 00 00</code></p>
+<h2 id="cli-usage-1"><a class="header" href="#cli-usage-1">CLI Usage</a></h2>
+<h3 id="read-settings-1"><a class="header" href="#read-settings-1">Read settings</a></h3>
+<pre><code class="language-bash">cgd1 settings-read AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="write-settings-1"><a class="header" href="#write-settings-1">Write settings</a></h3>
+<p>Only specified fields are updated; unspecified fields are read from the device first and preserved:</p>
+<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF \
+    --volume 3 \
+    --brightness 80 \
+    --night-brightness 30 \
+    --timezone 60 \
+    --time-format 24 \
+    --temp-unit C \
+    --language en
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Values</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--volume</code></td><td>1–5</td><td>Sound volume</td></tr>
+<tr><td><code>--brightness</code></td><td>0–150 (multiple of 10)</td><td>Daytime brightness</td></tr>
+<tr><td><code>--night-brightness</code></td><td>0–150 (multiple of 10)</td><td>Nighttime brightness</td></tr>
+<tr><td><code>--timezone</code></td><td>-720 to +840 (minutes)</td><td>Timezone offset</td></tr>
+<tr><td><code>--time-format</code></td><td>12 or 24</td><td>Time display format</td></tr>
+<tr><td><code>--temp-unit</code></td><td>C or F</td><td>Temperature unit</td></tr>
+<tr><td><code>--language</code></td><td>en, zh, de, ja</td><td>Display language</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="set-brightness-preview"><a class="header" href="#set-brightness-preview">Set brightness (preview)</a></h3>
+<pre><code class="language-bash">cgd1 brightness AA:BB:CC:DD:EE:FF 80
+</code></pre>
+<h3 id="preview-ringtone-1"><a class="header" href="#preview-ringtone-1">Preview ringtone</a></h3>
+<pre><code class="language-bash">cgd1 ringtone-preview AA:BB:CC:DD:EE:FF --volume 3
+</code></pre>
+<h2 id="library-api-1"><a class="header" href="#library-api-1">Library API</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{Brightness, Language, TemperatureUnit, TimeFormat, Timezone, Volume};
+
+// Read current settings
+let settings = device.read_settings().await?;
+println!("Volume: {}", settings.volume);
+println!("Brightness: {}", settings.brightness);
+
+// Modify and write
+let mut settings = device.read_settings().await?;
+settings.volume = Volume::new(3)?;
+settings.brightness = Brightness::new(80)?;
+settings.time_format = TimeFormat::TwentyFourHour;
+settings.temperature_unit = TemperatureUnit::Celsius;
+settings.language = Language::English;
+device.write_settings(&amp;settings).await?;
+
+// Set immediate brightness (preview)
+device.set_brightness(Brightness::new(80)?).await?;
+
+// Preview ringtone
+device.preview_ringtone(Some(Volume::new(3)?)).await?;
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sensors--battery"><a class="header" href="#sensors--battery">Sensors &amp; Battery</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 provides temperature, humidity, and battery data through three independent channels.</p>
+<h2 id="data-sources"><a class="header" href="#data-sources">Data Sources</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Data</th><th>Source</th><th>Requires Connection</th></tr>
+</thead>
+<tbody>
+<tr><td>Passive</td><td>Temperature, humidity, battery</td><td>BLE advertisements (<code>FDCD</code>)</td><td>No</td></tr>
+<tr><td>Connected</td><td>Temperature, humidity (real-time)</td><td>Sensor Notify (<code>00000100-...</code>)</td><td>Yes</td></tr>
+<tr><td>Connected</td><td>Battery</td><td>GATT Battery Service (<code>0x180f</code> / <code>0x2a19</code>)</td><td>Yes</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="passive-sensor-stream-advertising"><a class="header" href="#passive-sensor-stream-advertising">Passive Sensor Stream (Advertising)</a></h2>
+<p>The device broadcasts sensor data in BLE advertisement packets via Service Data under UUID <code>0xFDCD</code>.</p>
+<h3 id="format"><a class="header" href="#format">Format</a></h3>
+<pre><code>[08|88] 0C [MAC 6B] 01 04 [Temp 2B] [Humidity 2B] 02 01 [Battery]
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Scaling</th></tr>
+</thead>
+<tbody>
+<tr><td>Temperature</td><td>Int16 LE</td><td>/ 10.0 (°C)</td></tr>
+<tr><td>Humidity</td><td>UInt16 LE</td><td>/ 10.0 (%RH)</td></tr>
+<tr><td>Battery</td><td>UInt8</td><td>&amp; 0x7F (mask bit 7)</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>Note</strong>: The passive advertisement stream uses a scaling of / 10 (per Theengs decoder). The connected sensor stream uses / 100.0 (per clOwOck). This discrepancy may be firmware-dependent.</p>
+</blockquote>
+<h3 id="parsing"><a class="header" href="#parsing">Parsing</a></h3>
+<p>The <code>AdvertisementData::parse</code> method extracts temperature, humidity, battery, and MAC address from the raw service-data payload. This is used by <code>ClockScanner</code> during active scanning.</p>
+<h2 id="connected-sensor-stream-notifications"><a class="header" href="#connected-sensor-stream-notifications">Connected Sensor Stream (Notifications)</a></h2>
+<p>After connecting, the device sends real-time sensor data via the Sensor Notify characteristic (<code>00000100-0000-1000-8000-00805f9b34fb</code>).</p>
+<h3 id="format-1"><a class="header" href="#format-1">Format</a></h3>
+<pre><code>[00] [Temp L] [Temp H] [Hum L] [Hum H]
+</code></pre>
+<p>5 bytes, starting with a constant <code>00</code>. This stream does <strong>not</strong> follow the length-byte framing.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Scaling</th></tr>
+</thead>
+<tbody>
+<tr><td>Temperature</td><td>Signed Int16 LE</td><td>/ 100.0 (°C)</td></tr>
+<tr><td>Humidity</td><td>Unsigned UInt16 LE</td><td>/ 100.0 (%RH)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="event-dispatch"><a class="header" href="#event-dispatch">Event Dispatch</a></h3>
+<p>The notification task parses sensor notifications and broadcasts <code>ClockEvent::SensorUpdate</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum ClockEvent {
+    SensorUpdate { temperature: Temperature, humidity: Humidity },
+    BatteryLevel { level: BatteryLevel },
+    Disconnected,
+    Reconnected,
+    Ack { command: u8, status: AckStatus },
+    Advertisement(AdvertisementData),
+}
+<span class="boring">}</span></code></pre>
+<h2 id="battery-connected"><a class="header" href="#battery-connected">Battery (Connected)</a></h2>
+<p>Battery level is read from the standard GATT Battery Service:</p>
+<ul>
+<li><strong>Service UUID</strong>: <code>0x180f</code></li>
+<li><strong>Characteristic UUID</strong>: <code>0x2a19</code></li>
+<li><strong>Format</strong>: 1 byte (percentage 0–100)</li>
+</ul>
+<p>The library reads this characteristic and, when notifications are supported, subscribes for real-time battery updates. Battery changes are dispatched as <code>ClockEvent::BatteryLevel</code>.</p>
+<h2 id="cli-usage-2"><a class="header" href="#cli-usage-2">CLI Usage</a></h2>
+<h3 id="monitor-sensors"><a class="header" href="#monitor-sensors">Monitor sensors</a></h3>
+<pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60
+</code></pre>
+<p>Streams temperature and humidity in real-time. Use <code>--duration 0</code> (default) for indefinite monitoring.</p>
+<p>Output:</p>
+<pre><code>Monitoring AA:BB:CC:DD:EE:FF for 60s...
+[2024-01-15T10:30:00] Temperature: 23.4 C  Humidity: 45.6 %
+[2024-01-15T10:30:05] Temperature: 23.5 C  Humidity: 45.4 %
+...
+</code></pre>
+<h3 id="read-battery"><a class="header" href="#read-battery">Read battery</a></h3>
+<pre><code class="language-bash">cgd1 battery AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>Output:</p>
+<pre><code>Battery: 87 %
+</code></pre>
+<h2 id="library-api-2"><a class="header" href="#library-api-2">Library API</a></h2>
+<h3 id="subscribe-to-events"><a class="header" href="#subscribe-to-events">Subscribe to events</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::ClockEvent;
+
+let mut receiver = device.subscribe();
+
+while let Ok(event) = receiver.recv().await {
+    match event {
+        ClockEvent::SensorUpdate { temperature, humidity } =&gt; {
+            println!("Temperature: {:.1} C  Humidity: {:.1} %",
+                temperature.value(), humidity.value());
+        }
+        ClockEvent::BatteryLevel { level } =&gt; {
+            println!("Battery: {} %", level.value());
+        }
+        ClockEvent::Disconnected =&gt; {
+            println!("Device disconnected");
+            break;
+        }
+        ClockEvent::Reconnected =&gt; {
+            println!("Device reconnected");
+        }
+        _ =&gt; {}
+    }
+}
+<span class="boring">}</span></code></pre>
+<h3 id="read-battery-directly"><a class="header" href="#read-battery-directly">Read battery directly</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let battery = device.read_battery().await?;
+println!("Battery: {} %", battery);
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="audio-upload"><a class="header" href="#audio-upload">Audio Upload</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The CGD1 supports uploading custom ringtones via a block-based BLE transfer protocol. Audio is sent as 8-bit unsigned PCM at 8 kHz mono.</p>
+<h2 id="audio-format"><a class="header" href="#audio-format">Audio Format</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Property</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Format</td><td>8-bit unsigned PCM</td></tr>
+<tr><td>Sample rate</td><td>8000 Hz</td></tr>
+<tr><td>Channels</td><td>Mono</td></tr>
+<tr><td>Max size</td><td>~98 KB (~12 seconds)</td></tr>
+<tr><td>Padding</td><td>Multiple of 512 bytes (<code>00</code> end marker + <code>FF</code> fill)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="ringtone-signatures"><a class="header" href="#ringtone-signatures">Ringtone Signatures</a></h2>
+<h3 id="built-in-ringtones"><a class="header" href="#built-in-ringtones">Built-in Ringtones</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Signature</th><th>Name</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fdc366a5</code></td><td>Beep</td></tr>
+<tr><td><code>0961bb77</code></td><td>Digital Ringtone</td></tr>
+<tr><td><code>ba2c2c8c</code></td><td>Digital Ringtone 2</td></tr>
+<tr><td><code>ea2d4c02</code></td><td>Cuckoo</td></tr>
+<tr><td><code>791bacb3</code></td><td>Telephone Ringtone</td></tr>
+<tr><td><code>1d019fd6</code></td><td>Exotic Guitar</td></tr>
+<tr><td><code>6e70b659</code></td><td>Lively Piano</td></tr>
+<tr><td><code>8f004886</code></td><td>Story Piano</td></tr>
+<tr><td><code>26522519</code></td><td>Forest Piano</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="custom-slots"><a class="header" href="#custom-slots">Custom Slots</a></h3>
+<p>Two alternating slot signatures are used for custom uploads:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Signature</th><th>Name</th><th>Constant</th></tr>
+</thead>
+<tbody>
+<tr><td><code>deaddead</code></td><td>Custom Slot A</td><td><code>RingtoneSignature::CustomSlotA</code></td></tr>
+<tr><td><code>beefbeef</code></td><td>Custom Slot B</td><td><code>RingtoneSignature::CustomSlotB</code></td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p>Always alternate between slots when uploading new custom audio. The device may reject uploads if the target signature matches the currently active ringtone.</p>
+</blockquote>
+<h2 id="upload-protocol"><a class="header" href="#upload-protocol">Upload Protocol</a></h2>
+<pre class="mermaid">sequenceDiagram
+    participant App as Application
+    participant Device as ClockDevice
+    participant CGD1 as CGD1 Device
+
+    Note over App,CGD1: Step 0: Prepare audio
+    App-&gt;&gt;App: Validate + pad to 512-byte multiple
+
+    Note over App,CGD1: Step 1: MTU Exchange
+    App-&gt;&gt;CGD1: Request MTU 247
+    CGD1--&gt;&gt;App: Negotiated MTU
+
+    Note over App,CGD1: Step 2: Audio Init
+    App-&gt;&gt;Device: upload_ringtone(audio, signature)
+    Device-&gt;&gt;CGD1: 08 10 [Size 3B LE] [Signature 4B]
+    CGD1--&gt;&gt;Device: ACK 04 ff 10 00 [Payload]
+
+    Note over App,CGD1: Step 3: Audio Data (block-based)
+    loop Every 4 packets (512 bytes)
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        App-&gt;&gt;CGD1: 81 08 [Audio 128B]
+        CGD1--&gt;&gt;App: ACK 04 ff 08 00 [Payload]
+    end
+
+    Note over App,CGD1: Step 4: Completion
+    Note over CGD1: Device stores audio under signature
+</pre>
+
+<h3 id="step-0--prepare-the-payload"><a class="header" href="#step-0--prepare-the-payload">Step 0 — Prepare the Payload</a></h3>
+<ol>
+<li>Decode/resample the source file to 8-bit unsigned PCM, 8000 Hz, mono</li>
+<li>Pad to a multiple of 512 bytes: first padding byte is <code>00</code> (end-of-audio marker), remaining are <code>FF</code></li>
+<li>Keep the total under ~98 KB</li>
+</ol>
+<p>The <code>validate_audio</code> function checks these constraints and returns an error if they are violated.</p>
+<h3 id="step-1--mtu-exchange"><a class="header" href="#step-1--mtu-exchange">Step 1 — MTU Exchange</a></h3>
+<p>Before uploading, an MTU exchange is performed to ensure the 130-byte packets (128 bytes audio + 2-byte header) fit within a single BLE packet:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mtu = transport.request_mtu(247).await?;
+if mtu &lt; 130 {
+    return Err(ClockError::MtuTooSmall { mtu });
+}
+<span class="boring">}</span></code></pre>
+<h3 id="step-2--audio-init"><a class="header" href="#step-2--audio-init">Step 2 — Audio Init</a></h3>
+<p>Send <code>08 10 [Size 3B LE] [Signature 4B]</code> to Data Write.</p>
+<ul>
+<li><strong>Size</strong>: Padded audio length in bytes (Little Endian, 3 bytes)</li>
+<li><strong>Signature</strong>: Target ringtone slot signature</li>
+</ul>
+<p>Wait for ACK: <code>04 ff 10 [Status] [Payload]</code> (status <code>00</code> = success)</p>
+<h3 id="step-3--send-audio-data"><a class="header" href="#step-3--send-audio-data">Step 3 — Send Audio Data</a></h3>
+<ul>
+<li><strong>Packet format</strong>: <code>81 08 [Audio 128B]</code> (130 bytes on the wire)</li>
+<li>A trailing packet shorter than 128 bytes is padded with <code>FF</code></li>
+<li><strong>Packets per block</strong>: 4 (512 bytes of audio per block)</li>
+<li>After every 4th packet (or the last packet), wait for block ACK: <code>04 ff 08 [Status] [Payload]</code></li>
+<li>Each packet is written with write-with-response</li>
+</ul>
+<h3 id="step-4--completion"><a class="header" href="#step-4--completion">Step 4 — Completion</a></h3>
+<p>After the last block ACK, the device stores the audio under the given signature. Select it as the active ringtone by writing the same signature in the settings payload (bytes 16–19).</p>
+<blockquote>
+<p><strong>Important</strong>: The transfer must own the connection. Alarm reads, settings reads, RSSI polling, or notification re-subscriptions issued in parallel can abort the upload. The library holds a mutex for the whole transfer.</p>
+</blockquote>
+<h2 id="cli-usage-3"><a class="header" href="#cli-usage-3">CLI Usage</a></h2>
+<pre><code class="language-bash">cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>file</code></td><td>Path to 8-bit PCM audio file (8 kHz, mono)</td></tr>
+<tr><td><code>--signature</code></td><td>Ringtone name (<code>CustomSlotA</code>, <code>CustomSlotB</code>) or 4-byte hex (e.g., <code>deadbeef</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<p>After uploading, select the ringtone by writing its signature to the device settings:</p>
+<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF --volume 3
+</code></pre>
+<blockquote>
+<p>The CLI does not yet support writing the ringtone signature directly via <code>settings-write</code>. Use the library API or the GTK controller for this.</p>
+</blockquote>
+<h2 id="library-api-3"><a class="header" href="#library-api-3">Library API</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::RingtoneSignature;
+use std::path::Path;
+
+// Upload from file
+let audio = std::fs::read("audio.pcm")?;
+device.upload_ringtone(&amp;audio, RingtoneSignature::CustomSlotA).await?;
+
+// Or upload from bytes
+let audio: Vec&lt;u8&gt; = generate_pcm_audio();
+device.upload_ringtone(&amp;audio, RingtoneSignature::CustomSlotA).await?;
+
+// Select as active ringtone
+let mut settings = device.read_settings().await?;
+settings.ringtone_signature = RingtoneSignature::CustomSlotA;
+device.write_settings(&amp;settings).await?;
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cli-tool"><a class="header" href="#cli-tool">CLI Tool</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The <code>cgd1</code> command-line tool provides access to all device operations through subcommands. It uses <code>clap</code> for argument parsing and <code>miette</code> for rich error diagnostics.</p>
+<h2 id="installation-1"><a class="header" href="#installation-1">Installation</a></h2>
+<pre><code class="language-bash">cargo install --path cgd1-rs-cli
+</code></pre>
+<h2 id="global-options"><a class="header" href="#global-options">Global Options</a></h2>
+<pre><code>Options:
+  -v, --verbose...  Verbosity level (-v, -vv, -vvv)
+      --backend &lt;BACKEND&gt;  BLE backend: `btleplug` (real hardware) or `virtual` (in-memory) [default: btleplug]
+  -h, --help         Print help
+  -V, --version      Print version
+</code></pre>
+<p>The <code>--backend virtual</code> flag uses an in-memory simulation instead of real BLE hardware. This is useful for testing and demos without a device.</p>
+<h2 id="subcommands"><a class="header" href="#subcommands">Subcommands</a></h2>
+<h3 id="scan"><a class="header" href="#scan">scan</a></h3>
+<p>Scan for nearby CGD1 devices.</p>
+<pre><code class="language-bash">cgd1 scan --duration 10
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Range</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-d, --duration</code></td><td>10</td><td>1–600</td><td>Scan duration in seconds</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output includes MAC address, temperature, humidity, and battery from passive advertisements.</p>
+<h3 id="sync-time"><a class="header" href="#sync-time">sync-time</a></h3>
+<p>Synchronize the device clock to the current system time. This is the recommended first command after connecting, as it confirms the authentication token is accepted.</p>
+<pre><code class="language-bash">cgd1 sync-time AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="alarm-list"><a class="header" href="#alarm-list">alarm-list</a></h3>
+<p>Read all 16 alarm slots from the device.</p>
+<pre><code class="language-bash">cgd1 alarm-list AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="alarm-set"><a class="header" href="#alarm-set">alarm-set</a></h3>
+<p>Set or modify an alarm at a specific slot.</p>
+<pre><code class="language-bash">cgd1 alarm-set AA:BB:CC:DD:EE:FF 3 07:30 --repeat 3e --no-snooze
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>slot</code></td><td>Slot index 0–15</td></tr>
+<tr><td><code>time</code></td><td>Alarm time in HH:MM format</td></tr>
+<tr><td><code>-r, --repeat</code></td><td>Day mask as hex (default: <code>7f</code> = every day)</td></tr>
+<tr><td><code>--no-snooze</code></td><td>Disable snooze</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="alarm-delete"><a class="header" href="#alarm-delete">alarm-delete</a></h3>
+<p>Delete an alarm at a specific slot.</p>
+<pre><code class="language-bash">cgd1 alarm-delete AA:BB:CC:DD:EE:FF 3
+</code></pre>
+<h3 id="settings-read"><a class="header" href="#settings-read">settings-read</a></h3>
+<p>Read all device settings.</p>
+<pre><code class="language-bash">cgd1 settings-read AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="settings-write"><a class="header" href="#settings-write">settings-write</a></h3>
+<p>Write device settings. Only specified fields are updated; unspecified fields are preserved from the device.</p>
+<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF \
+    --volume 3 \
+    --brightness 80 \
+    --night-brightness 30 \
+    --timezone 60 \
+    --time-format 24 \
+    --temp-unit C \
+    --language en
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Values</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--volume</code></td><td>1–5</td><td>Sound volume</td></tr>
+<tr><td><code>--brightness</code></td><td>0–150 (multiple of 10)</td><td>Daytime brightness</td></tr>
+<tr><td><code>--night-brightness</code></td><td>0–150 (multiple of 10)</td><td>Nighttime brightness</td></tr>
+<tr><td><code>--timezone</code></td><td>-720 to +840</td><td>Timezone offset in minutes</td></tr>
+<tr><td><code>--time-format</code></td><td>12 or 24</td><td>Time display format</td></tr>
+<tr><td><code>--temp-unit</code></td><td>C or F</td><td>Temperature unit</td></tr>
+<tr><td><code>--language</code></td><td>en, zh, de, ja</td><td>Display language</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="brightness"><a class="header" href="#brightness">brightness</a></h3>
+<p>Set immediate brightness (preview, not persisted).</p>
+<pre><code class="language-bash">cgd1 brightness AA:BB:CC:DD:EE:FF 80
+</code></pre>
+<h3 id="ringtone-preview"><a class="header" href="#ringtone-preview">ringtone-preview</a></h3>
+<p>Play a preview beep sound on the device.</p>
+<pre><code class="language-bash">cgd1 ringtone-preview AA:BB:CC:DD:EE:FF --volume 3
+</code></pre>
+<h3 id="ringtone-upload"><a class="header" href="#ringtone-upload">ringtone-upload</a></h3>
+<p>Upload a custom ringtone from a PCM file.</p>
+<pre><code class="language-bash">cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>file</code></td><td>Path to 8-bit PCM audio file (8 kHz, mono)</td></tr>
+<tr><td><code>-s, --signature</code></td><td>Ringtone name or 4-byte hex (default: <code>CustomSlotA</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="firmware"><a class="header" href="#firmware">firmware</a></h3>
+<p>Read the device firmware version.</p>
+<pre><code class="language-bash">cgd1 firmware AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="battery"><a class="header" href="#battery">battery</a></h3>
+<p>Read the device battery level.</p>
+<pre><code class="language-bash">cgd1 battery AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="monitor"><a class="header" href="#monitor">monitor</a></h3>
+<p>Monitor sensor data (temperature, humidity) in real-time.</p>
+<pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-d, --duration</code></td><td>0</td><td>Duration in seconds (0 = indefinite)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="repl"><a class="header" href="#repl">repl</a></h3>
+<p>Start an interactive REPL session with a persistent connection. State changes (e.g., <code>settings-write</code>) are visible in subsequent commands (e.g., <code>settings-read</code>).</p>
+<pre><code class="language-bash">cgd1 repl --address AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>If <code>--address</code> is omitted, use <code>connect &lt;mac&gt;</code> inside the REPL.</p>
+<p>Available REPL commands mirror the CLI subcommands (without the <code>cgd1</code> prefix):</p>
+<pre><code>cgd1&gt; help
+Available commands:
+  scan, sync-time, alarm-list, alarm-set, alarm-delete,
+  settings-read, settings-write, brightness, ringtone-preview,
+  ringtone-upload, firmware, battery, monitor, connect, disconnect, exit
+</code></pre>
+<h2 id="token-management-1"><a class="header" href="#token-management-1">Token Management</a></h2>
+<p>The CLI automatically manages authentication tokens via <code>FileTokenStore</code>. Tokens are stored per MAC address in the platform’s data directory:</p>
+<ul>
+<li><strong>Linux</strong>: <code>~/.local/share/cgd1-rs/tokens/</code></li>
+<li><strong>macOS</strong>: <code>~/Library/Application Support/cgd1-rs/tokens/</code></li>
+</ul>
+<p>A new token is generated on first connection and persisted only after <code>sync-time</code> succeeds. Subsequent connections reuse the stored token.</p>
+<p>If a token becomes invalid (e.g., the device was paired with a different app), delete the token file and run <code>sync-time</code> again to generate a new one.</p>
+<h2 id="error-handling-1"><a class="header" href="#error-handling-1">Error Handling</a></h2>
+<p>The CLI uses <code>miette</code> for rich error diagnostics. Errors include context, source spans, and suggestions:</p>
+<pre><code>Error: Authentication failed
+  → The device rejected the authentication token.
+  help: This may happen if the device was paired with a different app.
+        Delete the token file and try again:
+        rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
+</code></pre>
+<h2 id="verbosity"><a class="header" href="#verbosity">Verbosity</a></h2>
+<p>The <code>-v</code> flag controls log output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Level</th><th>Output</th></tr>
+</thead>
+<tbody>
+<tr><td>(none)</td><td>Errors only</td></tr>
+<tr><td><code>-v</code></td><td>Warnings + errors</td></tr>
+<tr><td><code>-vv</code></td><td>Info + warnings + errors</td></tr>
+<tr><td><code>-vvv</code></td><td>Debug (full trace)</td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="controller"><a class="header" href="#controller">Controller</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The <code>cgd1-rs-controller</code> crate is a GTK 4 desktop application for managing CGD1 devices. It provides a graphical interface for scanning, connecting, viewing sensor data, editing alarms, adjusting settings, and uploading ringtones.</p>
+<h2 id="installation-2"><a class="header" href="#installation-2">Installation</a></h2>
+<pre><code class="language-bash"># Install GTK 4 development libraries first (see Getting Started)
+cargo build --release -p cgd1-rs-controller
+</code></pre>
+<p>Run the application:</p>
+<pre><code class="language-bash">cargo run --release -p cgd1-rs-controller
+</code></pre>
+<h2 id="architecture-1"><a class="header" href="#architecture-1">Architecture</a></h2>
+<pre class="mermaid">flowchart TB
+    subgraph App["ClockControllerApp"]
+        Window["MainWindow&lt;br/&gt;(sidebar + device tabs)"]
+        subgraph Dialogs["Dialog System"]
+            Alarms["Alarms Dialog"]
+            Audio["Audio Dialog"]
+            Info["Info Dialog"]
+            Settings["Settings Dialog"]
+        end
+        Display["Display Module&lt;br/&gt;(Seven-segment clock)"]
+    end
+
+    Core["cgd1-rs&lt;br/&gt;(Core Library)"]
+    Device["CGD1 Device"]
+
+    Window --&gt; Dialogs
+    Window --&gt; Display
+    Window --&gt; Core
+    Core --&gt; Device
+</pre>
+
+<h3 id="clockcontrollerapp"><a class="header" href="#clockcontrollerapp">ClockControllerApp</a></h3>
+<p>The main <code>gtk4::Application</code> subclass. Manages the application lifecycle, window creation, and device connections.</p>
+<h3 id="mainwindow"><a class="header" href="#mainwindow">MainWindow</a></h3>
+<p>The main window features a sidebar for device management and a tabbed content area. Each connected device gets its own tab showing:</p>
+<ul>
+<li><strong>Clock display</strong> — Seven-segment style time display using a custom font</li>
+<li><strong>Sensor cards</strong> — Temperature, humidity, and battery</li>
+<li><strong>Device info</strong> — Firmware version, MAC address</li>
+</ul>
+<h3 id="dialog-system"><a class="header" href="#dialog-system">Dialog System</a></h3>
+<p>Instead of separate widget files, the controller uses a modular <code>dialog/</code> directory:</p>
+<ul>
+<li><strong><code>dialog/alarms.rs</code></strong> — Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle</li>
+<li><strong><code>dialog/audio.rs</code></strong> — Ringtone upload dialog with file picker and signature selection</li>
+<li><strong><code>dialog/info.rs</code></strong> — Device information dialog (firmware, battery, MAC)</li>
+<li><strong><code>dialog/settings.rs</code></strong> — Settings panel with sliders, spin buttons, and combo boxes for all device settings</li>
+</ul>
+<h3 id="display-module"><a class="header" href="#display-module">Display Module</a></h3>
+<p>The <code>display/</code> directory contains a custom seven-segment clock widget (<code>seven_segment.rs</code>) that renders the time using a DSEG7 font. The font files are bundled as assets:</p>
+<ul>
+<li><code>assets/fonts/DSEG7Classic-Regular.ttf</code></li>
+<li><code>assets/fonts/DSEG7Classic-Light.ttf</code></li>
+</ul>
+<h2 id="event-loop-integration"><a class="header" href="#event-loop-integration">Event Loop Integration</a></h2>
+<p>The GTK controller bridges async BLE operations with the GTK event loop using <code>glib::MainContext::spawn_local</code>. All spawned tasks accept a <code>CancellationToken</code> so they can be aborted when the associated view is closed:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn watch_sensor_events(
+    device: ClockDevice,
+    sensor_card: SensorCard,
+    cancel_token: tokio_util::sync::CancellationToken,
+) {
+    let mut receiver = device.subscribe();
+    spawn_local(async move {
+        loop {
+            tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() =&gt; break,
+                event = receiver.recv() =&gt; {
+                    match event {
+                        Ok(ClockEvent::SensorUpdate { temperature, humidity }) =&gt; {
+                            glib::idle_add_local_once(move || {
+                                sensor_card.update(temperature, humidity);
+                            });
+                        }
+                        Ok(ClockEvent::Disconnected) =&gt; break,
+                        _ =&gt; {}
+                    }
+                }
+            }
+        }
+    });
+}
+<span class="boring">}</span></code></pre>
+<h2 id="features-1"><a class="header" href="#features-1">Features</a></h2>
+<h3 id="device-scanning"><a class="header" href="#device-scanning">Device Scanning</a></h3>
+<p>The scan dialog shows nearby devices with their advertisement data (temperature, humidity, battery). Clicking a device initiates connection and authentication.</p>
+<h3 id="sensor-monitoring"><a class="header" href="#sensor-monitoring">Sensor Monitoring</a></h3>
+<p>Real-time temperature and humidity are displayed via sensor cards that update from the <code>ClockEvent</code> stream. Battery level is shown with a percentage label.</p>
+<h3 id="alarm-editing"><a class="header" href="#alarm-editing">Alarm Editing</a></h3>
+<p>The alarm editor dialog shows all 16 slots in a list. Each row displays:</p>
+<ul>
+<li>Slot index</li>
+<li>Time (HH:MM)</li>
+<li>Repeat mask (as day names)</li>
+<li>Enabled toggle</li>
+<li>Snooze toggle</li>
+</ul>
+<p>Editing a row sends the updated alarm to the device immediately.</p>
+<h3 id="settings-panel"><a class="header" href="#settings-panel">Settings Panel</a></h3>
+<p>The settings dialog provides graphical controls for all device settings:</p>
+<ul>
+<li><strong>Volume</strong> — Slider (1–5)</li>
+<li><strong>Brightness</strong> — Slider (0–100, step 10)</li>
+<li><strong>Night brightness</strong> — Slider (0–100, step 10)</li>
+<li><strong>Night mode window</strong> — Hour/minute spin buttons for start and end</li>
+<li><strong>Timezone</strong> — Spin button (-720 to +840 minutes)</li>
+<li><strong>Time format</strong> — Combo box (12h / 24h)</li>
+<li><strong>Temperature unit</strong> — Combo box (°C / °F)</li>
+<li><strong>Language</strong> — Combo box (English, Chinese, German, Japanese)</li>
+<li><strong>Ringtone</strong> — Combo box with built-in and custom ringtones</li>
+</ul>
+<p>Changes are applied immediately to the device.</p>
+<h3 id="ringtone-upload-1"><a class="header" href="#ringtone-upload-1">Ringtone Upload</a></h3>
+<p>The audio dialog provides a file picker for selecting a PCM audio file and a signature selector for choosing the target slot. The upload progress is shown with a progress bar.</p>
+<h2 id="css-styling"><a class="header" href="#css-styling">CSS Styling</a></h2>
+<p>The application uses CSS classes for styling:</p>
+<pre><code class="language-css">.sensor-card {
+    padding: 12px;
+    border-radius: 8px;
+    background-color: @theme_base_color;
+}
+
+.alarm-slot-row {
+    padding: 6px 12px;
+}
+
+.settings-panel scale {
+    margin: 6px 0;
+}
+</code></pre>
+<h2 id="platform-support"><a class="header" href="#platform-support">Platform Support</a></h2>
+<p>The GTK 4 controller requires Linux with GTK 4 development libraries. It is not supported on macOS or Windows.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="websocket-server"><a class="header" href="#websocket-server">WebSocket Server</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The <code>cgd1-rs-ws</code> crate provides a WebSocket and REST server built on Axum. It exposes the full CGD1 device API over JSON for network integration (e.g., Home Assistant, web dashboards).</p>
+<h2 id="installation-3"><a class="header" href="#installation-3">Installation</a></h2>
+<pre><code class="language-bash">cargo install --path cgd1-rs-ws
+</code></pre>
+<h2 id="starting-the-server"><a class="header" href="#starting-the-server">Starting the Server</a></h2>
+<pre><code class="language-bash">cgd1-ws --address 0.0.0.0 --port 3000
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--address</code></td><td><code>0.0.0.0</code></td><td>Bind address</td></tr>
+<tr><td><code>--port</code></td><td><code>3000</code></td><td>Listen port</td></tr>
+<tr><td><code>-v, --verbose</code></td><td>0</td><td>Verbosity level (0–3)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="architecture-2"><a class="header" href="#architecture-2">Architecture</a></h2>
+<pre class="mermaid">flowchart TB
+    subgraph Server["cgd1-rs-ws"]
+        State["ServerState&lt;br/&gt;(transport, manager, token_store)"]
+        Listener["WebSocket Listener&lt;br/&gt;(axum)"]
+        Session["WsSession&lt;br/&gt;(per-connection)"]
+        Dispatch["dispatch_command&lt;br/&gt;+ subscribe_events"]
+        Commands["command/&lt;br/&gt;(free functions)"]
+        RestRoutes["REST Routes&lt;br/&gt;(GET /devices, etc.)"]
+    end
+
+    Client["WebSocket Client"] --&gt; Listener
+    Listener --&gt; Session
+    Session --&gt; Dispatch
+    Dispatch --&gt; Commands
+    Commands --&gt; State
+    RestRoutes --&gt; State
+</pre>
+
+<h3 id="serverstate"><a class="header" href="#serverstate">ServerState</a></h3>
+<p><code>ServerState</code> owns the BLE transport, device manager, and token store. It is <code>Clone</code> (via <code>Arc</code>) and shared across all connections:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ServerState {
+    transport: Arc&lt;BtleplugTransport&gt;,
+    manager: Arc&lt;ClockManager&gt;,
+    token_store: Arc&lt;FileTokenStore&gt;,
+}
+<span class="boring">}</span></code></pre>
+<h3 id="wssession"><a class="header" href="#wssession">WsSession</a></h3>
+<p>Each WebSocket connection creates a <code>WsSession</code> that processes incoming JSON requests and sends JSON responses. Per-message tasks are spawned with <code>tokio::spawn</code> for concurrent command handling.</p>
+<h2 id="websocket-protocol"><a class="header" href="#websocket-protocol">WebSocket Protocol</a></h2>
+<h3 id="request-format"><a class="header" href="#request-format">Request Format</a></h3>
+<pre><code class="language-json">{
+  "id": 1,
+  "command": {
+    "type": "scan",
+    "duration_secs": 10
+  }
+}
+</code></pre>
+<p>The <code>id</code> field is used to match responses to requests. The <code>command</code> field uses a tagged enum with <code>snake_case</code> serialization.</p>
+<h3 id="response-format"><a class="header" href="#response-format">Response Format</a></h3>
+<pre><code class="language-json">{
+  "id": 1,
+  "result": { ... },
+  "error": null
+}
+</code></pre>
+<p>Error responses:</p>
+<pre><code class="language-json">{
+  "id": 1,
+  "result": null,
+  "error": "device AA:BB:CC:DD:EE:FF is not connected"
+}
+</code></pre>
+<h3 id="commands"><a class="header" href="#commands">Commands</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Parameters</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>scan</code></td><td><code>duration_secs</code></td><td>Scan for devices</td></tr>
+<tr><td><code>connect</code></td><td><code>address</code></td><td>Connect and authenticate</td></tr>
+<tr><td><code>disconnect</code></td><td><code>address</code></td><td>Disconnect from device</td></tr>
+<tr><td><code>sync_time</code></td><td><code>address</code></td><td>Synchronize device clock</td></tr>
+<tr><td><code>read_alarms</code></td><td><code>address</code></td><td>Read all alarm slots</td></tr>
+<tr><td><code>set_alarm</code></td><td><code>address</code>, <code>slot</code>, <code>time</code>, <code>repeat_mask</code>, <code>enabled</code>, <code>snooze</code></td><td>Set an alarm</td></tr>
+<tr><td><code>delete_alarm</code></td><td><code>address</code>, <code>slot</code></td><td>Delete an alarm</td></tr>
+<tr><td><code>read_settings</code></td><td><code>address</code></td><td>Read device settings</td></tr>
+<tr><td><code>write_settings</code></td><td><code>address</code>, <code>settings</code></td><td>Write device settings</td></tr>
+<tr><td><code>set_brightness</code></td><td><code>address</code>, <code>value</code></td><td>Set immediate brightness</td></tr>
+<tr><td><code>preview_ringtone</code></td><td><code>address</code>, <code>volume</code> (optional)</td><td>Preview ringtone</td></tr>
+<tr><td><code>read_firmware</code></td><td><code>address</code></td><td>Read firmware version</td></tr>
+<tr><td><code>read_battery</code></td><td><code>address</code></td><td>Read battery level</td></tr>
+<tr><td><code>subscribe_events</code></td><td><code>address</code></td><td>Subscribe to push events</td></tr>
+</tbody>
+</table>
+</div>
+<p>All address fields use the <code>MacAddress</code> newtype (colon-separated hex). Duration uses <code>ScanDuration</code> (1–600 seconds). Slot indices use <code>AlarmSlotIndex</code> (0–15). Brightness uses <code>Brightness</code> (0–150, multiple of 10).</p>
+<h3 id="event-subscription"><a class="header" href="#event-subscription">Event Subscription</a></h3>
+<p>After sending <code>subscribe_events</code>, the server pushes <code>WsEvent</code> messages to the client:</p>
+<pre><code class="language-json">{
+  "event": "sensor_update",
+  "data": {
+    "temperature": 23.4,
+    "humidity": 45.6
+  }
+}
+</code></pre>
+<p>Event types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Event</th><th>Payload</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sensor_update</code></td><td><code>temperature</code>, <code>humidity</code></td><td>Real-time sensor data</td></tr>
+<tr><td><code>battery_level</code></td><td><code>level</code></td><td>Battery level change</td></tr>
+<tr><td><code>disconnected</code></td><td>(empty)</td><td>Device disconnected</td></tr>
+<tr><td><code>reconnected</code></td><td>(empty)</td><td>Device reconnected</td></tr>
+<tr><td><code>ack</code></td><td><code>command</code>, <code>status</code></td><td>Command ACK from device</td></tr>
+<tr><td><code>advertisement</code></td><td>(full advertisement data)</td><td>Passive advertisement received</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="rest-api"><a class="header" href="#rest-api">REST API</a></h2>
+<p>Read-only endpoints are available via REST:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Path</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>GET</code></td><td><code>/health</code></td><td>Server health check</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices</code></td><td>List connected devices</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/sensors</code></td><td>Latest sensor data</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/battery</code></td><td>Battery level</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/firmware</code></td><td>Firmware version</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/alarms</code></td><td>All alarms</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/settings</code></td><td>Device settings</td></tr>
+</tbody>
+</table>
+</div>
+<p>Path parameters use <code>{address}</code> syntax (Axum 0.8+). The address is a MAC address in colon-separated hex format (e.g., <code>AA:BB:CC:DD:EE:FF</code>).</p>
+<h3 id="example-rest-request"><a class="header" href="#example-rest-request">Example: REST Request</a></h3>
+<pre><code class="language-bash">curl http://localhost:3000/api/devices/AA:BB:CC:DD:EE:FF/sensors
+</code></pre>
+<p>Response:</p>
+<pre><code class="language-json">{
+  "temperature": 23.4,
+  "humidity": 45.6
+}
+</code></pre>
+<h3 id="example-websocket-session"><a class="header" href="#example-websocket-session">Example: WebSocket Session</a></h3>
+<pre><code class="language-javascript">const ws = new WebSocket("ws://localhost:3000/ws");
+
+ws.onopen = () =&gt; {
+  // Connect to a device
+  ws.send(JSON.stringify({
+    id: 1,
+    command: { type: "connect", address: "AA:BB:CC:DD:EE:FF" }
+  }));
+
+  // Subscribe to events
+  ws.send(JSON.stringify({
+    id: 2,
+    command: { type: "subscribe_events", address: "AA:BB:CC:DD:EE:FF" }
+  }));
+};
+
+ws.onmessage = (event) =&gt; {
+  const msg = JSON.parse(event.data);
+  if (msg.result !== null) {
+    console.log("Response:", msg);
+  } else if (msg.event) {
+    console.log("Event:", msg);
+  }
+};
+</code></pre>
+<h2 id="error-handling-2"><a class="header" href="#error-handling-2">Error Handling</a></h2>
+<p><code>ServerError</code> converts to HTTP status codes for REST endpoints:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Error</th><th>Status Code</th></tr>
+</thead>
+<tbody>
+<tr><td><code>NotConnected</code></td><td>404</td></tr>
+<tr><td><code>Json</code> parse error</td><td>400</td></tr>
+<tr><td><code>Core</code> (BLE/library errors)</td><td>500</td></tr>
+</tbody>
+</table>
+</div>
+<p>WebSocket errors are returned in the <code>error</code> field of the JSON response.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="platform-notes"><a class="header" href="#platform-notes">Platform Notes</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="linux"><a class="header" href="#linux">Linux</a></h2>
+<h3 id="bluez"><a class="header" href="#bluez">BlueZ</a></h3>
+<p>Linux BLE access goes through BlueZ via D-Bus. The <code>btleplug</code> crate handles this internally, but BlueZ must be running and the user must have appropriate permissions.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li><code>bluez</code> package installed and running</li>
+<li><code>dbus</code> running</li>
+<li>User has permission to access the BLE adapter</li>
+</ul>
+<p><strong>Common issues:</strong></p>
+<ul>
+<li><strong><code>Permission denied</code></strong>: Add the user to the <code>bluetooth</code> group or run with appropriate capabilities</li>
+<li><strong><code>Adapter not found</code></strong>: Ensure Bluetooth is enabled in system settings</li>
+<li><strong><code>Connection refused</code></strong>: Verify the D-Bus system socket is running (<code>systemctl status dbus</code>)</li>
+</ul>
+<h3 id="gtk-4-controller"><a class="header" href="#gtk-4-controller">GTK 4 Controller</a></h3>
+<p>The GTK 4 controller requires GTK 4 development libraries:</p>
+<pre><code class="language-bash"># Ubuntu/Debian
+sudo apt-get install -y libgtk-4-dev
+
+# Fedora
+sudo dnf install -y gtk4-devel
+
+# Arch
+sudo pacman -S gtk4
+</code></pre>
+<h2 id="macos-1"><a class="header" href="#macos-1">macOS</a></h2>
+<h3 id="corebluetooth"><a class="header" href="#corebluetooth">CoreBluetooth</a></h3>
+<p>macOS uses CoreBluetooth for BLE access. No extra system packages are needed for the core library or CLI.</p>
+<p><strong>Limitations:</strong></p>
+<ul>
+<li>The GTK 4 controller is not supported on macOS</li>
+<li>macOS requires Bluetooth to be enabled in System Settings</li>
+<li>The first BLE scan may prompt for Bluetooth permission</li>
+</ul>
+<h3 id="token-storage"><a class="header" href="#token-storage">Token Storage</a></h3>
+<p>Tokens are stored in <code>~/Library/Application Support/cgd1-rs/tokens/</code>.</p>
+<h2 id="windows"><a class="header" href="#windows">Windows</a></h2>
+<p>Windows uses the Windows Bluetooth API. The core library and CLI should work, but this is less tested than Linux.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>Windows 10 or later</li>
+<li>Bluetooth adapter enabled</li>
+</ul>
+<h2 id="ble-range-and-stability"><a class="header" href="#ble-range-and-stability">BLE Range and Stability</a></h2>
+<ul>
+<li><strong>Range</strong>: The CGD1 uses Bluetooth 5.0 with a typical indoor range of 10–15 meters</li>
+<li><strong>Interference</strong>: 2.4 GHz Wi-Fi can cause BLE interference. If connections are unstable, try moving closer or switching Wi-Fi channels</li>
+<li><strong>Multiple connections</strong>: The library supports multiple simultaneous device connections, but BLE bandwidth is shared</li>
+</ul>
+<h2 id="firmware-compatibility"><a class="header" href="#firmware-compatibility">Firmware Compatibility</a></h2>
+<p>Known firmwares:</p>
+<ul>
+<li><code>1.0.1_0046</code></li>
+<li><code>1.0.1_0063</code></li>
+<li><code>1.0.1_0067</code></li>
+<li><code>1.0.1_0126</code></li>
+<li><code>1.0.1_0130</code></li>
+<li><code>1.0.1_0132</code></li>
+</ul>
+<p>If you encounter a new firmware version, please report it on <a href="https://github.com/smearor/cgd1-rs/issues">GitHub Issues</a>.</p>
+<h3 id="alarm-slot-count"><a class="header" href="#alarm-slot-count">Alarm Slot Count</a></h3>
+<p>The clOwOck specification documents 16 alarm slots. The ov1d1u Home Assistant integration uses 19 slots. This discrepancy may be firmware-dependent. The library defaults to 16 slots (indices 0–15).</p>
+<h2 id="battery-notes"><a class="header" href="#battery-notes">Battery Notes</a></h2>
+<ul>
+<li>The CGD1 uses 2 × AA batteries with a standby time of over 1 year</li>
+<li>Battery level is available passively via advertisements and actively via the GATT battery service</li>
+<li>The passive advertisement battery byte has bit 7 masked (<code>&amp; 0x7F</code>)</li>
+</ul>
+<h2 id="audio-upload-notes"><a class="header" href="#audio-upload-notes">Audio Upload Notes</a></h2>
+<ul>
+<li>Audio uploads require a stable connection; parallel BLE operations can abort the transfer</li>
+<li>The MTU exchange is critical for audio uploads — without a sufficient MTU, packets would need fragmentation</li>
+<li>Maximum audio duration is approximately 12 seconds (~98 KB at 8 kHz, 8-bit mono)</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
+<h2 id="cron-time-synchronization"><a class="header" href="#cron-time-synchronization">Cron Time Synchronization</a></h2>
+<p>Sync the device clock daily via cron:</p>
+<pre><code class="language-cron"># Sync CGD1 clock every day at 3:00 AM
+0 3 * * * /home/user/.cargo/bin/cgd1 sync-time AA:BB:CC:DD:EE:FF
+</code></pre>
+<h2 id="home-assistant-integration-via-websocket"><a class="header" href="#home-assistant-integration-via-websocket">Home Assistant Integration via WebSocket</a></h2>
+<p>Start the WebSocket server:</p>
+<pre><code class="language-bash">cgd1-ws --port 3000 &amp;
+</code></pre>
+<p>Home Assistant custom component (Python):</p>
+<pre><code class="language-python">import asyncio
+import json
+import websockets
+
+async def monitor_device():
+    uri = "ws://localhost:3000/ws"
+    async with websockets.connect(uri) as ws:
+        # Connect to device
+        await ws.send(json.dumps({
+            "id": 1,
+            "command": {"type": "connect", "address": "AA:BB:CC:DD:EE:FF"}
+        }))
+        print(await ws.recv())
+
+        # Subscribe to sensor events
+        await ws.send(json.dumps({
+            "id": 2,
+            "command": {"type": "subscribe_events", "address": "AA:BB:CC:DD:EE:FF"}
+        }))
+        print(await ws.recv())
+
+        # Listen for events
+        async for message in ws:
+            data = json.loads(message)
+            if data.get("event") == "sensor_update":
+                temp = data["data"]["temperature"]
+                humidity = data["data"]["humidity"]
+                print(f"Temperature: {temp} C, Humidity: {humidity} %")
+
+asyncio.run(monitor_device())
+</code></pre>
+<h2 id="alarm-scheduling-script"><a class="header" href="#alarm-scheduling-script">Alarm Scheduling Script</a></h2>
+<p>Set up a weekday alarm using a shell script:</p>
+<pre><code class="language-bash">#!/bin/bash
+DEVICE="AA:BB:CC:DD:EE:FF"
+
+# Set weekday alarm at 07:00 in slot 0
+cgd1 alarm-set "$DEVICE" 0 07:00 --repeat 3e
+
+# Set weekend alarm at 08:30 in slot 1
+cgd1 alarm-set "$DEVICE" 1 08:30 --repeat 41
+
+# Verify
+cgd1 alarm-list "$DEVICE"
+</code></pre>
+<h2 id="batch-settings-configuration"><a class="header" href="#batch-settings-configuration">Batch Settings Configuration</a></h2>
+<p>Apply settings to multiple devices:</p>
+<pre><code class="language-bash">#!/bin/bash
+DEVICES=(
+    "AA:BB:CC:DD:EE:FF"
+    "11:22:33:44:55:66"
+)
+
+for mac in "${DEVICES[@]}"; do
+    echo "Configuring $mac..."
+    cgd1 sync-time "$mac"
+    cgd1 settings-write "$mac" \
+        --volume 3 \
+        --brightness 80 \
+        --night-brightness 20 \
+        --timezone 60 \
+        --time-format 24 \
+        --temp-unit C \
+        --language en
+done
+</code></pre>
+<h2 id="library-usage-full-device-setup"><a class="header" href="#library-usage-full-device-setup">Library Usage: Full Device Setup</a></h2>
+<pre class="playground"><code class="language-rust">use cgd1_rs::{
+    AlarmSlotIndex, Brightness, ClockManager, ClockTime, DayMask,
+    BtleplugTransport, FileTokenStore, Language, MacAddress,
+    TemperatureUnit, TimeFormat, TokenStore, Volume,
+};
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let transport = Arc::new(BtleplugTransport::new().await?);
+    let manager = ClockManager::new(transport.clone());
+    let store = Arc::new(FileTokenStore::default_directory());
+
+    let mac: MacAddress = "AA:BB:CC:DD:EE:FF".parse()?;
+    let device = manager.connect(&amp;mac).await?;
+
+    // Authenticate
+    let token_result = store.load_or_generate(&amp;mac);
+    device.set_token_store(store.clone() as Arc&lt;dyn TokenStore&gt;);
+    device.authenticate(&amp;token_result).await?;
+
+    // Sync time
+    device.sync_time_now().await?;
+    if token_result.is_new() {
+        store.save(&amp;mac, &amp;token_result)?;
+    }
+
+    // Set weekday alarm
+    device.set_alarm(
+        AlarmSlotIndex::new(0)?,
+        ClockTime::new(7, 0)?,
+        DayMask::WEEKDAYS,
+        true,
+        true,
+    ).await?;
+
+    // Configure settings
+    let mut settings = device.read_settings().await?;
+    settings.volume = Volume::new(3)?;
+    settings.brightness = Brightness::new(80)?;
+    settings.time_format = TimeFormat::TwentyFourHour;
+    settings.temperature_unit = TemperatureUnit::Celsius;
+    settings.language = Language::English;
+    device.write_settings(&amp;settings).await?;
+
+    println!("Device configured successfully!");
+
+    // Monitor sensors
+    let mut receiver = device.subscribe();
+    while let Ok(event) = receiver.recv().await {
+        if let cgd1_rs::ClockEvent::SensorUpdate { temperature, humidity } = event {
+            println!("Temperature: {:.1} C  Humidity: {:.1} %",
+                temperature.value(), humidity.value());
+        }
+    }
+
+    Ok(())
+}</code></pre>
+<h2 id="websocket-server-with-systemd"><a class="header" href="#websocket-server-with-systemd">WebSocket Server with systemd</a></h2>
+<p>Create a systemd service for the WebSocket server:</p>
+<pre><code class="language-ini"># /etc/systemd/system/cgd1-ws.service
+[Unit]
+Description=CGD1 WebSocket Server
+After=bluetooth.target
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/home/pi/.cargo/bin/cgd1-ws --port 3000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<p>Enable and start:</p>
+<pre><code class="language-bash">sudo systemctl daemon-reload
+sudo systemctl enable cgd1-ws
+sudo systemctl start cgd1-ws
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
+<h2 id="ble-connection-issues"><a class="header" href="#ble-connection-issues">BLE Connection Issues</a></h2>
+<h3 id="device-not-found-during-scan"><a class="header" href="#device-not-found-during-scan">Device not found during scan</a></h3>
+<p><strong>Symptom</strong>: <code>cgd1 scan</code> returns no devices.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Ensure the CGD1 is powered on (batteries inserted)</li>
+<li>Move closer to the device (within 5 meters)</li>
+<li>Verify Bluetooth is enabled on the host:
+<pre><code class="language-bash">bluetoothctl power on
+</code></pre>
+</li>
+<li>Check that the BLE adapter is available:
+<pre><code class="language-bash">hciconfig
+</code></pre>
+</li>
+<li>Stop other BLE applications that may be holding the adapter (e.g., other scanning tools)</li>
+</ol>
+<h3 id="connection-fails"><a class="header" href="#connection-fails">Connection fails</a></h3>
+<p><strong>Symptom</strong>: <code>Error: Transport(NotConnected)</code> or <code>Error: Transport(Timeout)</code>.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Ensure the device is not currently connected to another host (the CGD1 supports only one active BLE connection)</li>
+<li>Restart Bluetooth:
+<pre><code class="language-bash">sudo systemctl restart bluetooth
+</code></pre>
+</li>
+<li>Remove any existing pairing from the OS Bluetooth manager:
+<pre><code class="language-bash">bluetoothctl remove AA:BB:CC:DD:EE:FF
+</code></pre>
+</li>
+<li>Try connecting again after a few seconds</li>
+</ol>
+<h3 id="connection-drops-unexpectedly"><a class="header" href="#connection-drops-unexpectedly">Connection drops unexpectedly</a></h3>
+<p><strong>Symptom</strong>: <code>ClockEvent::Disconnected</code> events or <code>Error: Transport(Timeout)</code> during operations.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Check battery level — low batteries can cause disconnections</li>
+<li>Reduce distance between host and device</li>
+<li>Avoid 2.4 GHz Wi-Fi interference (switch to 5 GHz or change Wi-Fi channel)</li>
+<li>The library will attempt automatic reconnection with exponential backoff</li>
+</ol>
+<h2 id="authentication-issues"><a class="header" href="#authentication-issues">Authentication Issues</a></h2>
+<h3 id="authentication-fails-on-first-connection"><a class="header" href="#authentication-fails-on-first-connection">Authentication fails on first connection</a></h3>
+<p><strong>Symptom</strong>: <code>Error: AuthFailed</code> with <code>is_new_token: true</code>.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>This should not happen on a fresh device. Ensure you are connecting to the correct MAC address</li>
+<li>Try generating a new token by deleting the token file:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
+</code></pre>
+</li>
+<li>Run <code>sync-time</code> again to generate and store a new token</li>
+</ol>
+<h3 id="authentication-fails-after-previously-working"><a class="header" href="#authentication-fails-after-previously-working">Authentication fails after previously working</a></h3>
+<p><strong>Symptom</strong>: <code>Error: AuthFailed</code> with <code>is_new_token: false</code>.</p>
+<p><strong>Cause</strong>: The device was likely paired with a different app (e.g., the official Qingping app), which overwrites the authentication token.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Delete the stored token:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
+</code></pre>
+</li>
+<li>Reconnect with <code>sync-time</code> to generate a new token</li>
+<li>Note: The official app and <code>cgd1-rs</code> cannot share the same token. Using one will invalidate the other’s token</li>
+</ol>
+<h3 id="sync-time-succeeds-but-other-commands-fail"><a class="header" href="#sync-time-succeeds-but-other-commands-fail"><code>sync-time</code> succeeds but other commands fail</a></h3>
+<p><strong>Symptom</strong>: <code>sync-time</code> works, but <code>alarm-set</code> or <code>settings-write</code> returns errors.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify the device is still connected (<code>cgd1 battery &lt;mac&gt;</code>)</li>
+<li>Check that the token was persisted (look for the token file in <code>~/.local/share/cgd1-rs/tokens/</code>)</li>
+<li>Try disconnecting and reconnecting</li>
+</ol>
+<h2 id="audio-upload-issues"><a class="header" href="#audio-upload-issues">Audio Upload Issues</a></h2>
+<h3 id="upload-fails-with-mtu-error"><a class="header" href="#upload-fails-with-mtu-error">Upload fails with MTU error</a></h3>
+<p><strong>Symptom</strong>: <code>Error: MtuTooSmall { mtu: ... }</code>.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>The device or host does not support a sufficient MTU. This is a hardware limitation</li>
+<li>Try restarting Bluetooth and reconnecting</li>
+<li>Some BLE adapters negotiate a lower MTU on first connection; disconnect and reconnect</li>
+</ol>
+<h3 id="upload-aborts-mid-transfer"><a class="header" href="#upload-aborts-mid-transfer">Upload aborts mid-transfer</a></h3>
+<p><strong>Symptom</strong>: Upload starts but fails partway through.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Ensure no other BLE operations are running concurrently (alarm reads, settings reads, RSSI polling)</li>
+<li>Keep the device close to the host during the entire transfer</li>
+<li>Verify the audio file is valid 8-bit unsigned PCM at 8 kHz mono</li>
+<li>Check the file size is under 98 KB</li>
+</ol>
+<h3 id="audio-plays-incorrectly-after-upload"><a class="header" href="#audio-plays-incorrectly-after-upload">Audio plays incorrectly after upload</a></h3>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify the source audio is 8-bit unsigned PCM (not signed, not 16-bit)</li>
+<li>Verify the sample rate is exactly 8000 Hz</li>
+<li>Verify the audio is mono</li>
+<li>Try alternating the signature slot (<code>CustomSlotA</code> → <code>CustomSlotB</code>)</li>
+</ol>
+<h2 id="gtk-controller-issues"><a class="header" href="#gtk-controller-issues">GTK Controller Issues</a></h2>
+<h3 id="application-fails-to-start"><a class="header" href="#application-fails-to-start">Application fails to start</a></h3>
+<p><strong>Symptom</strong>: <code>error: failed to run command: cgd1-rs-controller</code> or GTK warnings.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify GTK 4 is installed:
+<pre><code class="language-bash">pkg-config --modversion gtk4
+</code></pre>
+</li>
+<li>Check for missing CSS or font resources</li>
+</ol>
+<h3 id="sensor-cards-not-updating"><a class="header" href="#sensor-cards-not-updating">Sensor cards not updating</a></h3>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Verify the device is connected (check the sidebar)</li>
+<li>Try disconnecting and reconnecting</li>
+<li>Check the application logs with verbosity enabled</li>
+</ol>
+<h2 id="virtual-backend"><a class="header" href="#virtual-backend">Virtual Backend</a></h2>
+<h3 id="using-the-virtual-backend-for-testing"><a class="header" href="#using-the-virtual-backend-for-testing">Using the virtual backend for testing</a></h3>
+<p>The <code>--backend virtual</code> flag uses an in-memory device simulation:</p>
+<pre><code class="language-bash">cgd1 --backend virtual scan
+cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
+cgd1 --backend virtual alarm-list AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>This works without any BLE hardware and is useful for testing CLI behavior, scripts, and the WebSocket server.</p>
+<h2 id="reporting-issues"><a class="header" href="#reporting-issues">Reporting Issues</a></h2>
+<p>If you encounter a bug or have a feature request, please open an issue on <a href="https://github.com/smearor/cgd1-rs/issues">GitHub</a>.</p>
+<p>Include:</p>
+<ul>
+<li>The command or code that triggered the issue</li>
+<li>The full error output (use <code>-vvv</code> for maximum verbosity)</li>
+<li>Your OS and Bluetooth adapter model</li>
+<li>The device firmware version (<code>cgd1 firmware &lt;mac&gt;</code>)</li>
+</ul>
 
                     </main>
 

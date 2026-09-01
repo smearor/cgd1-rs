@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Architecture - cgd1-rs Documentation</title>
+        <title>Architecture - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,149 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="workspace-layout"><a class="header" href="#workspace-layout">Workspace Layout</a></h2>
+<pre><code>cgd1-rs/
+├── cgd1-rs/              # Core library
+│   └── src/
+│       ├── ble/          # BLE transport layer
+│       ├── command/      # Protocol commands, alarm, settings types
+│       ├── error/        # Error types (transport, auth, clock)
+│       ├── token/        # Auth token + file store
+│       ├── types/        # Newtypes (MAC, temperature, humidity, etc.)
+│       ├── device.rs     # ClockDevice: connected device handle
+│       ├── event.rs      # ClockEvent enum
+│       ├── manager.rs    # ClockManager: multi-device connection manager
+│       └── scanner.rs    # ClockScanner: device discovery
+├── cgd1-rs-cli/          # Command-line tool
+├── cgd1-rs-controller/   # GTK 4 desktop application
+├── cgd1-rs-ws/           # WebSocket + REST server
+└── book/                 # This documentation
+</code></pre>
+<h2 id="core-library-cgd1-rs"><a class="header" href="#core-library-cgd1-rs">Core Library (<code>cgd1-rs</code>)</a></h2>
+<h3 id="ble-transport-layer"><a class="header" href="#ble-transport-layer">BLE Transport Layer</a></h3>
+<p>The <code>BleTransport</code> trait abstracts all BLE operations, enabling testing with <code>MockBleTransport</code> and <code>VirtualClockTransport</code> without real hardware.</p>
+<pre class="mermaid">classDiagram
+    class BleTransport {
+    &lt;&lt;trait&gt;&gt;
+    +scan_active(duration) Vec~DiscoveredDevice~
+    +connect(address) Result
+    +disconnect(address) Result
+    +subscribe(characteristic) Result
+    +write_frame(command, payload) Result
+    +read(characteristic) Vec~u8~
+    +request_mtu(mtu) u16
+    }
+
+    class BtleplugTransport {
+    +new() Self
+    }
+    class MockBleTransport
+    class VirtualClockTransport
+
+    BleTransport &lt;|.. BtleplugTransport
+    BleTransport &lt;|.. MockBleTransport
+    BleTransport &lt;|.. VirtualClockTransport
+</pre>
+
+<p><strong><code>BtleplugTransport</code></strong> — Real hardware backend using the <code>btleplug</code> crate. Works on Linux (BlueZ), macOS (CoreBluetooth), and Windows.</p>
+<p><strong><code>MockBleTransport</code></strong> — In-memory mock with channels for advertisements and notifications. Used in unit tests.</p>
+<p><strong><code>VirtualClockTransport</code></strong> — Full in-memory simulation of the CGD1 device. Responds to commands with appropriate ACKs, maintains alarm/settings state, and emits sensor notifications. Used in integration tests for CLI and WebSocket server.</p>
+<h3 id="device-lifecycle"><a class="header" href="#device-lifecycle">Device Lifecycle</a></h3>
+<pre class="mermaid">flowchart LR
+    Scan["ClockScanner&lt;br/&gt;.scan_active()"] --&gt; Connect["ClockManager&lt;br/&gt;.connect(mac)"]
+    Connect --&gt; Auth["ClockDevice&lt;br/&gt;.authenticate(token)"]
+    Auth --&gt; SyncTime["ClockDevice&lt;br/&gt;.sync_time_now()"]
+    SyncTime --&gt; Ready["Ready for commands"]
+    Ready --&gt; Operate["read_alarms&lt;br/&gt;set_alarm&lt;br/&gt;read_settings&lt;br/&gt;write_settings&lt;br/&gt;upload_ringtone&lt;br/&gt;..."]
+    Ready --&gt; Monitor["subscribe() →&lt;br/&gt;ClockEvent stream"]
+</pre>
+
+<h3 id="clockdevice"><a class="header" href="#clockdevice">ClockDevice</a></h3>
+<p><code>ClockDevice</code> is the primary handle for interacting with a connected CGD1. It owns:</p>
+<ul>
+<li><strong>Transport reference</strong> — For sending commands and reading data</li>
+<li><strong>Pending ACK map</strong> — <code>HashMap&lt;u8, VecDeque&lt;oneshot::Sender&gt;&gt;</code> for matching ACKs to pending requests by command byte</li>
+<li><strong>Pending data response channel</strong> — <code>mpsc::Sender</code> for multi-packet responses (e.g., alarm read, settings read)</li>
+<li><strong>Event broadcast sender</strong> — <code>broadcast::Sender&lt;ClockEvent&gt;</code> for sensor, battery, and connection events</li>
+<li><strong>Auth token</strong> — Stored after successful authentication</li>
+<li><strong>Notification task</strong> — Background <code>tokio::task</code> that processes BLE notifications</li>
+</ul>
+<h4 id="notification-task"><a class="header" href="#notification-task">Notification Task</a></h4>
+<p>A background task per connected device listens for BLE notifications and dispatches them:</p>
+<pre class="mermaid">flowchart TB
+    NotifyTask["Notification Task"]
+    AuthNotify["Auth Notify&lt;br/&gt;(ACKs)"]
+    DataNotify["Data Notify&lt;br/&gt;(ACKs, Settings, Alarms)"]
+    SensorNotify["Sensor Notify&lt;br/&gt;(Temp, Humidity)"]
+    Battery["Battery Level&lt;br/&gt;(GATT)"]
+    EventChannel["broadcast::Sender&lt;br/&gt;&lt;ClockEvent&gt;"]
+    AckMap["Oneshot Senders&lt;br/&gt;(pending ACKs)"]
+    DataChannel["mpsc::Sender&lt;br/&gt;(pending data)"]
+
+    NotifyTask --&gt; AuthNotify
+    NotifyTask --&gt; DataNotify
+    NotifyTask --&gt; SensorNotify
+    NotifyTask --&gt; Battery
+    AuthNotify --&gt; AckMap
+    DataNotify --&gt; AckMap
+    DataNotify --&gt; DataChannel
+    SensorNotify --&gt; EventChannel
+    Battery --&gt; EventChannel
+</pre>
+
+<h4 id="request-response-pattern"><a class="header" href="#request-response-pattern">Request-Response Pattern</a></h4>
+<p>Commands that expect an ACK use a <code>oneshot::channel</code>. The pending request is registered <strong>before</strong> the command frame is sent to prevent a race condition where the ACK arrives before the receiver is set up:</p>
+<ol>
+<li><code>prepare_ack(command)</code> — Registers a <code>oneshot::Sender</code> in the pending map</li>
+<li><code>transport.write_frame(command, payload)</code> — Sends the command</li>
+<li><code>wait_ack(receiver, timeout)</code> — Waits for the ACK with a 10-second timeout</li>
+</ol>
+<p>Multi-packet responses (e.g., <code>read_alarms</code>, <code>read_settings</code>) use an <code>mpsc::Sender</code> instead, allowing the notification task to forward data packets as they arrive.</p>
+<h3 id="reconnection"><a class="header" href="#reconnection">Reconnection</a></h3>
+<p>If the device disconnects unexpectedly, the library attempts reconnection with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped). After a successful BLE reconnect, the full state recovery sequence is performed:</p>
+<ol>
+<li><strong>BLE Reconnect</strong> via <code>transport.connect(address)</code></li>
+<li><strong>GATT Re-subscription</strong> for Auth Notify, Data Notify, and Sensor Notify</li>
+<li><strong>Re-authentication</strong> using the stored token</li>
+<li><strong>Flag reset</strong> — <code>is_authenticated</code> set to <code>true</code></li>
+</ol>
+<p><code>ClockEvent::Disconnected</code> and <code>ClockEvent::Reconnected</code> are broadcast to subscribers.</p>
+<h3 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h3>
+<p>The library uses structured error types:</p>
+<ul>
+<li><strong><code>TransportError</code></strong> — BLE-level errors (not connected, characteristic not found, timeout, etc.)</li>
+<li><strong><code>ClockError</code></strong> — Library-level errors (auth failed, command rejected, timeout, invalid alarm slot, parse errors, IO errors)</li>
+<li><strong><code>AuthFailedError</code></strong> — Authentication failure with context (reason, is_new_token, token_path)</li>
+</ul>
+<p>All errors implement <code>std::error::Error</code> and <code>Display</code>. The CLI additionally uses <code>miette::Diagnostic</code> for rich terminal output.</p>
+<h3 id="newtypes"><a class="header" href="#newtypes">Newtypes</a></h3>
+<p>The library uses newtypes for compile-time validation at the API boundary:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Validation</th><th>Used By</th></tr>
+</thead>
+<tbody>
+<tr><td><code>MacAddress</code></td><td>6-byte MAC, colon-separated hex</td><td>All commands</td></tr>
+<tr><td><code>ScanDuration</code></td><td>1–600 seconds</td><td><code>scan</code></td></tr>
+<tr><td><code>AlarmSlotIndex</code></td><td>0–15</td><td><code>alarm-set</code>, <code>alarm-delete</code></td></tr>
+<tr><td><code>ClockTime</code></td><td>HH:MM (0–23, 0–59)</td><td><code>alarm-set</code></td></tr>
+<tr><td><code>DayMask</code></td><td>u8 bitmask</td><td><code>alarm-set</code></td></tr>
+<tr><td><code>Brightness</code></td><td>0–150, multiple of 10</td><td><code>brightness</code>, <code>settings-write</code></td></tr>
+<tr><td><code>Volume</code></td><td>1–5</td><td><code>settings-write</code>, <code>ringtone-preview</code></td></tr>
+<tr><td><code>Timezone</code></td><td>-720 to +840 minutes</td><td><code>settings-write</code></td></tr>
+<tr><td><code>RingtoneSignature</code></td><td>4 bytes or named slot</td><td><code>ringtone-upload</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>All newtypes implement <code>FromStr</code> for CLI/JSON parsing and <code>Display</code> for output.</p>
+<h2 id="frontends"><a class="header" href="#frontends">Frontends</a></h2>
+<h3 id="cli-cgd1-rs-cli"><a class="header" href="#cli-cgd1-rs-cli">CLI (<code>cgd1-rs-cli</code>)</a></h3>
+<p>Each subcommand connects, authenticates, executes one operation, and disconnects. The <code>repl</code> subcommand keeps a persistent connection. See <a href="./cli.html">CLI Tool</a>.</p>
+<h3 id="gtk-4-controller-cgd1-rs-controller"><a class="header" href="#gtk-4-controller-cgd1-rs-controller">GTK 4 Controller (<code>cgd1-rs-controller</code>)</a></h3>
+<p>A desktop application with a sidebar for device management and tabbed views for sensors, alarms, and settings. Uses <code>glib::MainContext::spawn_local</code> to bridge async BLE operations with the GTK event loop. See <a href="./controller.html">Controller</a>.</p>
+<h3 id="websocket-server-cgd1-rs-ws"><a class="header" href="#websocket-server-cgd1-rs-ws">WebSocket Server (<code>cgd1-rs-ws</code>)</a></h3>
+<p>An Axum-based server exposing a WebSocket endpoint for command/response and event streaming, plus REST endpoints for read operations. See <a href="./websocket.html">WebSocket Server</a>.</p>
 
                     </main>
 

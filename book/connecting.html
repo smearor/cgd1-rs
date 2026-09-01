@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Scanning &amp; Connecting - cgd1-rs Documentation</title>
+        <title>Scanning &amp; Connecting - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,108 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="scanning--connecting"><a class="header" href="#scanning--connecting">Scanning &amp; Connecting</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="device-discovery"><a class="header" href="#device-discovery">Device Discovery</a></h2>
+<p>The CGD1 broadcasts BLE advertisements with the ClearGrass/Qingping service-data UUID <code>0xFDCD</code>. These advertisements carry sensor data (temperature, humidity, battery) and the device MAC address, allowing discovery without a connection.</p>
+<h3 id="scanning-with-the-cli"><a class="header" href="#scanning-with-the-cli">Scanning with the CLI</a></h3>
+<pre><code class="language-bash">cgd1 scan --duration 10
+</code></pre>
+<p>The <code>--duration</code> flag accepts values from 1 to 600 seconds (default: 10).</p>
+<p>Output:</p>
+<pre><code>Scanning for 10s...
+Found 1 device(s):
+  MAC: AA:BB:CC:DD:EE:FF
+    Temperature: 23.4 C
+    Humidity: 45.6 %
+    Battery: 87 %
+</code></pre>
+<h3 id="scanning-with-the-library"><a class="header" href="#scanning-with-the-library">Scanning with the Library</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{BtleplugTransport, ClockScanner, BleTransport};
+use std::sync::Arc;
+use std::time::Duration;
+
+let transport = Arc::new(BtleplugTransport::new().await?);
+let scanner = ClockScanner::new(transport);
+
+let devices = scanner.scan_active(Duration::from_secs(10)).await?;
+
+for device in &amp;devices {
+    println!("MAC: {}", device.address);
+    if let Some(ad) = &amp;device.advertisement {
+        println!("  Temperature: {:.1} C", ad.temperature.value());
+        println!("  Humidity: {:.1} %", ad.humidity.value());
+        println!("  Battery: {} %", ad.battery.value());
+    }
+}
+<span class="boring">}</span></code></pre>
+<h3 id="advertisement-data"><a class="header" href="#advertisement-data">Advertisement Data</a></h3>
+<p>The <code>AdvertisementData</code> struct is parsed from the raw service-data payload:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Scaling</th></tr>
+</thead>
+<tbody>
+<tr><td>MAC</td><td>6 bytes (reversed)</td><td>—</td></tr>
+<tr><td>Temperature</td><td>Int16 BE</td><td>/ 10 (°C)</td></tr>
+<tr><td>Humidity</td><td>UInt16 BE</td><td>/ 10 (%)</td></tr>
+<tr><td>Battery</td><td>UInt8</td><td>&amp; 0x7F (mask bit 7)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="connecting"><a class="header" href="#connecting">Connecting</a></h2>
+<h3 id="connection-flow"><a class="header" href="#connection-flow">Connection Flow</a></h3>
+<pre class="mermaid">sequenceDiagram
+    participant App as Application
+    participant Manager as ClockManager
+    participant Transport as BleTransport
+    participant CGD1 as CGD1 Device
+
+    App-&gt;&gt;Manager: connect(mac)
+    Manager-&gt;&gt;Transport: connect(address)
+    Transport-&gt;&gt;CGD1: BLE connection
+    CGD1--&gt;&gt;Transport: Connected
+    Transport--&gt;&gt;Manager: Ok
+    Manager--&gt;&gt;App: ClockDevice
+</pre>
+
+<h3 id="connecting-with-the-library"><a class="header" href="#connecting-with-the-library">Connecting with the Library</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use cgd1_rs::{BtleplugTransport, ClockManager, MacAddress};
+use std::sync::Arc;
+
+let transport = Arc::new(BtleplugTransport::new().await?);
+let manager = ClockManager::new(transport);
+
+let mac: MacAddress = "AA:BB:CC:DD:EE:FF".parse()?;
+let device = manager.connect(&amp;mac).await?;
+<span class="boring">}</span></code></pre>
+<p><code>ClockManager</code> tracks connected devices by MAC address. Calling <code>connect</code> on an already-connected device returns the existing handle.</p>
+<h3 id="multi-device-management"><a class="header" href="#multi-device-management">Multi-Device Management</a></h3>
+<p><code>ClockManager</code> supports simultaneous connections to multiple CGD1 devices:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let device_a = manager.connect(&amp;mac_a).await?;
+let device_b = manager.connect(&amp;mac_b).await?;
+
+// Both devices are now connected and can be operated independently
+device_a.sync_time_now().await?;
+device_b.read_alarms().await?;
+<span class="boring">}</span></code></pre>
+<h3 id="disconnecting"><a class="header" href="#disconnecting">Disconnecting</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>manager.disconnect(&amp;mac).await?;
+<span class="boring">}</span></code></pre>
+<p>This tears down the BLE connection and stops the notification task for that device.</p>
+<h3 id="virtual-backend-testing"><a class="header" href="#virtual-backend-testing">Virtual Backend (Testing)</a></h3>
+<p>For testing without hardware, use the <code>virtual</code> backend:</p>
+<pre><code class="language-bash">cgd1 --backend virtual scan
+cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>The virtual backend simulates a CGD1 device in memory, responding to all commands with appropriate ACKs and maintaining alarm/settings state.</p>
 
                     </main>
 

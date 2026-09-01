@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>WebSocket Server - cgd1-rs Documentation</title>
+        <title>WebSocket Server - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,201 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="websocket-server"><a class="header" href="#websocket-server">WebSocket Server</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The <code>cgd1-rs-ws</code> crate provides a WebSocket and REST server built on Axum. It exposes the full CGD1 device API over JSON for network integration (e.g., Home Assistant, web dashboards).</p>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<pre><code class="language-bash">cargo install --path cgd1-rs-ws
+</code></pre>
+<h2 id="starting-the-server"><a class="header" href="#starting-the-server">Starting the Server</a></h2>
+<pre><code class="language-bash">cgd1-ws --address 0.0.0.0 --port 3000
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--address</code></td><td><code>0.0.0.0</code></td><td>Bind address</td></tr>
+<tr><td><code>--port</code></td><td><code>3000</code></td><td>Listen port</td></tr>
+<tr><td><code>-v, --verbose</code></td><td>0</td><td>Verbosity level (0–3)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre class="mermaid">flowchart TB
+    subgraph Server["cgd1-rs-ws"]
+        State["ServerState&lt;br/&gt;(transport, manager, token_store)"]
+        Listener["WebSocket Listener&lt;br/&gt;(axum)"]
+        Session["WsSession&lt;br/&gt;(per-connection)"]
+        Dispatch["dispatch_command&lt;br/&gt;+ subscribe_events"]
+        Commands["command/&lt;br/&gt;(free functions)"]
+        RestRoutes["REST Routes&lt;br/&gt;(GET /devices, etc.)"]
+    end
+
+    Client["WebSocket Client"] --&gt; Listener
+    Listener --&gt; Session
+    Session --&gt; Dispatch
+    Dispatch --&gt; Commands
+    Commands --&gt; State
+    RestRoutes --&gt; State
+</pre>
+
+<h3 id="serverstate"><a class="header" href="#serverstate">ServerState</a></h3>
+<p><code>ServerState</code> owns the BLE transport, device manager, and token store. It is <code>Clone</code> (via <code>Arc</code>) and shared across all connections:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ServerState {
+    transport: Arc&lt;BtleplugTransport&gt;,
+    manager: Arc&lt;ClockManager&gt;,
+    token_store: Arc&lt;FileTokenStore&gt;,
+}
+<span class="boring">}</span></code></pre>
+<h3 id="wssession"><a class="header" href="#wssession">WsSession</a></h3>
+<p>Each WebSocket connection creates a <code>WsSession</code> that processes incoming JSON requests and sends JSON responses. Per-message tasks are spawned with <code>tokio::spawn</code> for concurrent command handling.</p>
+<h2 id="websocket-protocol"><a class="header" href="#websocket-protocol">WebSocket Protocol</a></h2>
+<h3 id="request-format"><a class="header" href="#request-format">Request Format</a></h3>
+<pre><code class="language-json">{
+  "id": 1,
+  "command": {
+    "type": "scan",
+    "duration_secs": 10
+  }
+}
+</code></pre>
+<p>The <code>id</code> field is used to match responses to requests. The <code>command</code> field uses a tagged enum with <code>snake_case</code> serialization.</p>
+<h3 id="response-format"><a class="header" href="#response-format">Response Format</a></h3>
+<pre><code class="language-json">{
+  "id": 1,
+  "result": { ... },
+  "error": null
+}
+</code></pre>
+<p>Error responses:</p>
+<pre><code class="language-json">{
+  "id": 1,
+  "result": null,
+  "error": "device AA:BB:CC:DD:EE:FF is not connected"
+}
+</code></pre>
+<h3 id="commands"><a class="header" href="#commands">Commands</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Parameters</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>scan</code></td><td><code>duration_secs</code></td><td>Scan for devices</td></tr>
+<tr><td><code>connect</code></td><td><code>address</code></td><td>Connect and authenticate</td></tr>
+<tr><td><code>disconnect</code></td><td><code>address</code></td><td>Disconnect from device</td></tr>
+<tr><td><code>sync_time</code></td><td><code>address</code></td><td>Synchronize device clock</td></tr>
+<tr><td><code>read_alarms</code></td><td><code>address</code></td><td>Read all alarm slots</td></tr>
+<tr><td><code>set_alarm</code></td><td><code>address</code>, <code>slot</code>, <code>time</code>, <code>repeat_mask</code>, <code>enabled</code>, <code>snooze</code></td><td>Set an alarm</td></tr>
+<tr><td><code>delete_alarm</code></td><td><code>address</code>, <code>slot</code></td><td>Delete an alarm</td></tr>
+<tr><td><code>read_settings</code></td><td><code>address</code></td><td>Read device settings</td></tr>
+<tr><td><code>write_settings</code></td><td><code>address</code>, <code>settings</code></td><td>Write device settings</td></tr>
+<tr><td><code>set_brightness</code></td><td><code>address</code>, <code>value</code></td><td>Set immediate brightness</td></tr>
+<tr><td><code>preview_ringtone</code></td><td><code>address</code>, <code>volume</code> (optional)</td><td>Preview ringtone</td></tr>
+<tr><td><code>read_firmware</code></td><td><code>address</code></td><td>Read firmware version</td></tr>
+<tr><td><code>read_battery</code></td><td><code>address</code></td><td>Read battery level</td></tr>
+<tr><td><code>subscribe_events</code></td><td><code>address</code></td><td>Subscribe to push events</td></tr>
+</tbody>
+</table>
+</div>
+<p>All address fields use the <code>MacAddress</code> newtype (colon-separated hex). Duration uses <code>ScanDuration</code> (1–600 seconds). Slot indices use <code>AlarmSlotIndex</code> (0–15). Brightness uses <code>Brightness</code> (0–150, multiple of 10).</p>
+<h3 id="event-subscription"><a class="header" href="#event-subscription">Event Subscription</a></h3>
+<p>After sending <code>subscribe_events</code>, the server pushes <code>WsEvent</code> messages to the client:</p>
+<pre><code class="language-json">{
+  "event": "sensor_update",
+  "data": {
+    "temperature": 23.4,
+    "humidity": 45.6
+  }
+}
+</code></pre>
+<p>Event types:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Event</th><th>Payload</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sensor_update</code></td><td><code>temperature</code>, <code>humidity</code></td><td>Real-time sensor data</td></tr>
+<tr><td><code>battery_level</code></td><td><code>level</code></td><td>Battery level change</td></tr>
+<tr><td><code>disconnected</code></td><td>(empty)</td><td>Device disconnected</td></tr>
+<tr><td><code>reconnected</code></td><td>(empty)</td><td>Device reconnected</td></tr>
+<tr><td><code>ack</code></td><td><code>command</code>, <code>status</code></td><td>Command ACK from device</td></tr>
+<tr><td><code>advertisement</code></td><td>(full advertisement data)</td><td>Passive advertisement received</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="rest-api"><a class="header" href="#rest-api">REST API</a></h2>
+<p>Read-only endpoints are available via REST:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Path</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>GET</code></td><td><code>/health</code></td><td>Server health check</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices</code></td><td>List connected devices</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/sensors</code></td><td>Latest sensor data</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/battery</code></td><td>Battery level</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/firmware</code></td><td>Firmware version</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/alarms</code></td><td>All alarms</td></tr>
+<tr><td><code>GET</code></td><td><code>/api/devices/{address}/settings</code></td><td>Device settings</td></tr>
+</tbody>
+</table>
+</div>
+<p>Path parameters use <code>{address}</code> syntax (Axum 0.8+). The address is a MAC address in colon-separated hex format (e.g., <code>AA:BB:CC:DD:EE:FF</code>).</p>
+<h3 id="example-rest-request"><a class="header" href="#example-rest-request">Example: REST Request</a></h3>
+<pre><code class="language-bash">curl http://localhost:3000/api/devices/AA:BB:CC:DD:EE:FF/sensors
+</code></pre>
+<p>Response:</p>
+<pre><code class="language-json">{
+  "temperature": 23.4,
+  "humidity": 45.6
+}
+</code></pre>
+<h3 id="example-websocket-session"><a class="header" href="#example-websocket-session">Example: WebSocket Session</a></h3>
+<pre><code class="language-javascript">const ws = new WebSocket("ws://localhost:3000/ws");
+
+ws.onopen = () =&gt; {
+  // Connect to a device
+  ws.send(JSON.stringify({
+    id: 1,
+    command: { type: "connect", address: "AA:BB:CC:DD:EE:FF" }
+  }));
+
+  // Subscribe to events
+  ws.send(JSON.stringify({
+    id: 2,
+    command: { type: "subscribe_events", address: "AA:BB:CC:DD:EE:FF" }
+  }));
+};
+
+ws.onmessage = (event) =&gt; {
+  const msg = JSON.parse(event.data);
+  if (msg.result !== null) {
+    console.log("Response:", msg);
+  } else if (msg.event) {
+    console.log("Event:", msg);
+  }
+};
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<p><code>ServerError</code> converts to HTTP status codes for REST endpoints:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Error</th><th>Status Code</th></tr>
+</thead>
+<tbody>
+<tr><td><code>NotConnected</code></td><td>404</td></tr>
+<tr><td><code>Json</code> parse error</td><td>400</td></tr>
+<tr><td><code>Core</code> (BLE/library errors)</td><td>500</td></tr>
+</tbody>
+</table>
+</div>
+<p>WebSocket errors are returned in the <code>error</code> field of the JSON response.</p>
 
                     </main>
 

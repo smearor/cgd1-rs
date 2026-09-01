@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>CLI Tool - cgd1-rs Documentation</title>
+        <title>CLI Tool - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,184 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="cli-tool"><a class="header" href="#cli-tool">CLI Tool</a></h1>
-<p>Content will be added in Phase 10.</p>
+<p>The <code>cgd1</code> command-line tool provides access to all device operations through subcommands. It uses <code>clap</code> for argument parsing and <code>miette</code> for rich error diagnostics.</p>
+<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
+<pre><code class="language-bash">cargo install --path cgd1-rs-cli
+</code></pre>
+<h2 id="global-options"><a class="header" href="#global-options">Global Options</a></h2>
+<pre><code>Options:
+  -v, --verbose...  Verbosity level (-v, -vv, -vvv)
+      --backend &lt;BACKEND&gt;  BLE backend: `btleplug` (real hardware) or `virtual` (in-memory) [default: btleplug]
+  -h, --help         Print help
+  -V, --version      Print version
+</code></pre>
+<p>The <code>--backend virtual</code> flag uses an in-memory simulation instead of real BLE hardware. This is useful for testing and demos without a device.</p>
+<h2 id="subcommands"><a class="header" href="#subcommands">Subcommands</a></h2>
+<h3 id="scan"><a class="header" href="#scan">scan</a></h3>
+<p>Scan for nearby CGD1 devices.</p>
+<pre><code class="language-bash">cgd1 scan --duration 10
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Range</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-d, --duration</code></td><td>10</td><td>1–600</td><td>Scan duration in seconds</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output includes MAC address, temperature, humidity, and battery from passive advertisements.</p>
+<h3 id="sync-time"><a class="header" href="#sync-time">sync-time</a></h3>
+<p>Synchronize the device clock to the current system time. This is the recommended first command after connecting, as it confirms the authentication token is accepted.</p>
+<pre><code class="language-bash">cgd1 sync-time AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="alarm-list"><a class="header" href="#alarm-list">alarm-list</a></h3>
+<p>Read all 16 alarm slots from the device.</p>
+<pre><code class="language-bash">cgd1 alarm-list AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="alarm-set"><a class="header" href="#alarm-set">alarm-set</a></h3>
+<p>Set or modify an alarm at a specific slot.</p>
+<pre><code class="language-bash">cgd1 alarm-set AA:BB:CC:DD:EE:FF 3 07:30 --repeat 3e --no-snooze
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>slot</code></td><td>Slot index 0–15</td></tr>
+<tr><td><code>time</code></td><td>Alarm time in HH:MM format</td></tr>
+<tr><td><code>-r, --repeat</code></td><td>Day mask as hex (default: <code>7f</code> = every day)</td></tr>
+<tr><td><code>--no-snooze</code></td><td>Disable snooze</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="alarm-delete"><a class="header" href="#alarm-delete">alarm-delete</a></h3>
+<p>Delete an alarm at a specific slot.</p>
+<pre><code class="language-bash">cgd1 alarm-delete AA:BB:CC:DD:EE:FF 3
+</code></pre>
+<h3 id="settings-read"><a class="header" href="#settings-read">settings-read</a></h3>
+<p>Read all device settings.</p>
+<pre><code class="language-bash">cgd1 settings-read AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="settings-write"><a class="header" href="#settings-write">settings-write</a></h3>
+<p>Write device settings. Only specified fields are updated; unspecified fields are preserved from the device.</p>
+<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF \
+    --volume 3 \
+    --brightness 80 \
+    --night-brightness 30 \
+    --timezone 60 \
+    --time-format 24 \
+    --temp-unit C \
+    --language en
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Values</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--volume</code></td><td>1–5</td><td>Sound volume</td></tr>
+<tr><td><code>--brightness</code></td><td>0–150 (multiple of 10)</td><td>Daytime brightness</td></tr>
+<tr><td><code>--night-brightness</code></td><td>0–150 (multiple of 10)</td><td>Nighttime brightness</td></tr>
+<tr><td><code>--timezone</code></td><td>-720 to +840</td><td>Timezone offset in minutes</td></tr>
+<tr><td><code>--time-format</code></td><td>12 or 24</td><td>Time display format</td></tr>
+<tr><td><code>--temp-unit</code></td><td>C or F</td><td>Temperature unit</td></tr>
+<tr><td><code>--language</code></td><td>en, zh, de, ja</td><td>Display language</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="brightness"><a class="header" href="#brightness">brightness</a></h3>
+<p>Set immediate brightness (preview, not persisted).</p>
+<pre><code class="language-bash">cgd1 brightness AA:BB:CC:DD:EE:FF 80
+</code></pre>
+<h3 id="ringtone-preview"><a class="header" href="#ringtone-preview">ringtone-preview</a></h3>
+<p>Play a preview beep sound on the device.</p>
+<pre><code class="language-bash">cgd1 ringtone-preview AA:BB:CC:DD:EE:FF --volume 3
+</code></pre>
+<h3 id="ringtone-upload"><a class="header" href="#ringtone-upload">ringtone-upload</a></h3>
+<p>Upload a custom ringtone from a PCM file.</p>
+<pre><code class="language-bash">cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>address</code></td><td>Device MAC address</td></tr>
+<tr><td><code>file</code></td><td>Path to 8-bit PCM audio file (8 kHz, mono)</td></tr>
+<tr><td><code>-s, --signature</code></td><td>Ringtone name or 4-byte hex (default: <code>CustomSlotA</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="firmware"><a class="header" href="#firmware">firmware</a></h3>
+<p>Read the device firmware version.</p>
+<pre><code class="language-bash">cgd1 firmware AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="battery"><a class="header" href="#battery">battery</a></h3>
+<p>Read the device battery level.</p>
+<pre><code class="language-bash">cgd1 battery AA:BB:CC:DD:EE:FF
+</code></pre>
+<h3 id="monitor"><a class="header" href="#monitor">monitor</a></h3>
+<p>Monitor sensor data (temperature, humidity) in real-time.</p>
+<pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-d, --duration</code></td><td>0</td><td>Duration in seconds (0 = indefinite)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="repl"><a class="header" href="#repl">repl</a></h3>
+<p>Start an interactive REPL session with a persistent connection. State changes (e.g., <code>settings-write</code>) are visible in subsequent commands (e.g., <code>settings-read</code>).</p>
+<pre><code class="language-bash">cgd1 repl --address AA:BB:CC:DD:EE:FF
+</code></pre>
+<p>If <code>--address</code> is omitted, use <code>connect &lt;mac&gt;</code> inside the REPL.</p>
+<p>Available REPL commands mirror the CLI subcommands (without the <code>cgd1</code> prefix):</p>
+<pre><code>cgd1&gt; help
+Available commands:
+  scan, sync-time, alarm-list, alarm-set, alarm-delete,
+  settings-read, settings-write, brightness, ringtone-preview,
+  ringtone-upload, firmware, battery, monitor, connect, disconnect, exit
+</code></pre>
+<h2 id="token-management"><a class="header" href="#token-management">Token Management</a></h2>
+<p>The CLI automatically manages authentication tokens via <code>FileTokenStore</code>. Tokens are stored per MAC address in the platform’s data directory:</p>
+<ul>
+<li><strong>Linux</strong>: <code>~/.local/share/cgd1-rs/tokens/</code></li>
+<li><strong>macOS</strong>: <code>~/Library/Application Support/cgd1-rs/tokens/</code></li>
+</ul>
+<p>A new token is generated on first connection and persisted only after <code>sync-time</code> succeeds. Subsequent connections reuse the stored token.</p>
+<p>If a token becomes invalid (e.g., the device was paired with a different app), delete the token file and run <code>sync-time</code> again to generate a new one.</p>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<p>The CLI uses <code>miette</code> for rich error diagnostics. Errors include context, source spans, and suggestions:</p>
+<pre><code>Error: Authentication failed
+  → The device rejected the authentication token.
+  help: This may happen if the device was paired with a different app.
+        Delete the token file and try again:
+        rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
+</code></pre>
+<h2 id="verbosity"><a class="header" href="#verbosity">Verbosity</a></h2>
+<p>The <code>-v</code> flag controls log output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Level</th><th>Output</th></tr>
+</thead>
+<tbody>
+<tr><td>(none)</td><td>Errors only</td></tr>
+<tr><td><code>-v</code></td><td>Warnings + errors</td></tr>
+<tr><td><code>-vv</code></td><td>Info + warnings + errors</td></tr>
+<tr><td><code>-vvv</code></td><td>Debug (full trace)</td></tr>
+</tbody>
+</table>
+</div>
 
                     </main>
 

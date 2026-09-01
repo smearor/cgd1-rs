@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Platform Notes - cgd1-rs Documentation</title>
+        <title>Platform Notes - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-454a3a0c.js";
+            window.path_to_searchindex_js = "searchindex-432b6975.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-104a7dcf.js"></script>
+        <script src="toc-97e4057d.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -137,7 +137,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">cgd1-rs Documentation</h1>
+                    <h1 class="menu-title">cgd1-rs User Guide</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -178,7 +178,81 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="platform-notes"><a class="header" href="#platform-notes">Platform Notes</a></h1>
-<p>Content will be added in Phase 10.</p>
+<h2 id="linux"><a class="header" href="#linux">Linux</a></h2>
+<h3 id="bluez"><a class="header" href="#bluez">BlueZ</a></h3>
+<p>Linux BLE access goes through BlueZ via D-Bus. The <code>btleplug</code> crate handles this internally, but BlueZ must be running and the user must have appropriate permissions.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li><code>bluez</code> package installed and running</li>
+<li><code>dbus</code> running</li>
+<li>User has permission to access the BLE adapter</li>
+</ul>
+<p><strong>Common issues:</strong></p>
+<ul>
+<li><strong><code>Permission denied</code></strong>: Add the user to the <code>bluetooth</code> group or run with appropriate capabilities</li>
+<li><strong><code>Adapter not found</code></strong>: Ensure Bluetooth is enabled in system settings</li>
+<li><strong><code>Connection refused</code></strong>: Verify the D-Bus system socket is running (<code>systemctl status dbus</code>)</li>
+</ul>
+<h3 id="gtk-4-controller"><a class="header" href="#gtk-4-controller">GTK 4 Controller</a></h3>
+<p>The GTK 4 controller requires GTK 4 development libraries:</p>
+<pre><code class="language-bash"># Ubuntu/Debian
+sudo apt-get install -y libgtk-4-dev
+
+# Fedora
+sudo dnf install -y gtk4-devel
+
+# Arch
+sudo pacman -S gtk4
+</code></pre>
+<h2 id="macos"><a class="header" href="#macos">macOS</a></h2>
+<h3 id="corebluetooth"><a class="header" href="#corebluetooth">CoreBluetooth</a></h3>
+<p>macOS uses CoreBluetooth for BLE access. No extra system packages are needed for the core library or CLI.</p>
+<p><strong>Limitations:</strong></p>
+<ul>
+<li>The GTK 4 controller is not supported on macOS</li>
+<li>macOS requires Bluetooth to be enabled in System Settings</li>
+<li>The first BLE scan may prompt for Bluetooth permission</li>
+</ul>
+<h3 id="token-storage"><a class="header" href="#token-storage">Token Storage</a></h3>
+<p>Tokens are stored in <code>~/Library/Application Support/cgd1-rs/tokens/</code>.</p>
+<h2 id="windows"><a class="header" href="#windows">Windows</a></h2>
+<p>Windows uses the Windows Bluetooth API. The core library and CLI should work, but this is less tested than Linux.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>Windows 10 or later</li>
+<li>Bluetooth adapter enabled</li>
+</ul>
+<h2 id="ble-range-and-stability"><a class="header" href="#ble-range-and-stability">BLE Range and Stability</a></h2>
+<ul>
+<li><strong>Range</strong>: The CGD1 uses Bluetooth 5.0 with a typical indoor range of 10–15 meters</li>
+<li><strong>Interference</strong>: 2.4 GHz Wi-Fi can cause BLE interference. If connections are unstable, try moving closer or switching Wi-Fi channels</li>
+<li><strong>Multiple connections</strong>: The library supports multiple simultaneous device connections, but BLE bandwidth is shared</li>
+</ul>
+<h2 id="firmware-compatibility"><a class="header" href="#firmware-compatibility">Firmware Compatibility</a></h2>
+<p>Known firmwares:</p>
+<ul>
+<li><code>1.0.1_0046</code></li>
+<li><code>1.0.1_0063</code></li>
+<li><code>1.0.1_0067</code></li>
+<li><code>1.0.1_0126</code></li>
+<li><code>1.0.1_0130</code></li>
+<li><code>1.0.1_0132</code></li>
+</ul>
+<p>If you encounter a new firmware version, please report it on <a href="https://github.com/smearor/cgd1-rs/issues">GitHub Issues</a>.</p>
+<h3 id="alarm-slot-count"><a class="header" href="#alarm-slot-count">Alarm Slot Count</a></h3>
+<p>The clOwOck specification documents 16 alarm slots. The ov1d1u Home Assistant integration uses 19 slots. This discrepancy may be firmware-dependent. The library defaults to 16 slots (indices 0–15).</p>
+<h2 id="battery-notes"><a class="header" href="#battery-notes">Battery Notes</a></h2>
+<ul>
+<li>The CGD1 uses 2 × AA batteries with a standby time of over 1 year</li>
+<li>Battery level is available passively via advertisements and actively via the GATT battery service</li>
+<li>The passive advertisement battery byte has bit 7 masked (<code>&amp; 0x7F</code>)</li>
+</ul>
+<h2 id="audio-upload-notes"><a class="header" href="#audio-upload-notes">Audio Upload Notes</a></h2>
+<ul>
+<li>Audio uploads require a stable connection; parallel BLE operations can abort the transfer</li>
+<li>The MTU exchange is critical for audio uploads — without a sufficient MTU, packets would need fragmentation</li>
+<li>Maximum audio duration is approximately 12 seconds (~98 KB at 8 kHz, 8-bit mono)</li>
+</ul>
 
                     </main>
 
@@ -188,6 +262,9 @@
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
+                            <a rel="next prefetch" href="examples.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -199,6 +276,9 @@
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
+                    <a rel="next prefetch" href="examples.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
             </nav>
 
         </div>
