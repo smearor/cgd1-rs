@@ -13,6 +13,7 @@ edition = "2024"
 license = "MIT"
 rust-version = "1.88"
 repository = "https://github.com/smearor/cgd1-rs"
+homepage = "https://github.com/smearor/cgd1-rs"
 
 [workspace.dependencies]
 async-trait = "0.1"

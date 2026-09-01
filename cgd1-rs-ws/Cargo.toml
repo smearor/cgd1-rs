@@ -4,15 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/cgd1-rs-ws"
 rust-version = "1.88"
 description = "WebSocket and REST server for the Qingping CGD1 Bluetooth alarm clock"
+keywords = ["bluetooth", "ble", "alarm-clock", "websocket", "qingping"]
+categories = ["network-programming", "hardware-support"]
 
 [[bin]]
 name = "cgd1-ws"
 path = "src/main.rs"
 
 [dependencies]
-cgd1-rs = { path = "../cgd1-rs" }
+cgd1-rs = { path = "../cgd1-rs", version = "0.1.0" }
 axum.workspace = true
 clap.workspace = true
 futures.workspace = true
