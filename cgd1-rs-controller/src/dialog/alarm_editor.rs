@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cgd1_rs::AlarmEntry;
 use cgd1_rs::AlarmSlotIndex;
 use cgd1_rs::ClockError;
@@ -7,6 +5,8 @@ use cgd1_rs::ClockManager;
 use cgd1_rs::ClockTime;
 use cgd1_rs::DayMask;
 use cgd1_rs::MacAddress;
+use std::sync::Arc;
+use std::sync::mpsc::TryRecvError;
 
 use gtk4::Align;
 use gtk4::Box;
@@ -19,8 +19,9 @@ use gtk4::SpinButton;
 use gtk4::ToggleButton;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tracing::warn;
 
-/// Reusable alarm editor widget — can be embedded in the main window or a dialog.
+/// Reusable alarm editor widget - can be embedded in the main window or a dialog.
 #[allow(dead_code)]
 pub struct AlarmEditorWidget {
     /// The container box holding all alarm editor content.
@@ -94,7 +95,7 @@ impl AlarmEditorWidget {
         button_box.append(&refresh_button);
         container.append(&button_box);
 
-        // Read from Device — connect button after widget construction via stored fields
+        // Read from Device - connect button after widget construction via stored fields
         // (handled below after struct is built)
 
         // Set and Delete per row
@@ -116,7 +117,7 @@ impl AlarmEditorWidget {
 
             widgets.set_button.connect_clicked(move |_| {
                 let addr = *connected_address_set.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -182,7 +183,7 @@ impl AlarmEditorWidget {
 
             widgets.delete_button.connect_clicked(move |_| {
                 let addr = *connected_address_del.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -210,8 +211,8 @@ impl AlarmEditorWidget {
                         }
                         glib::ControlFlow::Break
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
                         status_label_del.set_label("Delete task failed");
                         glib::ControlFlow::Break
                     }
@@ -264,7 +265,7 @@ impl AlarmEditorWidget {
                 .collect::<Vec<_>>();
             refresh_button.connect_clicked(move |_| {
                 let addr = *widget_addr.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -316,8 +317,8 @@ impl AlarmEditorWidget {
                         }
                         glib::ControlFlow::Break
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
                         status_label.set_label("Read task failed");
                         glib::ControlFlow::Break
                     }
@@ -331,7 +332,7 @@ impl AlarmEditorWidget {
     /// Read alarms from the connected device and update the UI.
     pub fn read_alarms(&self) {
         let addr = *self.connected_address.lock().unwrap_or_else(|p| {
-            tracing::warn!("mutex poisoned — recovering");
+            warn!("mutex poisoned - recovering");
             p.into_inner()
         });
         let Some(addr) = addr else {
@@ -383,8 +384,8 @@ impl AlarmEditorWidget {
                 }
                 glib::ControlFlow::Break
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Disconnected) => {
                 status_label.set_label("Read task failed");
                 glib::ControlFlow::Break
             }

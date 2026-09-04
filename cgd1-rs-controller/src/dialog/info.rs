@@ -21,7 +21,7 @@ impl InfoDialog {
     /// Create and show the info dialog.
     pub fn new(parent: &Window) -> Self {
         let window = gtk4::Window::builder()
-            .title("Info — Alarm Clock CGD1")
+            .title("Info - Alarm Clock CGD1")
             .transient_for(parent)
             .modal(true)
             .default_width(360)

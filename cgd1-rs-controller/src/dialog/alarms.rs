@@ -51,7 +51,7 @@ impl AlarmsDialog {
         connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
     ) -> Self {
         let window = gtk4::Window::builder()
-            .title("Alarms — Alarm Clock CGD1")
+            .title("Alarms - Alarm Clock CGD1")
             .transient_for(parent)
             .modal(true)
             .default_width(420)
@@ -134,7 +134,7 @@ impl AlarmsDialog {
 
             refresh_button.connect_clicked(move |_| {
                 let addr = *connected_address.lock().unwrap_or_else(|p| {
-                    warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -219,7 +219,7 @@ impl AlarmsDialog {
 
             widgets.set_button.connect_clicked(move |_| {
                 let addr = *connected_address_set.lock().unwrap_or_else(|p| {
-                    warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -280,7 +280,7 @@ impl AlarmsDialog {
 
             widgets.delete_button.connect_clicked(move |_| {
                 let addr = *connected_address_del.lock().unwrap_or_else(|p| {
-                    warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {

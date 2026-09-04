@@ -141,7 +141,7 @@ pub struct ClockDevice {
 impl ClockDevice {
     /// Create a new device handle with the given transport and address.
     ///
-    /// This does not connect or subscribe — use [`ClockManager::connect`]
+    /// This does not connect or subscribe - use [`ClockManager::connect`]
     /// for the full connection lifecycle.
     pub fn new(transport: Arc<dyn BleTransport>, address: MacAddress) -> Self {
         let (event_sender, _) = broadcast::channel(64);
@@ -215,7 +215,7 @@ impl ClockDevice {
         });
 
         let mut task_handle = self.notification_task_handle.lock().unwrap_or_else(|p| {
-            tracing::warn!("notification_task_handle mutex poisoned — recovering");
+            tracing::warn!("notification_task_handle mutex poisoned - recovering");
             p.into_inner()
         });
         *task_handle = Some(handle);
@@ -309,7 +309,7 @@ impl ClockDevice {
         }
         debug!(address = %self.address, "authenticate: AuthInit succeeded");
 
-        // Brief pause before AuthConfirm — some BLE devices need time to
+        // Brief pause before AuthConfirm - some BLE devices need time to
         // process the AuthInit before accepting the next write. Without
         // this, the AuthConfirm write can hang indefinitely at the BLE
         // level (WriteType::WithResponse never gets a response).
@@ -385,7 +385,7 @@ impl ClockDevice {
         }
         debug!(address = %self.address, "sync_time: ACK received, persisting token");
 
-        // Token is now confirmed — persist it if a token store is configured.
+        // Token is now confirmed - persist it if a token store is configured.
         let store = self.token_store.lock().await;
         if let Some(ref store) = *store {
             let token = self.auth_token.lock().await;
@@ -666,7 +666,7 @@ impl ClockDevice {
         // released before the await below to keep the async block Send.
         {
             let mut task_handle = self.notification_task_handle.lock().unwrap_or_else(|p| {
-                tracing::warn!("notification_task_handle mutex poisoned — recovering");
+                tracing::warn!("notification_task_handle mutex poisoned - recovering");
                 p.into_inner()
             });
             if let Some(handle) = task_handle.take() {
@@ -710,7 +710,7 @@ impl ClockDevice {
 
         let _guard = self.command_mutex.lock().await;
 
-        // Step 1: MTU Exchange — audio packets are 130 bytes, default MTU is 23
+        // Step 1: MTU Exchange - audio packets are 130 bytes, default MTU is 23
         let negotiated_mtu = self.transport.request_mtu(&self.address, 247).await?;
         if (negotiated_mtu as usize) < 132 {
             return Err(ClockError::InvalidSettings(format!("MTU too small for audio upload: {} (need >= 132)", negotiated_mtu)));
@@ -831,7 +831,7 @@ async fn notification_task(
                         let _ = sender.send(Ok(ack));
                     }
                 } else {
-                    // Non-ACK data notification — forward to pending data response channel.
+                    // Non-ACK data notification - forward to pending data response channel.
                     debug!(uuid = %uuid, len = value.len(), "notification: data response");
                     let sender = {
                         let pending = pending_data_response.lock().await;

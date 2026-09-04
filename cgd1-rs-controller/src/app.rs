@@ -70,14 +70,14 @@ impl ClockControllerApp {
                 let states = device_states_overview
                     .lock()
                     .unwrap_or_else(|p| {
-                        warn!("mutex poisoned — recovering");
+                        warn!("mutex poisoned - recovering");
                         p.into_inner()
                     })
                     .clone();
                 let known = known_devices_overview
                     .lock()
                     .unwrap_or_else(|p| {
-                        warn!("mutex poisoned — recovering");
+                        warn!("mutex poisoned - recovering");
                         p.into_inner()
                     })
                     .clone();
@@ -90,7 +90,7 @@ impl ClockControllerApp {
             let connect_switch_reset = window.connect_switch_arc();
             add_action(app, "reset_token", window.window(), move |w| {
                 let addr = selected_address_reset.lock().unwrap_or_else(|p| {
-                    warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = *addr else {

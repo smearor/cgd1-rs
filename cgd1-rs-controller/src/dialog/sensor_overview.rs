@@ -24,7 +24,7 @@ impl SensorOverviewDialog {
     /// Create and show the sensor overview dialog.
     pub fn new(parent: &Window, device_states: &HashMap<MacAddress, DeviceRuntimeState>, known_devices: &[MacAddress]) -> Self {
         let window = gtk4::Window::builder()
-            .title("Sensor Overview — Alarm Clock CGD1")
+            .title("Sensor Overview - Alarm Clock CGD1")
             .transient_for(parent)
             .modal(true)
             .default_width(500)

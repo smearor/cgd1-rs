@@ -42,7 +42,7 @@ impl SettingsDialog {
         connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
     ) -> Self {
         let window = gtk4::Window::builder()
-            .title("Settings — Alarm Clock CGD1")
+            .title("Settings - Alarm Clock CGD1")
             .transient_for(parent)
             .modal(true)
             .default_width(400)
@@ -212,7 +212,7 @@ impl SettingsDialog {
 
             refresh_button.connect_clicked(move |_| {
                 let addr = *connected_address.lock().unwrap_or_else(|p| {
-                    warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -303,7 +303,7 @@ impl SettingsDialog {
 
             apply_button.connect_clicked(move |_| {
                 let addr = *connected_address.lock().unwrap_or_else(|p| {
-                    warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
@@ -441,42 +441,42 @@ impl SettingsDialog {
 /// like +5:30 (India) or +5:45 (Nepal) are supported.
 fn timezone_list() -> Vec<(&'static str, i16)> {
     vec![
-        ("UTC-12:00 — Baker Island", -720),
-        ("UTC-11:00 — American Samoa", -660),
-        ("UTC-10:00 — Honolulu", -600),
-        ("UTC-09:30 — Marquesas Islands", -570),
-        ("UTC-09:00 — Anchorage", -540),
-        ("UTC-08:00 — Los Angeles", -480),
-        ("UTC-07:00 — Denver", -420),
-        ("UTC-06:00 — Chicago, Mexico City", -360),
-        ("UTC-05:00 — New York, Lima", -300),
-        ("UTC-04:00 — Halifax, Caracas", -240),
-        ("UTC-03:30 — St. John's", -210),
-        ("UTC-03:00 — Buenos Aires, São Paulo", -180),
-        ("UTC-02:00 — South Georgia", -120),
-        ("UTC-01:00 — Azores", -60),
-        ("UTC+00:00 — London, Dublin, Lisbon", 0),
-        ("UTC+01:00 — Berlin, Paris, Rome", 60),
-        ("UTC+02:00 — Cairo, Athens, Helsinki", 120),
-        ("UTC+03:00 — Moscow, Istanbul, Nairobi", 180),
-        ("UTC+03:30 — Tehran", 210),
-        ("UTC+04:00 — Dubai, Baku", 240),
-        ("UTC+04:30 — Kabul", 270),
-        ("UTC+05:00 — Karachi, Tashkent", 300),
-        ("UTC+05:30 — Delhi, Mumbai", 330),
-        ("UTC+05:45 — Kathmandu", 345),
-        ("UTC+06:00 — Dhaka, Almaty", 360),
-        ("UTC+06:30 — Yangon", 390),
-        ("UTC+07:00 — Bangkok, Jakarta", 420),
-        ("UTC+08:00 — Beijing, Singapore, Perth", 480),
-        ("UTC+09:00 — Tokyo, Seoul", 540),
-        ("UTC+09:30 — Adelaide, Darwin", 570),
-        ("UTC+10:00 — Sydney, Melbourne", 600),
-        ("UTC+10:30 — Lord Howe Island", 630),
-        ("UTC+11:00 — Nouméa, Solomon Islands", 660),
-        ("UTC+12:00 — Auckland, Fiji", 720),
-        ("UTC+13:00 — Samoa, Tonga", 780),
-        ("UTC+14:00 — Kiritimati", 840),
+        ("UTC-12:00 - Baker Island", -720),
+        ("UTC-11:00 - American Samoa", -660),
+        ("UTC-10:00 - Honolulu", -600),
+        ("UTC-09:30 - Marquesas Islands", -570),
+        ("UTC-09:00 - Anchorage", -540),
+        ("UTC-08:00 - Los Angeles", -480),
+        ("UTC-07:00 - Denver", -420),
+        ("UTC-06:00 - Chicago, Mexico City", -360),
+        ("UTC-05:00 - New York, Lima", -300),
+        ("UTC-04:00 - Halifax, Caracas", -240),
+        ("UTC-03:30 - St. John's", -210),
+        ("UTC-03:00 - Buenos Aires, São Paulo", -180),
+        ("UTC-02:00 - South Georgia", -120),
+        ("UTC-01:00 - Azores", -60),
+        ("UTC+00:00 - London, Dublin, Lisbon", 0),
+        ("UTC+01:00 - Berlin, Paris, Rome", 60),
+        ("UTC+02:00 - Cairo, Athens, Helsinki", 120),
+        ("UTC+03:00 - Moscow, Istanbul, Nairobi", 180),
+        ("UTC+03:30 - Tehran", 210),
+        ("UTC+04:00 - Dubai, Baku", 240),
+        ("UTC+04:30 - Kabul", 270),
+        ("UTC+05:00 - Karachi, Tashkent", 300),
+        ("UTC+05:30 - Delhi, Mumbai", 330),
+        ("UTC+05:45 - Kathmandu", 345),
+        ("UTC+06:00 - Dhaka, Almaty", 360),
+        ("UTC+06:30 - Yangon", 390),
+        ("UTC+07:00 - Bangkok, Jakarta", 420),
+        ("UTC+08:00 - Beijing, Singapore, Perth", 480),
+        ("UTC+09:00 - Tokyo, Seoul", 540),
+        ("UTC+09:30 - Adelaide, Darwin", 570),
+        ("UTC+10:00 - Sydney, Melbourne", 600),
+        ("UTC+10:30 - Lord Howe Island", 630),
+        ("UTC+11:00 - Nouméa, Solomon Islands", 660),
+        ("UTC+12:00 - Auckland, Fiji", 720),
+        ("UTC+13:00 - Samoa, Tonga", 780),
+        ("UTC+14:00 - Kiritimati", 840),
     ]
 }
 

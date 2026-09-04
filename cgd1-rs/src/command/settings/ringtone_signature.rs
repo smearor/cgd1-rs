@@ -47,8 +47,8 @@ pub struct RingtoneSignatureParseError {
 ///
 /// Two alternating slot signatures are available for user-uploaded audio:
 ///
-/// - [`CustomSlotA`] — `de ad de ad`
-/// - [`CustomSlotB`] — `be ef be ef`
+/// - [`CustomSlotA`] - `de ad de ad`
+/// - [`CustomSlotB`] - `be ef be ef`
 ///
 /// Always alternate between slots when uploading new custom audio. The device
 /// may reject uploads if the target signature matches the currently active
