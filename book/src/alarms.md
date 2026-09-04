@@ -31,7 +31,7 @@ An empty/unused slot has all bytes set to `0xFF`: `FF FF FF FF FF`.
 | 4 | `0x10` | Friday |
 | 5 | `0x20` | Saturday |
 | 6 | `0x40` | Sunday |
-| — | `0x00` | Once (no repeat) |
+| - | `0x00` | Once (no repeat) |
 
 Common patterns:
 

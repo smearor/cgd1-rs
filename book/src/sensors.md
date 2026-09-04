@@ -81,8 +81,8 @@ The `KnownDeviceStore` persists battery levels from advertising scans in a separ
 {"58:2d:34:82:cc:81": 31}
 ```
 
-- **`save_battery(address, level)`** — Called by the controller's scan callback when advertising battery data is received.
-- **`load_battery()`** — Called on startup to populate the in-memory `scan_battery_cache`.
+- **`save_battery(address, level)`** - Called by the controller's scan callback when advertising battery data is received.
+- **`load_battery()`** - Called on startup to populate the in-memory `scan_battery_cache`.
 
 ### Connect Flow Integration
 
@@ -103,12 +103,12 @@ if let Some(level) = scan_battery_cache.lock().unwrap().get(&addr).copied() {
 - Sensor notifications (5 bytes) do **not** contain battery data.
 - Device settings responses do **not** contain battery data.
 
-## Battery (GATT — Diagnostic Only)
+## Battery (GATT - Diagnostic Only)
 
 The `read_battery()` method reads the standard GATT Battery Service characteristic (`0x2A19`). This is available for CLI and WebSocket diagnostic use but is **not used in the controller connect flow** because it consistently returns 99% on the CGD1.
 
 ```rust
-// Diagnostic use only — unreliable on CGD1
+// Diagnostic use only - unreliable on CGD1
 let battery = device.read_battery().await?;
 ```
 

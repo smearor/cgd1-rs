@@ -43,7 +43,7 @@
 
 **Solutions**:
 
-1. Check battery level — low batteries can cause disconnections
+1. Check battery level - low batteries can cause disconnections
 2. Reduce distance between host and device
 3. Avoid 2.4 GHz Wi-Fi interference (switch to 5 GHz or change Wi-Fi channel)
 4. The library will attempt automatic reconnection with exponential backoff
@@ -91,7 +91,7 @@
    ```bash
    rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
    ```
-3. Reconnect — a new token will be generated and, after `sync-time` succeeds, persisted automatically
+3. Reconnect - a new token will be generated and, after `sync-time` succeeds, persisted automatically
 
 ### `sync-time` succeeds but other commands fail
 
@@ -193,7 +193,7 @@ A factory reset clears the stored authentication token on the CGD1, allowing it 
    ```bash
    rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
    ```
-2. Reconnect with `cgd1-rs` — a new random token will be generated
+2. Reconnect with `cgd1-rs` - a new random token will be generated
 3. After `sync-time` succeeds, the token is automatically persisted for future connections
 
 > **Warning**: Factory reset clears all device settings (alarms, brightness, volume, etc.) in addition to the auth token.

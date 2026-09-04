@@ -66,7 +66,7 @@ section provides a concise reference for the concept document.
 
 | Name | UUID | Direction |
 |---|---|---|
-| Custom Primary Service | `22210000-554a-4546-5542-46534450466d` | — |
+| Custom Primary Service | `22210000-554a-4546-5542-46534450466d` | - |
 | Auth Write | `00000001-0000-1000-8000-00805f9b34fb` | Host → Device |
 | Auth Notify | `00000002-0000-1000-8000-00805f9b34fb` | Device → Host |
 | Data Write | `0000000b-0000-1000-8000-00805f9b34fb` | Host → Device |
@@ -347,7 +347,7 @@ adapts them to the `cgd1-rs` workspace:
 |---|---|
 | `build.yml` | Replace `dice-rs` crate references with `cgd1-rs` equivalents in `build_cross_platform` and `test_cross_platform` jobs |
 | `audit.yml` | Update path filters from `dice-rs*/Cargo.toml` to `cgd1-rs*/Cargo.toml` |
-| `book.yml` | No changes needed — already generic (builds `book/` directory) |
+| `book.yml` | No changes needed - already generic (builds `book/` directory) |
 | `docs.yml` | Update path filters from `dice-rs*/src/**/*.rs` to `cgd1-rs*/src/**/*.rs` |
 | `msrv.yml` | Update crate references if present |
 
@@ -494,17 +494,17 @@ use uuid::Uuid;
 /// CGD1 GATT characteristic identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CharacteristicUuid {
-    /// Auth Write — `00000001-0000-1000-8000-00805f9b34fb`
+    /// Auth Write - `00000001-0000-1000-8000-00805f9b34fb`
     AuthWrite,
-    /// Auth Notify — `00000002-0000-1000-8000-00805f9b34fb`
+    /// Auth Notify - `00000002-0000-1000-8000-00805f9b34fb`
     AuthNotify,
-    /// Data Write — `0000000b-0000-1000-8000-00805f9b34fb`
+    /// Data Write - `0000000b-0000-1000-8000-00805f9b34fb`
     DataWrite,
-    /// Data Notify — `0000000c-0000-1000-8000-00805f9b34fb`
+    /// Data Notify - `0000000c-0000-1000-8000-00805f9b34fb`
     DataNotify,
-    /// Sensor Notify — `00000100-0000-1000-8000-00805f9b34fb`
+    /// Sensor Notify - `00000100-0000-1000-8000-00805f9b34fb`
     SensorNotify,
-    /// Battery Level — `0x2a19` (standard GATT)
+    /// Battery Level - `0x2a19` (standard GATT)
     BatteryLevel,
 }
 
@@ -660,7 +660,7 @@ impl AdvertisementData {
                     battery = Some(payload[value_start] & 0x7F);
                 }
                 _ => {
-                    // Unknown or short TLV block — skip silently.
+                    // Unknown or short TLV block - skip silently.
                 }
             }
 
@@ -1143,7 +1143,7 @@ async fn pop_pending(
 
 If the device disconnects unexpectedly, the library attempts reconnection
 with exponential backoff. After a successful BLE reconnect, the device must
-be brought back to a fully operational state — BLE connection alone is not
+be brought back to a fully operational state - BLE connection alone is not
 sufficient. The `reconnect_and_restore` method performs the full state
 recovery sequence:
 
@@ -1376,7 +1376,7 @@ impl TokenStore for FileTokenStore {
 
 **Token persistence rule**: A newly generated token is only persisted after a
 privileged command (e.g., time sync) succeeds. An Auth Confirm ACK alone does
-not prove the token was accepted — the device may send an ACK even with a bad
+not prove the token was accepted - the device may send an ACK even with a bad
 token.
 
 #### Time Synchronization
@@ -1443,7 +1443,7 @@ sequenceDiagram
     CGD1-->>Transport: notification (04 ff 09 00 00)
     Transport-->>Device: Ack { command: 09, status: 00 }
     Device-->>App: Ok (time synced)
-    Note over App: Token is now confirmed — persist it
+    Note over App: Token is now confirmed - persist it
 ```
 
 #### Firmware Version Query
@@ -1727,10 +1727,10 @@ impl ClockDevice {
 | 6 | Saturday |
 
 Common patterns:
-- `0x7F` — every day
-- `0x3E` — weekdays (Mon–Fri)
-- `0x41` — weekends (Sat, Sun)
-- `0x00` — one-shot (fires once, then auto-disables)
+- `0x7F` - every day
+- `0x3E` - weekdays (Mon–Fri)
+- `0x41` - weekends (Sat, Sun)
+- `0x00` - one-shot (fires once, then auto-disables)
 
 #### Snooze
 
@@ -1875,12 +1875,12 @@ pub struct Timezone {
 
 `Timezone` is a newtype that stores the offset in minutes (range -720 to
 +840). It provides:
-- `from_minutes(i16) -> Result<Self>` — validates range
-- `from_hours(i8) -> Result<Self>` — convenience constructor
-- `minutes() -> i16`, `hours() -> i8` — accessors
-- `encoded_units() -> u8` — returns `abs(offset_minutes) / 6`
-- `sign_byte() -> u8` — returns `0x01` for positive/zero, `0x00` for negative
-- `from_encoded(units: u8, sign: u8) -> Result<Self>` — decodes from protocol
+- `from_minutes(i16) -> Result<Self>` - validates range
+- `from_hours(i8) -> Result<Self>` - convenience constructor
+- `minutes() -> i16`, `hours() -> i8` - accessors
+- `encoded_units() -> u8` - returns `abs(offset_minutes) / 6`
+- `sign_byte() -> u8` - returns `0x01` for positive/zero, `0x00` for negative
+- `from_encoded(units: u8, sign: u8) -> Result<Self>` - decodes from protocol
 
 #### RingtoneSignature
 
@@ -2296,7 +2296,7 @@ impl AdvertisementData {
         offset += 4;
 
         // Humidity TLV: (continues from temperature) [HumHigh] [HumLow]
-        // Actually the TLV is: 01 04 [Temp 2B] [Hum 2B] — 4 bytes of data
+        // Actually the TLV is: 01 04 [Temp 2B] [Hum 2B] - 4 bytes of data
         // Re-parse: 01 04 means type=1, length=4, then 4 bytes of data
         let humidity_raw = u16::from_be_bytes([payload[offset], payload[offset + 1]]);
         let humidity = humidity_raw as f32 / 10.0;
@@ -2500,7 +2500,7 @@ impl ClockDevice {
             )));
         }
 
-        // Step 2: Audio Init — size first (3B LE), then signature (4B)
+        // Step 2: Audio Init - size first (3B LE), then signature (4B)
         let total_size = audio.len() as u32;
         let mut init_frame = Vec::with_capacity(9);
         init_frame.push(0x08);
@@ -2661,7 +2661,7 @@ The CLI uses `clap` with subcommands mirroring the core library API. All
 address and value parameters use newtypes from the core library
 (`MacAddress`, `AlarmSlotIndex`, `Brightness`, `Volume`, etc.) for
 compile-time validation at the argument-parsing layer. There is no
-separate `Connect` subcommand — each command connects and authenticates
+separate `Connect` subcommand - each command connects and authenticates
 implicitly via `DeviceConnection::connect`.
 
 ```rust
@@ -2829,12 +2829,12 @@ Key differences from the original concept:
   `DeviceConnection::connect`.
 - **Newtype arguments**: `MacAddress`, `AlarmSlotIndex`, `Brightness`,
   `Volume`, `ScanDuration`, `ClockTime`, `DayMask`, `Timezone`,
-  `TimeFormat`, `TemperatureUnit`, `Language`, `RingtoneSignature` — all
+  `TimeFormat`, `TemperatureUnit`, `Language`, `RingtoneSignature` - all
   validated at parse time via `FromStr` implementations.
 - **`AlarmSet` uses `time: ClockTime`** (HH:MM format) instead of
   separate `hour`/`minute` fields, and `--no-snooze` flag instead of a
   positive `snooze` parameter.
-- **`SettingsWrite` omits `ringtone`** — ringtone selection is handled
+- **`SettingsWrite` omits `ringtone`** - ringtone selection is handled
   via the `RingtoneUpload` command with a `RingtoneSignature`.
 - **`MonitorDuration`** supports ISO 8601 duration strings (e.g.,
   `PT30S`, `PT1H30M`) in addition to plain seconds.
@@ -3110,7 +3110,7 @@ rich, formatted terminal output.
 The CLI uses plain text output for human readability. The `scan`
 command prints device addresses with sensor data from advertisements.
 The `monitor` command streams sensor readings in real-time. There is no
-separate `OutputFormat` enum — all output is human-readable text via
+separate `OutputFormat` enum - all output is human-readable text via
 `println!`.
 
 #### Dependencies
@@ -3131,7 +3131,7 @@ tracing-subscriber.workspace = true
 Notable differences from the original concept:
 
 - **`miette`** and **`thiserror`** replace manual error formatting.
-- **`dirs`** is not needed — `FileTokenStore::default_directory()` handles
+- **`dirs`** is not needed - `FileTokenStore::default_directory()` handles
   path resolution in the core library.
 - **`hex`** is used for ringtone signature parsing.
 - Workspace dependencies are used instead of inline versions.
@@ -3787,7 +3787,7 @@ fn watch_sensor_events(
                         }
                         Ok(ClockEvent::Disconnected) => break,
                         Ok(ClockEvent::Reconnected) => {
-                            // Device recovered — resume streaming.
+                            // Device recovered - resume streaming.
                         }
                         Err(_) => break,
                     }
@@ -4211,7 +4211,7 @@ Key protocol differences from the original concept:
 - **`SetAlarm` uses `time: ClockTime`** instead of separate `hour`/
   `minute` fields, and includes a `snooze: bool` field.
 - **`WriteSettings` uses `DeviceSettings`** directly instead of a
-  separate `DeviceSettingsDto` — the core library type implements
+  separate `DeviceSettingsDto` - the core library type implements
   `Serialize`/`Deserialize`.
 - **`EventType` enum** replaces `event: String` in `WsEvent`. The enum
   uses `#[serde(rename_all = "snake_case")]` for wire compatibility.
@@ -4629,7 +4629,7 @@ The project follows [Keep a Changelog](https://keepachangelog.com/) and
 | Repository | Description |
 |---|---|
 | [MrBoombastic/clOwOck](https://github.com/MrBoombastic/clOwOck) | Protocol specification (auth, time sync, alarm writing, brightness, audio) with Python example code. |
-| [ov1d1u/qingping_alarm_clock](https://github.com/ov1d1u/qingping_alarm_clock) | Home Assistant custom component (Python/Bleak) — reference implementation for `set_alarm`, `delete_alarm`, `set_time`. |
+| [ov1d1u/qingping_alarm_clock](https://github.com/ov1d1u/qingping_alarm_clock) | Home Assistant custom component (Python/Bleak) - reference implementation for `set_alarm`, `delete_alarm`, `set_time`. |
 
 ## Resources
 

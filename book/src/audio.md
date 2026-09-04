@@ -72,7 +72,7 @@ sequenceDiagram
     Note over CGD1: Device stores audio under signature
 ```
 
-### Step 0 — Prepare the Payload
+### Step 0 - Prepare the Payload
 
 1. Decode/resample the source file to 8-bit unsigned PCM, 8000 Hz, mono
 2. Pad to a multiple of 512 bytes: first padding byte is `00` (end-of-audio marker), remaining are `FF`
@@ -80,7 +80,7 @@ sequenceDiagram
 
 The `validate_audio` function checks these constraints and returns an error if they are violated.
 
-### Step 1 — MTU Exchange
+### Step 1 - MTU Exchange
 
 Before uploading, an MTU exchange is performed to ensure the 130-byte packets (128 bytes audio + 2-byte header) fit within a single BLE packet:
 
@@ -91,7 +91,7 @@ if mtu < 130 {
 }
 ```
 
-### Step 2 — Audio Init
+### Step 2 - Audio Init
 
 Send `08 10 [Size 3B LE] [Signature 4B]` to Data Write.
 
@@ -100,7 +100,7 @@ Send `08 10 [Size 3B LE] [Signature 4B]` to Data Write.
 
 Wait for ACK: `04 ff 10 [Status] [Payload]` (status `00` = success)
 
-### Step 3 — Send Audio Data
+### Step 3 - Send Audio Data
 
 - **Packet format**: `81 08 [Audio 128B]` (130 bytes on the wire)
 - A trailing packet shorter than 128 bytes is padded with `FF`
@@ -108,7 +108,7 @@ Wait for ACK: `04 ff 10 [Status] [Payload]` (status `00` = success)
 - After every 4th packet (or the last packet), wait for block ACK: `04 ff 08 [Status] [Payload]`
 - Each packet is written with write-with-response
 
-### Step 4 — Completion
+### Step 4 - Completion
 
 After the last block ACK, the device stores the audio under the given signature. Select it as the active ringtone by writing the same signature in the settings payload (bytes 16–19).
 
