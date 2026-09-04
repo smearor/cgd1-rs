@@ -63,11 +63,14 @@ classDiagram
 flowchart LR
     Scan["ClockScanner<br/>.scan_active()"] --> Connect["ClockManager<br/>.connect(mac)"]
     Connect --> Auth["ClockDevice<br/>.authenticate(token)"]
-    Auth --> SyncTime["ClockDevice<br/>.sync_time_now()"]
+    Auth --> SyncTZ["ClockDevice<br/>.sync_timezone()"]
+    SyncTZ --> SyncTime["ClockDevice<br/>.sync_time_now()"]
     SyncTime --> Ready["Ready for commands"]
     Ready --> Operate["read_alarms<br/>set_alarm<br/>read_settings<br/>write_settings<br/>upload_ringtone<br/>..."]
     Ready --> Monitor["subscribe() →<br/>ClockEvent stream"]
 ```
+
+The `connect_authenticate_and_sync` method performs all steps in sequence. `sync_timezone` reads the device settings, computes the local system UTC offset via `chrono::Local`, and writes the correct timezone before `sync_time` to avoid time display offsets (the device defaults to UTC+8 after factory reset).
 
 ### ClockDevice
 
@@ -78,7 +81,8 @@ flowchart LR
 - **Pending data response channel** — `mpsc::Sender` for multi-packet responses (e.g., alarm read, settings read)
 - **Event broadcast sender** — `broadcast::Sender<ClockEvent>` for sensor, battery, and connection events
 - **Auth token** — Stored after successful authentication
-- **Notification task** — Background `tokio::task` that processes BLE notifications
+- **Notification task handle** — `JoinHandle` stored so it can be aborted on disconnect, preventing zombie tasks from stealing notifications
+- **Token store** — Optional `Arc<dyn TokenStore>` for persisting auth tokens after privileged commands succeed
 
 #### Notification Task
 
@@ -90,7 +94,6 @@ flowchart TB
     AuthNotify["Auth Notify<br/>(ACKs)"]
     DataNotify["Data Notify<br/>(ACKs, Settings, Alarms)"]
     SensorNotify["Sensor Notify<br/>(Temp, Humidity)"]
-    Battery["Battery Level<br/>(GATT)"]
     EventChannel["broadcast::Sender<br/><ClockEvent>"]
     AckMap["Oneshot Senders<br/>(pending ACKs)"]
     DataChannel["mpsc::Sender<br/>(pending data)"]
@@ -98,13 +101,13 @@ flowchart TB
     NotifyTask --> AuthNotify
     NotifyTask --> DataNotify
     NotifyTask --> SensorNotify
-    NotifyTask --> Battery
     AuthNotify --> AckMap
     DataNotify --> AckMap
     DataNotify --> DataChannel
     SensorNotify --> EventChannel
-    Battery --> EventChannel
 ```
+
+> **Note**: Battery is **not** sourced from GATT notifications. The GATT Battery Service (`0x2A19`) returns an unreliable 99% on the CGD1. Battery data comes exclusively from advertising packets, cached via `KnownDeviceStore`. See [Sensors & Battery](./sensors.md) for details.
 
 #### Request-Response Pattern
 
@@ -120,12 +123,22 @@ Multi-packet responses (e.g., `read_alarms`, `read_settings`) use an `mpsc::Send
 
 If the device disconnects unexpectedly, the library attempts reconnection with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped). After a successful BLE reconnect, the full state recovery sequence is performed:
 
-1. **BLE Reconnect** via `transport.connect(address)`
-2. **GATT Re-subscription** for Auth Notify, Data Notify, and Sensor Notify
-3. **Re-authentication** using the stored token
-4. **Flag reset** — `is_authenticated` set to `true`
+1. **Transport cleanup** — `transport.disconnect()` to clear stale connection state
+2. **BLE Reconnect** via `transport.connect(address)`
+3. **GATT Re-subscription** for Auth Notify, Data Notify, and Sensor Notify
+4. **Re-authentication** using the stored token
+5. **Flag reset** — `is_authenticated` set to `true`
 
 `ClockEvent::Disconnected` and `ClockEvent::Reconnected` are broadcast to subscribers.
+
+### KnownDeviceStore
+
+The `KnownDeviceStore` persists known device MAC addresses and battery levels:
+
+- **`known_devices.json`** — List of previously seen device MAC addresses, used to populate the controller dropdown on startup.
+- **`battery_cache.json`** — Map of MAC address to battery level (u8), populated from advertising scans. Loaded on startup into the controller's `scan_battery_cache`.
+
+Both files reside in the platform-dependent data directory (e.g., `~/.local/share/cgd1-rs/` on Linux).
 
 ### Error Handling
 

@@ -25,7 +25,7 @@ See [Hardware Notes](https://github.com/smearor/cgd1-rs/blob/main/docs/HARDWARE.
 - **Alarm management**: Read, set, and delete up to 16 alarms with day-of-week repeat masks and snooze
 - **Device settings**: Read and write volume, brightness, timezone, time format, temperature unit, language, night mode, and screen duration
 - **Sensor monitoring**: Real-time temperature and humidity via BLE notifications, plus passive advertisement parsing
-- **Battery monitoring**: Read battery level via the standard GATT battery service
+- **Battery monitoring**: Battery level from BLE advertising scans, persisted in a cache file for display on connect
 - **Audio upload**: Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol
 - **Firmware query**: Read the device firmware version string
 - **Reconnection**: Automatic reconnection with exponential backoff and full state recovery
