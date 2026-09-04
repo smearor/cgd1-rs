@@ -49,3 +49,30 @@ impl Display for CharacteristicUuid {
         }
     }
 }
+
+impl TryFrom<Uuid> for CharacteristicUuid {
+    type Error = Uuid;
+
+    /// Convert a raw 128-bit UUID into the corresponding [`CharacteristicUuid`].
+    ///
+    /// Returns the original UUID as an error if it does not match any known
+    /// CGD1 characteristic.
+    fn try_from(uuid: Uuid) -> Result<Self, Self::Error> {
+        let auth_write = Self::AuthWrite.uuid();
+        let auth_notify = Self::AuthNotify.uuid();
+        let data_write = Self::DataWrite.uuid();
+        let data_notify = Self::DataNotify.uuid();
+        let sensor_notify = Self::SensorNotify.uuid();
+        let battery_level = Self::BatteryLevel.uuid();
+
+        match uuid {
+            u if u == auth_write => Ok(Self::AuthWrite),
+            u if u == auth_notify => Ok(Self::AuthNotify),
+            u if u == data_write => Ok(Self::DataWrite),
+            u if u == data_notify => Ok(Self::DataNotify),
+            u if u == sensor_notify => Ok(Self::SensorNotify),
+            u if u == battery_level => Ok(Self::BatteryLevel),
+            _ => Err(uuid),
+        }
+    }
+}

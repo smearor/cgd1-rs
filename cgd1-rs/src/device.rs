@@ -796,14 +796,16 @@ async fn notification_task(
     pending_data_response: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
     token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
 ) {
-    let sensor_uuid = CharacteristicUuid::SensorNotify.uuid();
+    let sensor_characteristic = CharacteristicUuid::SensorNotify;
 
     debug!(%address, "notification task started");
     loop {
         match transport.next_notification(&address).await {
-            Some((uuid, value)) => {
-                debug!(%address, uuid = %uuid, len = value.len(), data = %format_hex(&value), "notification received");
-                if uuid == sensor_uuid {
+            Some(notif) => {
+                let characteristic = notif.characteristic;
+                let value = notif.value;
+                debug!(%address, characteristic = %characteristic, len = value.len(), data = %format_hex(&value), "notification received");
+                if characteristic == sensor_characteristic {
                     match SensorNotification::parse(&value) {
                         Ok(sensor) => {
                             debug!(%address, temp = %sensor.temperature.value(), hum = %sensor.humidity.value(), battery = ?sensor.battery.map(|b| b.value()), "sending SensorUpdate event");
@@ -832,7 +834,7 @@ async fn notification_task(
                     }
                 } else {
                     // Non-ACK data notification - forward to pending data response channel.
-                    debug!(uuid = %uuid, len = value.len(), "notification: data response");
+                    debug!(characteristic = %characteristic, len = value.len(), "notification: data response");
                     let sender = {
                         let pending = pending_data_response.lock().await;
                         pending.clone()
@@ -841,7 +843,7 @@ async fn notification_task(
                         let _ = sender.send(value).await;
                     } else {
                         debug!(
-                            uuid = %uuid,
+                            characteristic = %characteristic,
                             len = value.len(),
                             "unhandled notification, ignoring"
                         );
@@ -952,6 +954,7 @@ mod tests {
     use super::*;
 
     use crate::AlarmSlotIndex;
+    use crate::BleNotification;
     use crate::ClockTime;
     use crate::DayMask;
     use crate::Humidity;
@@ -1029,24 +1032,22 @@ mod tests {
         // Pre-push 6 data notify packets on Data Notify.
         // The auto-ACK for the ReadAlarms write will arrive first, then these data packets.
         // Each packet: [length] [0x06] [base_index] [entry1 5B] [entry2 5B] [entry3 5B]
-        let data_notify = CharacteristicUuid::DataNotify.uuid();
+        let data_notify = CharacteristicUuid::DataNotify;
 
         // Packet 0: slots 0-2, slot 0 has alarm at 07:30 weekdays
         mock.push_notification(
-            data_notify,
-            vec![
+            BleNotification::new(data_notify, vec![
                 0x11, 0x06, 0x00, 0x01, 0x07, 0x1E, 0x3E, 0x01, // slot 0: enabled, 7:30, weekdays, snooze
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 1: empty
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 2: empty
-            ],
+            ]),
         );
         // Packets 1-5: all empty slots
         for base in [3u8, 6, 9, 12, 15] {
             mock.push_notification(
-                data_notify,
-                vec![
+                BleNotification::new(data_notify, vec![
                     0x11, 0x06, base, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-                ],
+                ]),
             );
         }
 
@@ -1117,7 +1118,6 @@ mod tests {
 
         // Push a settings response on Data Notify.
         // Format: [length=0x13] [cmd=0x02] [18 bytes payload]
-        let data_notify = CharacteristicUuid::DataNotify.uuid();
         let mut response = vec![0x13, 0x02];
         // Payload: 18 bytes
         response.extend_from_slice(&[
@@ -1137,7 +1137,7 @@ mod tests {
             0xFF, // reserved
             0xFF, 0xFF, 0xFF, 0xFF, // ringtone signature (unused)
         ]);
-        mock.push_notification(data_notify, response);
+        mock.push_notification(BleNotification::new(CharacteristicUuid::DataNotify, response));
 
         let settings = device.read_settings().await.unwrap();
         assert_eq!(settings.volume(), crate::Volume::new(3).unwrap());
@@ -1237,7 +1237,7 @@ mod tests {
 
         // Push a sensor notification with a 6th battery byte (85%).
         let sensor = SensorNotification::with_battery(Temperature::new(23.45), Humidity::new(56.0), BatteryLevel::new(85));
-        mock.push_notification(CharacteristicUuid::SensorNotify.uuid(), sensor.encode());
+        mock.push_notification(BleNotification::new(CharacteristicUuid::SensorNotify, sensor.encode()));
 
         let mut rx = device.subscribe();
 

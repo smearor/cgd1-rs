@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::ble::advertisement::AdvertisementData;
 use crate::ble::characteristic::CharacteristicUuid;
+use crate::ble::notification::BleNotification;
 use crate::command::Command;
 use crate::command::CommandFrame;
 use crate::error::Result;
@@ -60,10 +61,10 @@ pub trait BleTransport: Send + Sync {
     /// Receive the next notification value from the device identified by
     /// MAC address.
     ///
-    /// Returns the raw value bytes and the characteristic UUID that produced
-    /// the notification, enabling the notification task to route frames
+    /// Returns a [`BleNotification`] containing the characteristic UUID and
+    /// raw value bytes, enabling the notification task to route frames
     /// correctly.
-    async fn next_notification(&self, address: &MacAddress) -> Option<(Uuid, Vec<u8>)>;
+    async fn next_notification(&self, address: &MacAddress) -> Option<BleNotification>;
 
     /// Read a characteristic value from the device identified by MAC address.
     async fn read(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<Vec<u8>>;

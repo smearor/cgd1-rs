@@ -26,6 +26,7 @@ use uuid::Uuid;
 
 use crate::ble::advertisement::AdvertisementData;
 use crate::ble::characteristic::CharacteristicUuid;
+use crate::ble::notification::BleNotification;
 use crate::ble::transport::BleTransport;
 use crate::ble::transport_state::ScanState;
 use crate::error::ClockError;
@@ -70,6 +71,18 @@ impl BtleplugTransport {
             connections: Mutex::new(HashMap::new()),
             notification_streams: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Look up the peripheral and characteristic for a connected device.
+    async fn lookup_peripheral_and_char(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<(Peripheral, Characteristic)> {
+        let connections = self.connections.lock().await;
+        let entry = connections.get(address).ok_or(ClockError::NotConnected)?;
+        let char = entry
+            .characteristics
+            .get(&characteristic.uuid())
+            .ok_or(TransportError::CharacteristicNotFound { characteristic })?
+            .clone();
+        Ok((entry.peripheral.clone(), char))
     }
 }
 
@@ -252,66 +265,46 @@ impl BleTransport for BtleplugTransport {
             data = %format_hex(data),
             "write -> device"
         );
-        let (peripheral, char) = {
-            let connections = self.connections.lock().await;
-            let entry = connections.get(address).ok_or(ClockError::NotConnected)?;
-            let char = entry
-                .characteristics
-                .get(&characteristic.uuid())
-                .ok_or(TransportError::CharacteristicNotFound { characteristic })?
-                .clone();
-            (entry.peripheral.clone(), char)
-        };
+        let (peripheral, char) = self.lookup_peripheral_and_char(address, characteristic).await?;
         peripheral.write(&char, data, WriteType::WithResponse).await.map_err(ClockError::from)?;
         Ok(())
     }
 
     async fn subscribe(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<()> {
         debug!(%address, characteristic = %characteristic, "subscribing to characteristic");
-        let (peripheral, char) = {
-            let connections = self.connections.lock().await;
-            let entry = connections.get(address).ok_or(ClockError::NotConnected)?;
-            let char = entry
-                .characteristics
-                .get(&characteristic.uuid())
-                .ok_or(TransportError::CharacteristicNotFound { characteristic })?
-                .clone();
-            (entry.peripheral.clone(), char)
-        };
+        let (peripheral, char) = self.lookup_peripheral_and_char(address, characteristic).await?;
         peripheral.subscribe(&char).await.map_err(ClockError::from)?;
         debug!(%address, characteristic = %characteristic, "subscribed to characteristic");
         Ok(())
     }
 
-    async fn next_notification(&self, address: &MacAddress) -> Option<(Uuid, Vec<u8>)> {
+    async fn next_notification(&self, address: &MacAddress) -> Option<BleNotification> {
         let stream_arc = {
             let streams = self.notification_streams.lock().await;
             streams.get(address).cloned()
         }?;
         let mut stream = stream_arc.lock().await;
         let notification = stream.next().await?;
+        let characteristic = match CharacteristicUuid::try_from(notification.uuid) {
+            Ok(c) => c,
+            Err(uuid) => {
+                warn!(%address, %uuid, "notification from unknown characteristic, skipping");
+                return self.next_notification(address).await;
+            }
+        };
         debug!(
             %address,
-            uuid = %notification.uuid,
+            characteristic = %characteristic,
             len = notification.value.len(),
             data = %format_hex(&notification.value),
             "notification <- device"
         );
-        Some((notification.uuid, notification.value))
+        Some(BleNotification::new(characteristic, notification.value))
     }
 
     async fn read(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<Vec<u8>> {
         debug!(%address, characteristic = %characteristic, "reading characteristic");
-        let (peripheral, char) = {
-            let connections = self.connections.lock().await;
-            let entry = connections.get(address).ok_or(ClockError::NotConnected)?;
-            let char = entry
-                .characteristics
-                .get(&characteristic.uuid())
-                .ok_or(TransportError::CharacteristicNotFound { characteristic })?
-                .clone();
-            (entry.peripheral.clone(), char)
-        };
+        let (peripheral, char) = self.lookup_peripheral_and_char(address, characteristic).await?;
         let data = peripheral.read(&char).await.map_err(ClockError::from)?;
         debug!(
             %address,
