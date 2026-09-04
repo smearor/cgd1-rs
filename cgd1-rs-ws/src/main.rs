@@ -1,6 +1,7 @@
 use cgd1_rs::Backend;
 use cgd1_rs_ws::ServerState;
 use clap::Parser;
+use tracing::info;
 
 /// Command-line arguments for the WebSocket server.
 #[derive(Parser, Debug)]
@@ -40,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bind_addr = format!("{}:{}", cli.address, cli.port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
-    tracing::info!(addr = %bind_addr, "WebSocket server listening");
+    info!(addr = %bind_addr, "WebSocket server listening");
 
     axum::serve(listener, router).await?;
 

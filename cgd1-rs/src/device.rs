@@ -215,7 +215,7 @@ impl ClockDevice {
         });
 
         let mut task_handle = self.notification_task_handle.lock().unwrap_or_else(|p| {
-            tracing::warn!("notification_task_handle mutex poisoned - recovering");
+            warn!("notification_task_handle mutex poisoned - recovering");
             p.into_inner()
         });
         *task_handle = Some(handle);
@@ -666,7 +666,7 @@ impl ClockDevice {
         // released before the await below to keep the async block Send.
         {
             let mut task_handle = self.notification_task_handle.lock().unwrap_or_else(|p| {
-                tracing::warn!("notification_task_handle mutex poisoned - recovering");
+                warn!("notification_task_handle mutex poisoned - recovering");
                 p.into_inner()
             });
             if let Some(handle) = task_handle.take() {

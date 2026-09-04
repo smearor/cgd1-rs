@@ -19,6 +19,7 @@ use gtk4::SpinButton;
 use gtk4::ToggleButton;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tracing::error;
 use tracing::warn;
 
 /// Reusable alarm editor widget - can be embedded in the main window or a dialog.
@@ -101,7 +102,7 @@ impl AlarmEditorWidget {
         // Set and Delete per row
         for (slot, widgets) in rows.iter().map(|(s, w)| (*s, w.clone())) {
             let Ok(slot_idx) = AlarmSlotIndex::new(slot) else {
-                tracing::error!(slot, "invalid alarm slot index, skipping row");
+                error!(slot, "invalid alarm slot index, skipping row");
                 continue;
             };
             let manager_set = manager.clone();
