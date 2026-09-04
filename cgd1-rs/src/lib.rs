@@ -12,6 +12,7 @@ mod types;
 pub use ble::AdvertisementData;
 pub use ble::Backend;
 pub use ble::BackendParseError;
+pub use ble::BleNotification;
 pub use ble::BleTransport;
 pub use ble::BtleplugTransport;
 pub use ble::CharacteristicUuid;

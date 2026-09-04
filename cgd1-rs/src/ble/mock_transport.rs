@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::ble::advertisement::AdvertisementData;
 use crate::ble::characteristic::CharacteristicUuid;
+use crate::ble::notification::BleNotification;
 use crate::ble::transport::BleTransport;
 use crate::error::Result;
 use crate::error::TransportError;
@@ -22,8 +23,8 @@ use crate::types::MacAddress;
 pub struct MockBleTransport {
     connected: AtomicBool,
     writes: Mutex<Vec<(CharacteristicUuid, Vec<u8>)>>,
-    notifications_tx: mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
-    notifications_rx: Mutex<mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>,
+    notifications_tx: mpsc::UnboundedSender<BleNotification>,
+    notifications_rx: Mutex<mpsc::UnboundedReceiver<BleNotification>>,
     advertisements: Mutex<Vec<AdvertisementData>>,
     subscribed: Mutex<Vec<CharacteristicUuid>>,
     read_values: Mutex<Vec<(CharacteristicUuid, Vec<u8>)>>,
@@ -49,8 +50,8 @@ impl MockBleTransport {
     }
 
     /// Push a notification that will be returned by `next_notification`.
-    pub fn push_notification(&self, uuid: Uuid, data: Vec<u8>) {
-        let _ = self.notifications_tx.send((uuid, data));
+    pub fn push_notification(&self, notification: BleNotification) {
+        let _ = self.notifications_tx.send(notification);
     }
 
     /// Push an advertisement that will be returned by `next_advertisement`.
@@ -103,7 +104,7 @@ impl MockBleTransport {
         };
         let command_byte = data[1];
         let ack = vec![0x04, 0xff, command_byte, 0x00, 0x00];
-        self.push_notification(notify.uuid(), ack);
+        self.push_notification(BleNotification::new(notify, ack));
     }
 }
 
@@ -148,7 +149,7 @@ impl BleTransport for MockBleTransport {
         Ok(())
     }
 
-    async fn next_notification(&self, _address: &MacAddress) -> Option<(Uuid, Vec<u8>)> {
+    async fn next_notification(&self, _address: &MacAddress) -> Option<BleNotification> {
         self.notifications_rx.lock().await.recv().await
     }
 
@@ -193,12 +194,12 @@ mod tests {
     #[tokio::test]
     async fn mock_notification_push_pop() {
         let transport = MockBleTransport::new();
-        let uuid = CharacteristicUuid::AuthNotify.uuid();
-        transport.push_notification(uuid, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
+        let characteristic = CharacteristicUuid::AuthNotify;
+        transport.push_notification(BleNotification::new(characteristic, vec![0x04, 0xff, 0x01, 0x00, 0x00]));
         let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
-        let (recv_uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(recv_uuid, uuid);
-        assert_eq!(data, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, characteristic);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
     }
 
     #[tokio::test]
@@ -230,8 +231,8 @@ mod tests {
             .write(&addr, CharacteristicUuid::DataWrite, &[0x07, 0x05, 0x02, 0x01, 0x07, 0x1E, 0x3E, 0x01])
             .await
             .unwrap();
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
-        assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::DataNotify);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
     }
 }

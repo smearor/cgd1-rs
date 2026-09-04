@@ -11,6 +11,7 @@ use super::device_state::ALARM_SLOT_COUNT;
 use super::device_state::VirtualDeviceState;
 use crate::AdvertisementData;
 use crate::BatteryLevel;
+use crate::BleNotification;
 use crate::CharacteristicUuid;
 use crate::ClockTime;
 use crate::Humidity;
@@ -79,10 +80,10 @@ pub struct VirtualClockTransport {
 /// Per-device connection state for the virtual transport.
 struct VirtualConnection {
     /// Notification channel sender for this specific device.
-    notifications_tx: mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
+    notifications_tx: mpsc::UnboundedSender<BleNotification>,
     /// Notification channel receiver, wrapped in Arc<Mutex> so it can be
     /// cloned and awaited without holding the connections lock.
-    notifications_rx: Arc<Mutex<mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>>,
+    notifications_rx: Arc<Mutex<mpsc::UnboundedReceiver<BleNotification>>>,
     /// Sensor task handle for this connection.
     sensor_task_handle: Option<tokio::task::JoinHandle<()>>,
     /// Subscribed characteristics for this connection.
@@ -245,32 +246,32 @@ impl VirtualClockTransport {
     /// Push a sensor notification manually (for testing event subscription).
     pub fn push_sensor_notification(&self, address: &MacAddress, temperature: f32, humidity: f32) {
         let sensor = SensorNotification::new(Temperature::new(temperature), Humidity::new(humidity));
-        self.push_notification(address, CharacteristicUuid::SensorNotify.uuid(), sensor.encode());
+        self.push_notification(address, BleNotification::new(CharacteristicUuid::SensorNotify, sensor.encode()));
     }
 
     /// Push a sensor notification with battery manually (for testing).
     pub fn push_sensor_notification_with_battery(&self, address: &MacAddress, temperature: f32, humidity: f32, battery: u8) {
         let sensor = SensorNotification::with_battery(Temperature::new(temperature), Humidity::new(humidity), BatteryLevel::new(battery));
-        self.push_notification(address, CharacteristicUuid::SensorNotify.uuid(), sensor.encode());
+        self.push_notification(address, BleNotification::new(CharacteristicUuid::SensorNotify, sensor.encode()));
     }
 
     /// Push a battery notification manually (for testing event subscription).
     pub fn push_battery_notification(&self, address: &MacAddress, level: u8) {
-        self.push_notification(address, CharacteristicUuid::BatteryLevel.uuid(), vec![level]);
+        self.push_notification(address, BleNotification::new(CharacteristicUuid::BatteryLevel, vec![level]));
     }
 
     /// Push a raw notification onto the notification channel for a specific device.
-    fn push_notification(&self, address: &MacAddress, uuid: Uuid, data: Vec<u8>) {
+    fn push_notification(&self, address: &MacAddress, notification: BleNotification) {
         if let Ok(connections) = self.connections.try_lock() {
             if let Some(conn) = connections.get(address) {
-                let _ = conn.notifications_tx.send((uuid, data));
+                let _ = conn.notifications_tx.send(notification);
             }
         }
     }
 
     /// Get the notification receiver Arc for a device without holding the
     /// connections lock during `recv()`.
-    async fn notification_rx(&self, address: &MacAddress) -> Option<Arc<Mutex<mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>>> {
+    async fn notification_rx(&self, address: &MacAddress) -> Option<Arc<Mutex<mpsc::UnboundedReceiver<BleNotification>>>> {
         let connections = self.connections.lock().await;
         connections.get(address).map(|conn| conn.notifications_rx.clone())
     }
@@ -278,7 +279,7 @@ impl VirtualClockTransport {
     /// Send an ACK frame on the given notify characteristic for a specific device.
     fn send_ack_on(&self, address: &MacAddress, notify_char: CharacteristicUuid, command_byte: u8, status: u8, payload: u8) {
         let ack = vec![0x04, 0xff, command_byte, status, payload];
-        self.push_notification(address, notify_char.uuid(), ack);
+        self.push_notification(address, BleNotification::new(notify_char, ack));
     }
 
     /// Send a success ACK on the given notify characteristic for a specific device.
@@ -288,12 +289,12 @@ impl VirtualClockTransport {
 
     /// Send a data notification (non-ACK) on the Data Notify characteristic.
     fn send_data_notification(&self, address: &MacAddress, data: Vec<u8>) {
-        self.push_notification(address, CharacteristicUuid::DataNotify.uuid(), data);
+        self.push_notification(address, BleNotification::new(CharacteristicUuid::DataNotify, data));
     }
 
     /// Send a data notification on the Auth Notify characteristic.
     fn send_auth_notification(&self, address: &MacAddress, data: Vec<u8>) {
-        self.push_notification(address, CharacteristicUuid::AuthNotify.uuid(), data);
+        self.push_notification(address, BleNotification::new(CharacteristicUuid::AuthNotify, data));
     }
 
     /// Handle a command frame written to Auth Write.
@@ -547,8 +548,8 @@ impl VirtualClockTransport {
                 Err(_) => return,
             }
         };
-        let sensor_uuid = CharacteristicUuid::SensorNotify.uuid();
-        let battery_uuid = CharacteristicUuid::BatteryLevel.uuid();
+        let sensor_char = CharacteristicUuid::SensorNotify;
+        let battery_char = CharacteristicUuid::BatteryLevel;
         let devices = self.devices.clone();
 
         let handle = tokio::spawn(async move {
@@ -604,12 +605,12 @@ impl VirtualClockTransport {
                 // Send sensor notification with battery appended so callers
                 // can verify that battery-from-sensor-notification works.
                 let sensor = SensorNotification::with_battery(temp, hum, battery);
-                if tx.send((sensor_uuid, sensor.encode())).is_err() {
+                if tx.send(BleNotification::new(sensor_char, sensor.encode())).is_err() {
                     break;
                 }
 
                 // Send battery notification when low or reset.
-                if send_battery_notify && tx.send((battery_uuid, vec![battery.value()])).is_err() {
+                if send_battery_notify && tx.send(BleNotification::new(battery_char, vec![battery.value()])).is_err() {
                     break;
                 }
             }
@@ -723,7 +724,7 @@ impl BleTransport for VirtualClockTransport {
         Ok(())
     }
 
-    async fn next_notification(&self, address: &MacAddress) -> Option<(Uuid, Vec<u8>)> {
+    async fn next_notification(&self, address: &MacAddress) -> Option<BleNotification> {
         let rx_arc = self.notification_rx(address).await?;
         rx_arc.lock().await.recv().await
     }
@@ -792,17 +793,17 @@ mod tests {
         transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
         // Expect ACK on Auth Notify.
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::AuthNotify.uuid());
-        assert_eq!(data, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::AuthNotify);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
 
         // Send Auth Confirm.
         let frame = CommandFrame::from_command(Command::AuthConfirm, token.to_vec());
         transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::AuthNotify.uuid());
-        assert_eq!(data, vec![0x04, 0xff, 0x02, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::AuthNotify);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x02, 0x00, 0x00]);
 
         let state_arc = transport.connected_state().await.unwrap();
         let state = state_arc.lock().await;
@@ -818,11 +819,11 @@ mod tests {
         let frame = CommandFrame::from_command(Command::ReadFirmware, vec![]);
         transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::AuthNotify.uuid());
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::AuthNotify);
         // Response: [length] [0x0d] [version string]
-        assert_eq!(data[1], 0x0d);
-        let version = String::from_utf8_lossy(&data[2..]);
+        assert_eq!(notif.value[1], 0x0d);
+        let version = String::from_utf8_lossy(&notif.value[2..]);
         assert_eq!(version, VIRTUAL_FIRMWARE);
     }
 
@@ -850,9 +851,9 @@ mod tests {
         transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
         // Expect ACK.
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
-        assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::DataNotify);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
 
         // Read alarms - should get 6 packets.
         let frame = CommandFrame::from_command(Command::ReadAlarms, vec![]);
@@ -860,9 +861,9 @@ mod tests {
 
         let mut packets = Vec::new();
         for _ in 0..6 {
-            let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-            assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
-            packets.push(data);
+            let notif = transport.next_notification(&addr).await.unwrap();
+            assert_eq!(notif.characteristic, CharacteristicUuid::DataNotify);
+            packets.push(notif.value);
         }
 
         // First packet (base=0) should contain the alarm at slot 2.
@@ -888,9 +889,9 @@ mod tests {
         let frame = CommandFrame::from_command(Command::SetAlarm, payload.to_vec());
         transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
-        assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::DataNotify);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
 
         let state_arc = transport.connected_state().await.unwrap();
         let state = state_arc.lock().await;
@@ -906,10 +907,10 @@ mod tests {
         let frame = CommandFrame::from_command(Command::ReadSettings, vec![]);
         transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
-        assert_eq!(data[1], 0x02); // command echo
-        assert_eq!(data.len(), 20); // 2 header + 18 payload
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::DataNotify);
+        assert_eq!(notif.value[1], 0x02); // command echo
+        assert_eq!(notif.value.len(), 20); // 2 header + 18 payload
     }
 
     #[tokio::test]
@@ -939,9 +940,9 @@ mod tests {
         let frame = CommandFrame::from_command(Command::SetSettings, payload.to_vec());
         transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
-        assert_eq!(data, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::DataNotify);
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
 
         // Verify settings were stored.
         let state_arc = transport.connected_state().await.unwrap();
@@ -1009,9 +1010,9 @@ mod tests {
         transport.connect(&addr).await.unwrap();
         transport.push_sensor_notification(&addr, 23.45, 56.0);
 
-        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(uuid, CharacteristicUuid::SensorNotify.uuid());
-        let sensor = SensorNotification::parse(&data).unwrap();
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.characteristic, CharacteristicUuid::SensorNotify);
+        let sensor = SensorNotification::parse(&notif.value).unwrap();
         assert_eq!(sensor.temperature.value(), 23.45);
         assert_eq!(sensor.humidity.value(), 56.0);
     }
@@ -1026,8 +1027,8 @@ mod tests {
         let frame = CommandFrame::from_command(Command::TimeSync, timestamp.to_le_bytes().to_vec());
         transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
-        let (_uuid, data) = transport.next_notification(&addr).await.unwrap();
-        assert_eq!(data, vec![0x04, 0xff, 0x09, 0x00, 0x00]);
+        let notif = transport.next_notification(&addr).await.unwrap();
+        assert_eq!(notif.value, vec![0x04, 0xff, 0x09, 0x00, 0x00]);
 
         let state_arc = transport.connected_state().await.unwrap();
         let state = state_arc.lock().await;
@@ -1109,9 +1110,9 @@ mod tests {
         transport.push_sensor_notification(&addr1, 27.7, 50.3);
 
         // Device 1 should receive it.
-        let (uuid1, data1) = transport.next_notification(&addr1).await.unwrap();
-        assert_eq!(uuid1, CharacteristicUuid::SensorNotify.uuid());
-        let sensor1 = SensorNotification::parse(&data1).unwrap();
+        let notif1 = transport.next_notification(&addr1).await.unwrap();
+        assert_eq!(notif1.characteristic, CharacteristicUuid::SensorNotify);
+        let sensor1 = SensorNotification::parse(&notif1.value).unwrap();
         assert_eq!(sensor1.temperature.value(), 27.7);
         assert_eq!(sensor1.humidity.value(), 50.3);
 
@@ -1119,9 +1120,9 @@ mod tests {
         transport.push_sensor_notification(&addr2, 22.1, 45.0);
 
         // Device 2 should receive its own notification.
-        let (uuid2, data2) = transport.next_notification(&addr2).await.unwrap();
-        assert_eq!(uuid2, CharacteristicUuid::SensorNotify.uuid());
-        let sensor2 = SensorNotification::parse(&data2).unwrap();
+        let notif2 = transport.next_notification(&addr2).await.unwrap();
+        assert_eq!(notif2.characteristic, CharacteristicUuid::SensorNotify);
+        let sensor2 = SensorNotification::parse(&notif2.value).unwrap();
         assert_eq!(sensor2.temperature.value(), 22.1);
         assert_eq!(sensor2.humidity.value(), 45.0);
 
@@ -1150,8 +1151,8 @@ mod tests {
 
             // Push sensor notification and verify values.
             transport.push_sensor_notification(&addr, expected_temp, expected_humidity);
-            let (_uuid, data) = transport.next_notification(&addr).await.unwrap();
-            let sensor = SensorNotification::parse(&data).unwrap();
+            let notif = transport.next_notification(&addr).await.unwrap();
+            let sensor = SensorNotification::parse(&notif.value).unwrap();
             assert_eq!(sensor.temperature.value(), expected_temp, "temp mismatch for {mac_str}");
             assert_eq!(sensor.humidity.value(), expected_humidity, "humidity mismatch for {mac_str}");
 
