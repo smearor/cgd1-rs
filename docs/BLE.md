@@ -3,8 +3,8 @@
 Reverse-engineered Bluetooth Low Energy (BLE) protocol for the Qingping CGD1 Alarm Clock.
 
 Sources:
-- [MrBoombastic/clOwOck](https://github.com/MrBoombastic/clOwOck) — Android replacement app with full protocol specification
-- [ov1d1u/qingping_alarm_clock](https://github.com/ov1d1u/qingping_alarm_clock) — Home Assistant integration (Python/Bleak)
+- [MrBoombastic/clOwOck](https://github.com/MrBoombastic/clOwOck) - Android replacement app with full protocol specification
+- [ov1d1u/qingping_alarm_clock](https://github.com/ov1d1u/qingping_alarm_clock) - Home Assistant integration (Python/Bleak)
 
 ## 1. GATT Service & Characteristics
 
@@ -43,7 +43,7 @@ Request:  [Length] [Command] [Payload...]
 ACK:      04 ff [Command] [Status] [Payload 1B]
 ```
 
-The first byte counts the bytes that follow it — it is a **length**, not a per-command identifier. This is why the same leading value appears for unrelated commands (e.g. `0x01` for every two-byte read request, `0x02` for brightness preview and ringtone preview): they simply have the same payload length.
+The first byte counts the bytes that follow it - it is a **length**, not a per-command identifier. This is why the same leading value appears for unrelated commands (e.g. `0x01` for every two-byte read request, `0x02` for brightness preview and ringtone preview): they simply have the same payload length.
 
 An ACK is always exactly 5 bytes: `04 ff [Command] [Status] [Payload 1B]`. The status sits at index 3 and `00` means success. The single trailing byte is a command-specific payload (usually `00`).
 
@@ -79,7 +79,7 @@ The device uses a two-step authentication protocol with a 16-byte random token. 
 
 - **New devices**: Generate a random 16-byte token.
 - **Paired devices**: Use the stored token from the previous pairing.
-- The token must match what the device expects — the first successful pairing establishes the token.
+- The token must match what the device expects - the first successful pairing establishes the token.
 - **Persist a newly generated token only after a privileged command (e.g. time synchronization) succeeds.** An Auth Confirm ACK alone does not prove that the token was accepted.
 - The device will send an ACK even when the token is bad. Try to sync time or do another privileged action and check if the device closes the connection.
 
@@ -146,7 +146,7 @@ Create or modify an alarm:
 | 4   | `0x10` | Friday           |
 | 5   | `0x20` | Saturday         |
 | 6   | `0x40` | Sunday           |
-| —   | `0x00` | Once (no repeat) |
+| -   | `0x00` | Once (no repeat) |
 
 ### 5.2. Alarm Entry Structure (5 bytes)
 
@@ -224,7 +224,7 @@ Managed via a single comprehensive payload on **Data Write**.
 | 0   | `0x01` | Language         | Chinese | English    |
 | 1   | `0x02` | Time Format      | 24-hour | 12-hour    |
 | 2   | `0x04` | Temperature Unit | Celsius | Fahrenheit |
-| 3   | `0x08` | Unknown          | —       | —          |
+| 3   | `0x08` | Unknown          | -       | -          |
 | 4   | `0x10` | Alarms           | Enabled | Disabled   |
 
 > **Night mode workaround**: Disabling night mode is done by setting a 1-minute night mode window (`00:00`–`00:01`). Even the official app does this.
@@ -367,13 +367,13 @@ A JSON manifest maps hex signatures (without `0x` prefix) to objects containing 
 
 ### 11.5. Upload Protocol
 
-#### Step 0 — Prepare the Payload
+#### Step 0 - Prepare the Payload
 
 - Decode/resample the source file to 8-bit unsigned PCM, 8000 Hz, mono.
 - Pad the result to a multiple of 512 bytes: the first padding byte is `00` (end-of-audio marker), the remaining ones are `FF`.
 - Keep the whole payload under ~98 KB (roughly 12 seconds at 8 kHz); the device rejects or truncates anything longer.
 
-#### Step 1 — Init Command (Data Write)
+#### Step 1 - Init Command (Data Write)
 
 ```
 08 10 [Size 3B LE] [Signature 4B]
@@ -382,7 +382,7 @@ A JSON manifest maps hex signatures (without `0x` prefix) to objects containing 
 - **Size**: Padded audio length in bytes (Little Endian, 3 bytes)
 - **Signature**: Target ringtone slot signature
 
-#### Step 2 — Wait for Init ACK (Data Notify)
+#### Step 2 - Wait for Init ACK (Data Notify)
 
 ```
 04 ff 10 [Status] [Payload 1B]
@@ -390,7 +390,7 @@ A JSON manifest maps hex signatures (without `0x` prefix) to objects containing 
 
 Status `00` = success, proceed with the upload.
 
-#### Step 3 — Send Audio Data
+#### Step 3 - Send Audio Data
 
 - **Packet size**: 128 bytes of audio, prepended with the `81 08` header (130 bytes on the wire).
 - A trailing packet shorter than 128 bytes is padded with `FF`.
@@ -398,7 +398,7 @@ Status `00` = success, proceed with the upload.
 - After the 4th packet of a block (or after the very last packet), wait for the block ACK: `04 ff 08 [Status] [Payload 1B]` before continuing; status `00` = keep going.
 - Write every packet with write-with-response and wait for the write callback. Short delays between packets keep the device from falling behind.
 
-#### Step 4 — Completion
+#### Step 4 - Completion
 
 After the last block is acknowledged, the device stores the audio under the given signature. Select it as the active ringtone by writing the same signature in the settings payload (bytes 16–19).
 

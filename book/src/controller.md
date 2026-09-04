@@ -47,18 +47,18 @@ The main `gtk4::Application` subclass. Manages the application lifecycle, window
 
 The main window features a sidebar for device management and a tabbed content area. Each connected device gets its own tab showing:
 
-- **Clock display** — Seven-segment style time display using a custom font
-- **Sensor cards** — Temperature, humidity, and battery
-- **Device info** — Firmware version, MAC address
+- **Clock display** - Seven-segment style time display using a custom font
+- **Sensor cards** - Temperature, humidity, and battery
+- **Device info** - Firmware version, MAC address
 
 ### Dialog System
 
 Instead of separate widget files, the controller uses a modular `dialog/` directory:
 
-- **`dialog/alarms.rs`** — Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle
-- **`dialog/audio.rs`** — Ringtone upload dialog with file picker and signature selection
-- **`dialog/info.rs`** — Device information dialog (firmware, battery, MAC)
-- **`dialog/settings.rs`** — Settings panel with sliders, spin buttons, and combo boxes for all device settings
+- **`dialog/alarms.rs`** - Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle
+- **`dialog/audio.rs`** - Ringtone upload dialog with file picker and signature selection
+- **`dialog/info.rs`** - Device information dialog (firmware, battery, MAC)
+- **`dialog/settings.rs`** - Settings panel with sliders, spin buttons, and combo boxes for all device settings
 
 ### Display Module
 
@@ -110,8 +110,8 @@ The scan dialog shows nearby devices with their advertisement data (temperature,
 
 The controller maintains a `KnownDeviceStore` that persists:
 
-- **Known device MAC addresses** (`known_devices.json`) — Used to populate the device dropdown on startup and attempt automatic reconnection.
-- **Battery levels** (`battery_cache.json`) — Map of MAC address to battery percentage, updated during scans and loaded on startup.
+- **Known device MAC addresses** (`known_devices.json`) - Used to populate the device dropdown on startup and attempt automatic reconnection.
+- **Battery levels** (`battery_cache.json`) - Map of MAC address to battery percentage, updated during scans and loaded on startup.
 
 Both files are stored in the platform data directory (e.g., `~/.local/share/cgd1-rs/`).
 
@@ -144,15 +144,15 @@ Editing a row sends the updated alarm to the device immediately.
 
 The settings dialog provides graphical controls for all device settings:
 
-- **Volume** — Slider (1–5)
-- **Brightness** — Slider (0–100, step 10)
-- **Night brightness** — Slider (0–100, step 10)
-- **Night mode window** — Hour/minute spin buttons for start and end
-- **Timezone** — Spin button (-720 to +840 minutes)
-- **Time format** — Combo box (12h / 24h)
-- **Temperature unit** — Combo box (°C / °F)
-- **Language** — Combo box (English, Chinese, German, Japanese)
-- **Ringtone** — Combo box with built-in and custom ringtones
+- **Volume** - Slider (1–5)
+- **Brightness** - Slider (0–100, step 10)
+- **Night brightness** - Slider (0–100, step 10)
+- **Night mode window** - Hour/minute spin buttons for start and end
+- **Timezone** - Spin button (-720 to +840 minutes)
+- **Time format** - Combo box (12h / 24h)
+- **Temperature unit** - Combo box (°C / °F)
+- **Language** - Combo box (English, Chinese, German, Japanese)
+- **Ringtone** - Combo box with built-in and custom ringtones
 
 Changes are applied immediately to the device.
 

@@ -90,5 +90,5 @@ The clOwOck specification documents 16 alarm slots. The ov1d1u Home Assistant in
 ## Audio Upload Notes
 
 - Audio uploads require a stable connection; parallel BLE operations can abort the transfer
-- The MTU exchange is critical for audio uploads — without a sufficient MTU, packets would need fragmentation
+- The MTU exchange is critical for audio uploads - without a sufficient MTU, packets would need fragmentation
 - Maximum audio duration is approximately 12 seconds (~98 KB at 8 kHz, 8-bit mono)

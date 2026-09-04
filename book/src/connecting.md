@@ -51,7 +51,7 @@ The `AdvertisementData` struct is parsed from the raw service-data payload:
 
 | Field | Type | Scaling |
 |---|---|---|
-| MAC | 6 bytes (reversed) | — |
+| MAC | 6 bytes (reversed) | - |
 | Temperature | Int16 BE | / 10 (°C) |
 | Humidity | UInt16 BE | / 10 (%) |
 | Battery | UInt8 | & 0x7F (mask bit 7) |
@@ -83,12 +83,12 @@ sequenceDiagram
 
 The full `connect_authenticate_and_sync` flow performs:
 
-1. **BLE connect** — `transport.connect(address)`
+1. **BLE connect** - `transport.connect(address)`
 2. **Subscribe** to Auth Notify, Data Notify, and Sensor Notify characteristics
-3. **Spawn notification task** — Background task for processing BLE notifications
-4. **Authenticate** — Two-step token handshake (Auth Init + Auth Confirm)
-5. **Sync timezone** — Read device settings, compute local UTC offset, write correct timezone
-6. **Sync time** — Send current Unix timestamp; token is persisted only after this succeeds
+3. **Spawn notification task** - Background task for processing BLE notifications
+4. **Authenticate** - Two-step token handshake (Auth Init + Auth Confirm)
+5. **Sync timezone** - Read device settings, compute local UTC offset, write correct timezone
+6. **Sync time** - Send current Unix timestamp; token is persisted only after this succeeds
 
 ### Connecting with the Library
 
@@ -124,7 +124,7 @@ device_b.read_alarms().await?;
 manager.disconnect(&mac).await?;
 ```
 
-This aborts the notification task (via `JoinHandle::abort()`) and tears down the BLE connection. Aborting the notification task is critical — without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.
+This aborts the notification task (via `JoinHandle::abort()`) and tears down the BLE connection. Aborting the notification task is critical - without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.
 
 ### Virtual Backend (Testing)
 

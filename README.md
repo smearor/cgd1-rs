@@ -13,15 +13,15 @@ A Rust library and toolkit for the Qingping CGD1 Bluetooth alarm clock. It provi
 
 ## Features
 
-- **BLE Transport** — Scan, connect, authenticate, and communicate via Bluetooth Low Energy
-- **Time Synchronization** — Sync the device clock to the current system time
-- **Alarm Management** — Read, set, and delete up to 16 alarms with day-of-week repeat masks and snooze
-- **Device Settings** — Volume, brightness, timezone, time format, temperature unit, language, night mode
-- **Sensor Monitoring** — Real-time temperature and humidity via BLE notifications, plus passive advertisement parsing
-- **Battery Monitoring** — Read battery level via the standard GATT battery service
-- **Audio Upload** — Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol
-- **Firmware Query** — Read the device firmware version string
-- **Reconnection** — Automatic reconnection with exponential backoff and full state recovery
+- **BLE Transport** - Scan, connect, authenticate, and communicate via Bluetooth Low Energy
+- **Time Synchronization** - Sync the device clock to the current system time
+- **Alarm Management** - Read, set, and delete up to 16 alarms with day-of-week repeat masks and snooze
+- **Device Settings** - Volume, brightness, timezone, time format, temperature unit, language, night mode
+- **Sensor Monitoring** - Real-time temperature and humidity via BLE notifications, plus passive advertisement parsing
+- **Battery Monitoring** - Read battery level via the standard GATT battery service
+- **Audio Upload** - Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol
+- **Firmware Query** - Read the device firmware version string
+- **Reconnection** - Automatic reconnection with exponential backoff and full state recovery
 
 ## Crates
 
@@ -88,11 +88,11 @@ cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
 
 ## Documentation
 
-- [**User Guide**](https://smearor.github.io/cgd1-rs/book/) — Full mdBook documentation
-- [BLE Protocol](docs/BLE.md) — Reverse-engineered BLE protocol specification
-- [Hardware Notes](docs/HARDWARE.md) — CGD1 hardware specifications
-- [Concept Document](concepts/planned/CGD1-RS.md) — Project phases and architecture
-- [Changelog](CHANGELOG.md) — Release history
+- [**User Guide**](https://smearor.github.io/cgd1-rs/book/) - Full mdBook documentation
+- [BLE Protocol](docs/BLE.md) - Reverse-engineered BLE protocol specification
+- [Hardware Notes](docs/HARDWARE.md) - CGD1 hardware specifications
+- [Concept Document](concepts/planned/CGD1-RS.md) - Project phases and architecture
+- [Changelog](CHANGELOG.md) - Release history
 
 ## Architecture
 
@@ -114,4 +114,4 @@ All three frontends build on the same core library, which abstracts the BLE prot
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
