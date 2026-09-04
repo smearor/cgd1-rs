@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use cgd1_rs::AuthToken;
 use cgd1_rs::Backend;
+use cgd1_rs::Brightness;
 use cgd1_rs::ClockEvent;
 use cgd1_rs::ClockManager;
 use cgd1_rs::FileTokenStore;
@@ -751,6 +752,10 @@ impl MainWindow {
                             }
 
                             if let Some(device) = manager.device(&addr).await {
+                                // Visual feedback: briefly turn on the display light.
+                                if let Err(e) = device.set_brightness(Brightness::new(100).unwrap_or(Brightness::MAX)).await {
+                                    debug!(%addr, error = %e, "connect: failed to set brightness for visual feedback");
+                                }
                                 debug!(%addr, "starting event forwarding loop");
                                 let mut rx_events = device.subscribe();
                                 while let Ok(event) = rx_events.recv().await {
