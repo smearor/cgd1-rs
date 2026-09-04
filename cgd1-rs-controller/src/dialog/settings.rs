@@ -15,14 +15,17 @@ use cgd1_rs::Volume;
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
+use gtk4::DropDown;
 use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::Scale;
 use gtk4::SpinButton;
+use gtk4::StringList;
 use gtk4::ToggleButton;
 use gtk4::Window;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tracing::warn;
 
 /// Settings dialog for device settings management.
 #[allow(dead_code)]
@@ -145,13 +148,31 @@ impl SettingsDialog {
         screen_duration_box.append(&screen_duration_spin);
         main_box.append(&screen_duration_box);
 
+        let timezone_entries = timezone_list();
+        let timezone_labels: Vec<&str> = timezone_entries.iter().map(|(label, _)| *label).collect();
+        let timezone_model = StringList::new(&timezone_labels);
+
         let timezone_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).build();
-        let timezone_label = Label::builder().label("Timezone (hours):").build();
-        let timezone_spin = SpinButton::with_range(-12.0, 14.0, 1.0);
-        timezone_spin.set_value(0.0);
+        let timezone_label = Label::builder().label("Timezone:").build();
+        let timezone_dropdown = DropDown::new(Some(timezone_model), None::<&gtk4::Expression>);
+        timezone_dropdown.set_selected(0);
         timezone_box.append(&timezone_label);
-        timezone_box.append(&timezone_spin);
+        timezone_box.append(&timezone_dropdown);
         main_box.append(&timezone_box);
+
+        let sync_tz_button = Button::builder()
+            .label("Sync from System")
+            .tooltip_text("Set timezone from the computer's local clock")
+            .build();
+        main_box.append(&sync_tz_button);
+
+        let tz_info_label = Label::builder()
+            .label("The device has no DST logic. Timezone is auto-synced on connect. Reconnect after a DST change to update.")
+            .wrap(true)
+            .halign(Align::Start)
+            .css_classes(["dim-label"])
+            .build();
+        main_box.append(&tz_info_label);
 
         let status_label = Label::builder().label("").css_classes(["dim-label"]).halign(Align::Start).build();
         main_box.append(&status_label);
@@ -186,11 +207,14 @@ impl SettingsDialog {
             let lang_zh = lang_zh.clone();
             let night_mode_toggle = night_mode_toggle.clone();
             let screen_duration_spin = screen_duration_spin.clone();
-            let timezone_spin = timezone_spin.clone();
+            let timezone_dropdown = timezone_dropdown.clone();
             let status_label = status_label.clone();
 
             refresh_button.connect_clicked(move |_| {
-                let addr = *connected_address.lock().expect("mutex poisoned");
+                let addr = *connected_address.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned — recovering");
+                    p.into_inner()
+                });
                 let Some(addr) = addr else {
                     status_label.set_label("No device connected");
                     return;
@@ -218,7 +242,7 @@ impl SettingsDialog {
                 let lang_zh = lang_zh.clone();
                 let night_mode_toggle = night_mode_toggle.clone();
                 let screen_duration_spin = screen_duration_spin.clone();
-                let timezone_spin = timezone_spin.clone();
+                let timezone_dropdown = timezone_dropdown.clone();
                 let status_label = status_label.clone();
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
@@ -241,7 +265,9 @@ impl SettingsDialog {
                                 }
                                 night_mode_toggle.set_active(settings.night_mode_enabled());
                                 screen_duration_spin.set_value(settings.screen_light_duration().seconds() as f64);
-                                timezone_spin.set_value(settings.timezone().minutes() as f64 / 60.0);
+                                if let Some(idx) = find_timezone_index(settings.timezone().minutes()) {
+                                    timezone_dropdown.set_selected(idx);
+                                }
                                 status_label.set_label("Settings loaded");
                             }
                             Err(e) => {
@@ -272,11 +298,14 @@ impl SettingsDialog {
             let lang_en = lang_en.clone();
             let night_mode_toggle = night_mode_toggle.clone();
             let screen_duration_spin = screen_duration_spin.clone();
-            let timezone_spin = timezone_spin.clone();
+            let timezone_dropdown = timezone_dropdown.clone();
             let status_label = status_label.clone();
 
             apply_button.connect_clicked(move |_| {
-                let addr = *connected_address.lock().expect("mutex poisoned");
+                let addr = *connected_address.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned — recovering");
+                    p.into_inner()
+                });
                 let Some(addr) = addr else {
                     status_label.set_label("No device connected");
                     return;
@@ -322,7 +351,9 @@ impl SettingsDialog {
                         return;
                     }
                 };
-                let timezone_minutes = (timezone_spin.value() * 60.0) as i16;
+                let tz_idx = timezone_dropdown.selected() as usize;
+                let timezone_entries = timezone_list();
+                let timezone_minutes = timezone_entries[tz_idx].1;
                 let timezone = match Timezone::from_minutes(timezone_minutes) {
                     Ok(t) => t,
                     Err(e) => {
@@ -377,9 +408,79 @@ impl SettingsDialog {
             });
         }
 
+        // Sync timezone from system
+        {
+            let timezone_dropdown = timezone_dropdown.clone();
+            let status_label = status_label.clone();
+
+            sync_tz_button.connect_clicked(move |_| {
+                let offset_seconds = chrono::Local::now().offset().local_minus_utc();
+                let offset_minutes = (offset_seconds / 60) as i16;
+                match find_timezone_index(offset_minutes) {
+                    Some(idx) => {
+                        timezone_dropdown.set_selected(idx);
+                        status_label.set_label(&format!("Timezone set to match system (UTC{offset_minutes:+})"));
+                    }
+                    None => {
+                        status_label.set_label(&format!("System timezone UTC{offset_minutes:+} not in list"));
+                    }
+                }
+            });
+        }
+
         window.set_child(Some(&main_box));
         window.present();
 
         Self { window }
     }
+}
+
+/// Return a list of (display_label, offset_minutes) for common timezones.
+///
+/// The device stores timezone in 6-minute units, so fractional offsets
+/// like +5:30 (India) or +5:45 (Nepal) are supported.
+fn timezone_list() -> Vec<(&'static str, i16)> {
+    vec![
+        ("UTC-12:00 — Baker Island", -720),
+        ("UTC-11:00 — American Samoa", -660),
+        ("UTC-10:00 — Honolulu", -600),
+        ("UTC-09:30 — Marquesas Islands", -570),
+        ("UTC-09:00 — Anchorage", -540),
+        ("UTC-08:00 — Los Angeles", -480),
+        ("UTC-07:00 — Denver", -420),
+        ("UTC-06:00 — Chicago, Mexico City", -360),
+        ("UTC-05:00 — New York, Lima", -300),
+        ("UTC-04:00 — Halifax, Caracas", -240),
+        ("UTC-03:30 — St. John's", -210),
+        ("UTC-03:00 — Buenos Aires, São Paulo", -180),
+        ("UTC-02:00 — South Georgia", -120),
+        ("UTC-01:00 — Azores", -60),
+        ("UTC+00:00 — London, Dublin, Lisbon", 0),
+        ("UTC+01:00 — Berlin, Paris, Rome", 60),
+        ("UTC+02:00 — Cairo, Athens, Helsinki", 120),
+        ("UTC+03:00 — Moscow, Istanbul, Nairobi", 180),
+        ("UTC+03:30 — Tehran", 210),
+        ("UTC+04:00 — Dubai, Baku", 240),
+        ("UTC+04:30 — Kabul", 270),
+        ("UTC+05:00 — Karachi, Tashkent", 300),
+        ("UTC+05:30 — Delhi, Mumbai", 330),
+        ("UTC+05:45 — Kathmandu", 345),
+        ("UTC+06:00 — Dhaka, Almaty", 360),
+        ("UTC+06:30 — Yangon", 390),
+        ("UTC+07:00 — Bangkok, Jakarta", 420),
+        ("UTC+08:00 — Beijing, Singapore, Perth", 480),
+        ("UTC+09:00 — Tokyo, Seoul", 540),
+        ("UTC+09:30 — Adelaide, Darwin", 570),
+        ("UTC+10:00 — Sydney, Melbourne", 600),
+        ("UTC+10:30 — Lord Howe Island", 630),
+        ("UTC+11:00 — Nouméa, Solomon Islands", 660),
+        ("UTC+12:00 — Auckland, Fiji", 720),
+        ("UTC+13:00 — Samoa, Tonga", 780),
+        ("UTC+14:00 — Kiritimati", 840),
+    ]
+}
+
+/// Find the dropdown index for a given offset in minutes.
+fn find_timezone_index(offset_minutes: i16) -> Option<u32> {
+    timezone_list().iter().position(|(_, mins)| *mins == offset_minutes).map(|idx| idx as u32)
 }

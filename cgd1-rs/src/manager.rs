@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
+use tracing::debug;
+use tracing::error;
 use tracing::info;
+use tracing::warn;
 
 use crate::BleTransport;
 use crate::CharacteristicUuid;
@@ -47,19 +50,23 @@ impl ClockManager {
     ///
     /// Authentication is performed separately via [`ClockDevice::authenticate`].
     pub async fn connect(&self, address: &MacAddress) -> Result<ClockDevice> {
+        debug!(%address, "manager: connect requested");
         {
             let devices = self.devices.lock().await;
             if devices.contains_key(address) {
+                warn!(%address, "manager: already connected");
                 return Err(ClockError::AlreadyConnected);
             }
         }
 
+        debug!(%address, "manager: calling transport.connect");
         self.transport.connect(address).await?;
 
         let characteristics = [CharacteristicUuid::AuthNotify, CharacteristicUuid::DataNotify, CharacteristicUuid::SensorNotify];
 
         for char_uuid in &characteristics {
-            self.transport.subscribe(*char_uuid).await?;
+            debug!(%address, characteristic = %char_uuid, "manager: subscribing");
+            self.transport.subscribe(address, *char_uuid).await?;
         }
 
         let device = ClockDevice::new(self.transport.clone(), *address);
@@ -76,6 +83,7 @@ impl ClockManager {
 
     /// Disconnect from a device and remove it from the manager.
     pub async fn disconnect(&self, address: &MacAddress) -> Result<()> {
+        debug!(%address, "manager: disconnect requested");
         let device = {
             let mut devices = self.devices.lock().await;
             devices.remove(address)
@@ -84,6 +92,8 @@ impl ClockManager {
         if let Some(device) = device {
             device.disconnect().await?;
             info!(%address, "device disconnected");
+        } else {
+            warn!(%address, "manager: disconnect but device not in map");
         }
         Ok(())
     }
@@ -125,10 +135,27 @@ impl ClockManager {
     /// This is the recommended full connection flow: the token is persisted
     /// only after `sync_time` succeeds, confirming the device accepted it.
     pub async fn connect_authenticate_and_sync(&self, address: &MacAddress, token: &AuthToken, token_store: Arc<dyn TokenStore>) -> Result<ClockDevice> {
+        debug!(%address, "manager: connect_authenticate_and_sync starting");
         let device = self.connect(address).await?;
+        debug!(%address, "manager: setting token store");
         device.set_token_store(token_store).await;
-        device.authenticate(token).await?;
-        device.sync_time_now().await?;
+        debug!(%address, "manager: authenticating");
+        if let Err(e) = device.authenticate(token).await {
+            error!(%address, error = %e, "manager: authentication failed, cleaning up");
+            let _ = self.disconnect(address).await;
+            return Err(e);
+        }
+        debug!(%address, "manager: syncing timezone");
+        if let Err(e) = device.sync_timezone().await {
+            warn!(%address, error = %e, "manager: sync_timezone failed, continuing with sync_time");
+        }
+        debug!(%address, "manager: syncing time");
+        if let Err(e) = device.sync_time_now().await {
+            error!(%address, error = %e, "manager: sync_time failed, cleaning up");
+            let _ = self.disconnect(address).await;
+            return Err(e);
+        }
+        info!(%address, "manager: connect, auth, and sync complete");
         Ok(device)
     }
 }

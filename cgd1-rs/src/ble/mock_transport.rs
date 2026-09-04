@@ -132,27 +132,27 @@ impl BleTransport for MockBleTransport {
         Ok(())
     }
 
-    async fn disconnect(&self) -> Result<()> {
+    async fn disconnect(&self, _address: &MacAddress) -> Result<()> {
         self.connected.store(false, Ordering::SeqCst);
         Ok(())
     }
 
-    async fn write(&self, characteristic: CharacteristicUuid, data: &[u8]) -> Result<()> {
+    async fn write(&self, _address: &MacAddress, characteristic: CharacteristicUuid, data: &[u8]) -> Result<()> {
         self.writes.lock().await.push((characteristic, data.to_vec()));
         self.maybe_auto_ack(characteristic, data);
         Ok(())
     }
 
-    async fn subscribe(&self, characteristic: CharacteristicUuid) -> Result<()> {
+    async fn subscribe(&self, _address: &MacAddress, characteristic: CharacteristicUuid) -> Result<()> {
         self.subscribed.lock().await.push(characteristic);
         Ok(())
     }
 
-    async fn next_notification(&self) -> Option<(Uuid, Vec<u8>)> {
+    async fn next_notification(&self, _address: &MacAddress) -> Option<(Uuid, Vec<u8>)> {
         self.notifications_rx.lock().await.recv().await
     }
 
-    async fn read(&self, characteristic: CharacteristicUuid) -> Result<Vec<u8>> {
+    async fn read(&self, _address: &MacAddress, characteristic: CharacteristicUuid) -> Result<Vec<u8>> {
         let mut read_values = self.read_values.lock().await;
         let pos = read_values.iter().position(|(c, _)| *c == characteristic);
         if let Some(idx) = pos {
@@ -162,13 +162,13 @@ impl BleTransport for MockBleTransport {
         }
     }
 
-    async fn request_mtu(&self, mtu: u16) -> Result<u16> {
+    async fn request_mtu(&self, _address: &MacAddress, mtu: u16) -> Result<u16> {
         let mut current = self.mtu.lock().await;
         *current = mtu;
         Ok(mtu)
     }
 
-    fn is_connected(&self) -> bool {
+    fn is_connected(&self, _address: &MacAddress) -> bool {
         self.connected.load(Ordering::SeqCst)
     }
 }
@@ -182,7 +182,8 @@ mod tests {
     async fn mock_write_capture() {
         let transport = MockBleTransport::new();
         transport.set_auto_ack(false);
-        transport.write(CharacteristicUuid::AuthWrite, &[0x11, 0x01]).await.unwrap();
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        transport.write(&addr, CharacteristicUuid::AuthWrite, &[0x11, 0x01]).await.unwrap();
         let writes = transport.drain_writes().await;
         assert_eq!(writes.len(), 1);
         assert_eq!(writes[0].0, CharacteristicUuid::AuthWrite);
@@ -194,7 +195,8 @@ mod tests {
         let transport = MockBleTransport::new();
         let uuid = CharacteristicUuid::AuthNotify.uuid();
         transport.push_notification(uuid, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
-        let (recv_uuid, data) = transport.next_notification().await.unwrap();
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let (recv_uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(recv_uuid, uuid);
         assert_eq!(data, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
     }
@@ -202,19 +204,20 @@ mod tests {
     #[tokio::test]
     async fn mock_connect_disconnect() {
         let transport = MockBleTransport::new();
-        assert!(!transport.is_connected());
         let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        assert!(!transport.is_connected(&addr));
         transport.connect(&addr).await.unwrap();
-        assert!(transport.is_connected());
-        transport.disconnect().await.unwrap();
-        assert!(!transport.is_connected());
+        assert!(transport.is_connected(&addr));
+        transport.disconnect(&addr).await.unwrap();
+        assert!(!transport.is_connected(&addr));
     }
 
     #[tokio::test]
     async fn mock_subscribe_tracking() {
         let transport = MockBleTransport::new();
-        transport.subscribe(CharacteristicUuid::AuthNotify).await.unwrap();
-        transport.subscribe(CharacteristicUuid::DataNotify).await.unwrap();
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        transport.subscribe(&addr, CharacteristicUuid::AuthNotify).await.unwrap();
+        transport.subscribe(&addr, CharacteristicUuid::DataNotify).await.unwrap();
         let subs = transport.subscribed().await;
         assert_eq!(subs, vec![CharacteristicUuid::AuthNotify, CharacteristicUuid::DataNotify]);
     }
@@ -222,11 +225,12 @@ mod tests {
     #[tokio::test]
     async fn mock_auto_ack() {
         let transport = MockBleTransport::new();
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
         transport
-            .write(CharacteristicUuid::DataWrite, &[0x07, 0x05, 0x02, 0x01, 0x07, 0x1E, 0x3E, 0x01])
+            .write(&addr, CharacteristicUuid::DataWrite, &[0x07, 0x05, 0x02, 0x01, 0x07, 0x1E, 0x3E, 0x01])
             .await
             .unwrap();
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
     }

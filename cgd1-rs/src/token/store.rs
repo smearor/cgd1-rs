@@ -12,4 +12,9 @@ pub trait TokenStore: Send + Sync {
 
     /// Save the token for a device address.
     fn save(&self, address: &MacAddress, token: &AuthToken) -> Result<()>;
+
+    /// Delete the stored token for a device address.
+    ///
+    /// Returns `Ok(())` if the token was deleted or did not exist.
+    fn delete(&self, address: &MacAddress) -> Result<()>;
 }

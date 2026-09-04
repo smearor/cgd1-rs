@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tokio::sync::Mutex;
 
@@ -14,6 +12,7 @@ use super::device_state::VirtualDeviceState;
 use crate::AdvertisementData;
 use crate::BatteryLevel;
 use crate::CharacteristicUuid;
+use crate::ClockTime;
 use crate::Humidity;
 use crate::MacAddress;
 use crate::SensorNotification;
@@ -21,9 +20,17 @@ use crate::Temperature;
 use crate::ble::transport::BleTransport;
 use crate::command::AlarmEntry;
 use crate::command::AlarmSlotIndex;
+use crate::command::Brightness;
 use crate::command::Command;
 use crate::command::CommandId;
 use crate::command::DeviceSettings;
+use crate::command::Language;
+use crate::command::RingtoneSignature;
+use crate::command::ScreenLightDuration;
+use crate::command::TemperatureUnit;
+use crate::command::TimeFormat;
+use crate::command::Timezone;
+use crate::command::Volume;
 use crate::error::Result;
 use crate::error::TransportError;
 
@@ -56,16 +63,30 @@ const DEFAULT_VIRTUAL_MACS: [&str; 5] = [
 /// - Audio upload (accepted, discards data).
 /// - Sensor notifications (periodic, spawned on connect).
 /// - Scan results (one pre-configured device).
+///
+/// Supports multiple simultaneous connections, each with its own
+/// notification channel and sensor task.
 pub struct VirtualClockTransport {
-    connected: AtomicBool,
-    connected_mac: Arc<Mutex<Option<MacAddress>>>,
+    /// Per-device connection state and notification channels.
+    connections: Mutex<HashMap<MacAddress, VirtualConnection>>,
+    /// All known virtual devices.
     devices: Arc<Mutex<HashMap<MacAddress, Arc<Mutex<VirtualDeviceState>>>>>,
-    notifications_tx: mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
-    notifications_rx: Mutex<mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>,
+    /// Advertisements for scanning.
     advertisements: Mutex<Vec<AdvertisementData>>,
-    subscribed: Mutex<Vec<CharacteristicUuid>>,
-    sensor_task_handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     scan_index: Mutex<usize>,
+}
+
+/// Per-device connection state for the virtual transport.
+struct VirtualConnection {
+    /// Notification channel sender for this specific device.
+    notifications_tx: mpsc::UnboundedSender<(Uuid, Vec<u8>)>,
+    /// Notification channel receiver, wrapped in Arc<Mutex> so it can be
+    /// cloned and awaited without holding the connections lock.
+    notifications_rx: Arc<Mutex<mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>>,
+    /// Sensor task handle for this connection.
+    sensor_task_handle: Option<tokio::task::JoinHandle<()>>,
+    /// Subscribed characteristics for this connection.
+    subscribed: Vec<CharacteristicUuid>,
 }
 
 impl VirtualClockTransport {
@@ -77,16 +98,68 @@ impl VirtualClockTransport {
                 devices.insert(mac, Arc::new(Mutex::new(VirtualDeviceState::default())));
             }
         }
-        let (tx, rx) = mpsc::unbounded_channel();
         Self {
-            connected: AtomicBool::new(false),
-            connected_mac: Arc::new(Mutex::new(None)),
+            connections: Mutex::new(HashMap::new()),
             devices: Arc::new(Mutex::new(devices)),
-            notifications_tx: tx,
-            notifications_rx: Mutex::new(rx),
             advertisements: Mutex::new(Vec::new()),
-            subscribed: Mutex::new(Vec::new()),
-            sensor_task_handle: Mutex::new(None),
+            scan_index: Mutex::new(0),
+        }
+    }
+
+    /// Create a virtual transport with 5 devices that have differentiated
+    /// sensor values, settings, and battery levels — so multi-device behavior
+    /// is visually verifiable in the UI and testable.
+    ///
+    /// | Device | MAC Suffix | Temp | Humidity | Battery | Time Format | Timezone | Language |
+    /// |--------|------------|------|----------|---------|-------------|----------|----------|
+    /// | 1      | `:01`      | 27.7 | 50.3     | 100     | 24h         | +2       | English  |
+    /// | 2      | `:02`      | 22.1 | 45.0     | 87      | 24h         | +2       | English  |
+    /// | 3      | `:03`      | 18.5 | 60.0     | 65      | 24h         | +8       | Chinese  |
+    /// | 4      | `:04`      | 15.0 | 30.0     | 20      | 12h         | +2       | English  |
+    /// | 5      | `:05`      | 30.2 | 70.0     | 100     | 12h         | -5       | English  |
+    pub fn new_differentiated() -> Self {
+        let configs = [
+            // (mac_suffix, temp, humidity, battery, time_format, timezone_hours, language)
+            (1u8, 27.7, 50.3, 100, TimeFormat::TwentyFourHour, 2, Language::English),
+            (2, 22.1, 45.0, 87, TimeFormat::TwentyFourHour, 2, Language::English),
+            (3, 18.5, 60.0, 65, TimeFormat::TwentyFourHour, 8, Language::Chinese),
+            (4, 15.0, 30.0, 20, TimeFormat::TwelveHour, 2, Language::English),
+            (5, 30.2, 70.0, 100, TimeFormat::TwelveHour, -5, Language::English),
+        ];
+
+        let mut devices = HashMap::new();
+        for (suffix, temp, humidity, battery, time_format, tz_hours, language) in configs {
+            let mac_str = format!("AA:BB:CC:DD:E0:{:02X}", suffix);
+            if let Ok(mac) = MacAddress::parse(&mac_str) {
+                let state = VirtualDeviceState {
+                    temperature: Temperature::new(temp),
+                    humidity: Humidity::new(humidity),
+                    battery: BatteryLevel::new(battery),
+                    settings: DeviceSettings::new(
+                        Volume::new(3).unwrap(),
+                        time_format,
+                        TemperatureUnit::Celsius,
+                        language,
+                        Timezone::from_hours(tz_hours).unwrap(),
+                        ScreenLightDuration::new(10).unwrap(),
+                        Brightness::new(80).unwrap(),
+                        Brightness::new(30).unwrap(),
+                        ClockTime::new(22, 0).unwrap(),
+                        ClockTime::new(7, 0).unwrap(),
+                        true,
+                        false,
+                        RingtoneSignature::Unused,
+                    )
+                    .unwrap(),
+                    ..Default::default()
+                };
+                devices.insert(mac, Arc::new(Mutex::new(state)));
+            }
+        }
+        Self {
+            connections: Mutex::new(HashMap::new()),
+            devices: Arc::new(Mutex::new(devices)),
+            advertisements: Mutex::new(Vec::new()),
             scan_index: Mutex::new(0),
         }
     }
@@ -111,36 +184,46 @@ impl VirtualClockTransport {
         }
     }
 
-    /// Get the state of the currently connected device.
+    /// Get the state of the device identified by MAC address.
     ///
-    /// Returns an error if not connected or the MAC is unknown.
-    async fn connected_state(&self) -> Result<Arc<Mutex<VirtualDeviceState>>> {
-        let mac = self.connected_mac.lock().await;
-        let mac = mac.ok_or(TransportError::NotConnected)?;
+    /// Returns an error if the MAC is unknown.
+    async fn device_state(&self, address: &MacAddress) -> Result<Arc<Mutex<VirtualDeviceState>>> {
         let devices = self.devices.lock().await;
-        devices.get(&mac).cloned().ok_or(TransportError::UnknownDeviceMac { mac }.into())
+        devices.get(address).cloned().ok_or(TransportError::UnknownDeviceMac { mac: *address }.into())
     }
 
-    /// Set the battery level of the currently connected device.
-    pub async fn set_battery(&self, level: u8) {
-        if let Ok(state_arc) = self.connected_state().await {
+    /// Get the state of the currently connected device (first connection).
+    ///
+    /// Convenience method for test helpers. Returns an error if no device
+    /// is connected.
+    #[cfg(test)]
+    async fn connected_state(&self) -> Result<Arc<Mutex<VirtualDeviceState>>> {
+        let connections = self.connections.lock().await;
+        let mac = connections.keys().next().copied().ok_or(TransportError::NotConnected)?;
+        drop(connections);
+        self.device_state(&mac).await
+    }
+
+    /// Set the battery level of a specific device.
+    pub async fn set_battery(&self, address: &MacAddress, level: u8) {
+        if let Ok(state_arc) = self.device_state(address).await {
             let mut state = state_arc.lock().await;
             state.battery = BatteryLevel::new(level);
         }
     }
 
-    /// Set the sensor values of the currently connected device.
-    pub async fn set_sensor_values(&self, temperature: f32, humidity: f32) {
-        if let Ok(state_arc) = self.connected_state().await {
+    /// Set the sensor values of a specific device.
+    pub async fn set_sensor_values(&self, address: &MacAddress, temperature: f32, humidity: f32) {
+        if let Ok(state_arc) = self.device_state(address).await {
             let mut state = state_arc.lock().await;
             state.temperature = Temperature::new(temperature);
             state.humidity = Humidity::new(humidity);
         }
     }
 
-    /// Set an alarm in the currently connected device's state directly.
-    pub async fn set_alarm(&self, slot: AlarmSlotIndex, entry: AlarmEntry) {
-        if let Ok(state_arc) = self.connected_state().await {
+    /// Set an alarm in a specific device's state directly.
+    pub async fn set_alarm(&self, address: &MacAddress, slot: AlarmSlotIndex, entry: AlarmEntry) {
+        if let Ok(state_arc) = self.device_state(address).await {
             let mut state = state_arc.lock().await;
             state.alarms[slot.value() as usize] = Some(entry);
         }
@@ -150,8 +233,8 @@ impl VirtualClockTransport {
     ///
     /// Returns `synced_time + elapsed_seconds` since the last Time Sync.
     /// Returns `None` if no Time Sync has been performed.
-    pub async fn device_time(&self) -> Option<u32> {
-        let state_arc = self.connected_state().await.ok()?;
+    pub async fn device_time(&self, address: &MacAddress) -> Option<u32> {
+        let state_arc = self.device_state(address).await.ok()?;
         let state = state_arc.lock().await;
         let synced_time = state.synced_time?;
         let synced_at = state.synced_at?;
@@ -160,44 +243,61 @@ impl VirtualClockTransport {
     }
 
     /// Push a sensor notification manually (for testing event subscription).
-    pub fn push_sensor_notification(&self, temperature: f32, humidity: f32) {
+    pub fn push_sensor_notification(&self, address: &MacAddress, temperature: f32, humidity: f32) {
         let sensor = SensorNotification::new(Temperature::new(temperature), Humidity::new(humidity));
-        self.push_notification(CharacteristicUuid::SensorNotify.uuid(), sensor.encode().to_vec());
+        self.push_notification(address, CharacteristicUuid::SensorNotify.uuid(), sensor.encode());
+    }
+
+    /// Push a sensor notification with battery manually (for testing).
+    pub fn push_sensor_notification_with_battery(&self, address: &MacAddress, temperature: f32, humidity: f32, battery: u8) {
+        let sensor = SensorNotification::with_battery(Temperature::new(temperature), Humidity::new(humidity), BatteryLevel::new(battery));
+        self.push_notification(address, CharacteristicUuid::SensorNotify.uuid(), sensor.encode());
     }
 
     /// Push a battery notification manually (for testing event subscription).
-    pub fn push_battery_notification(&self, level: u8) {
-        self.push_notification(CharacteristicUuid::BatteryLevel.uuid(), vec![level]);
+    pub fn push_battery_notification(&self, address: &MacAddress, level: u8) {
+        self.push_notification(address, CharacteristicUuid::BatteryLevel.uuid(), vec![level]);
     }
 
-    /// Push a raw notification onto the notification channel.
-    fn push_notification(&self, uuid: Uuid, data: Vec<u8>) {
-        let _ = self.notifications_tx.send((uuid, data));
+    /// Push a raw notification onto the notification channel for a specific device.
+    fn push_notification(&self, address: &MacAddress, uuid: Uuid, data: Vec<u8>) {
+        if let Ok(connections) = self.connections.try_lock() {
+            if let Some(conn) = connections.get(address) {
+                let _ = conn.notifications_tx.send((uuid, data));
+            }
+        }
     }
 
-    /// Send an ACK frame on the given notify characteristic.
-    fn send_ack_on(&self, notify_char: CharacteristicUuid, command_byte: u8, status: u8, payload: u8) {
+    /// Get the notification receiver Arc for a device without holding the
+    /// connections lock during `recv()`.
+    async fn notification_rx(&self, address: &MacAddress) -> Option<Arc<Mutex<mpsc::UnboundedReceiver<(Uuid, Vec<u8>)>>>> {
+        let connections = self.connections.lock().await;
+        connections.get(address).map(|conn| conn.notifications_rx.clone())
+    }
+
+    /// Send an ACK frame on the given notify characteristic for a specific device.
+    fn send_ack_on(&self, address: &MacAddress, notify_char: CharacteristicUuid, command_byte: u8, status: u8, payload: u8) {
         let ack = vec![0x04, 0xff, command_byte, status, payload];
-        self.push_notification(notify_char.uuid(), ack);
+        self.push_notification(address, notify_char.uuid(), ack);
     }
 
-    /// Send a success ACK on the given notify characteristic.
-    fn send_success_ack_on(&self, notify_char: CharacteristicUuid, command_byte: u8) {
-        self.send_ack_on(notify_char, command_byte, 0x00, 0x00);
+    /// Send a success ACK on the given notify characteristic for a specific device.
+    fn send_success_ack_on(&self, address: &MacAddress, notify_char: CharacteristicUuid, command_byte: u8) {
+        self.send_ack_on(address, notify_char, command_byte, 0x00, 0x00);
     }
 
     /// Send a data notification (non-ACK) on the Data Notify characteristic.
-    fn send_data_notification(&self, data: Vec<u8>) {
-        self.push_notification(CharacteristicUuid::DataNotify.uuid(), data);
+    fn send_data_notification(&self, address: &MacAddress, data: Vec<u8>) {
+        self.push_notification(address, CharacteristicUuid::DataNotify.uuid(), data);
     }
 
     /// Send a data notification on the Auth Notify characteristic.
-    fn send_auth_notification(&self, data: Vec<u8>) {
-        self.push_notification(CharacteristicUuid::AuthNotify.uuid(), data);
+    fn send_auth_notification(&self, address: &MacAddress, data: Vec<u8>) {
+        self.push_notification(address, CharacteristicUuid::AuthNotify.uuid(), data);
     }
 
     /// Handle a command frame written to Auth Write.
-    async fn handle_auth_write(&self, data: &[u8]) {
+    async fn handle_auth_write(&self, address: &MacAddress, data: &[u8]) {
         if data.len() < 2 {
             return;
         }
@@ -208,7 +308,7 @@ impl VirtualClockTransport {
         let command = match Command::from_id_for_characteristic(command_id, CharacteristicUuid::AuthWrite) {
             Some(cmd) => cmd,
             None => {
-                self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                 return;
             }
         };
@@ -216,7 +316,7 @@ impl VirtualClockTransport {
         match command {
             Command::AuthInit => {
                 // Auth Init — accept any 16-byte token.
-                if let Ok(state_arc) = self.connected_state().await {
+                if let Ok(state_arc) = self.device_state(address).await {
                     let mut state = state_arc.lock().await;
                     if payload.len() >= 16 {
                         let mut token = [0u8; 16];
@@ -224,28 +324,28 @@ impl VirtualClockTransport {
                         state.token = Some(token);
                     }
                 }
-                self.send_success_ack_on(notify, command_id.value());
+                self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::AuthConfirm => {
                 // Auth Confirm — accept and mark as authenticated.
-                if let Ok(state_arc) = self.connected_state().await {
+                if let Ok(state_arc) = self.device_state(address).await {
                     let mut state = state_arc.lock().await;
                     state.authenticated = true;
                 }
-                self.send_success_ack_on(notify, command_id.value());
+                self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::TimeSync => {
                 // Time Sync — store the timestamp and the instant it was set.
                 if payload.len() >= 4 {
                     let timestamp = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
-                    if let Ok(state_arc) = self.connected_state().await {
+                    if let Ok(state_arc) = self.device_state(address).await {
                         let mut state = state_arc.lock().await;
                         state.synced_time = Some(timestamp);
                         state.synced_at = Some(Instant::now());
                     }
-                    self.send_success_ack_on(notify, command_id.value());
+                    self.send_success_ack_on(address, notify, command_id.value());
                 } else {
-                    self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                    self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                 }
             }
             Command::ReadFirmware => {
@@ -255,16 +355,16 @@ impl VirtualClockTransport {
                 response.push((1 + version_bytes.len()) as u8);
                 response.push(command_id.value());
                 response.extend_from_slice(version_bytes);
-                self.send_auth_notification(response);
+                self.send_auth_notification(address, response);
             }
             _ => {
-                self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
             }
         }
     }
 
     /// Handle a command frame written to Data Write.
-    async fn handle_data_write(&self, data: &[u8]) {
+    async fn handle_data_write(&self, address: &MacAddress, data: &[u8]) {
         if data.len() < 2 {
             return;
         }
@@ -275,7 +375,7 @@ impl VirtualClockTransport {
         let command = match Command::from_id_for_characteristic(command_id, CharacteristicUuid::DataWrite) {
             Some(cmd) => cmd,
             None => {
-                self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                 return;
             }
         };
@@ -285,21 +385,21 @@ impl VirtualClockTransport {
                 // Set Settings — decode and store.
                 if payload.len() >= 18 {
                     if let Ok(settings) = DeviceSettings::decode(payload) {
-                        if let Ok(state_arc) = self.connected_state().await {
+                        if let Ok(state_arc) = self.device_state(address).await {
                             let mut state = state_arc.lock().await;
                             state.settings = settings;
                         }
-                        self.send_success_ack_on(notify, command_id.value());
+                        self.send_success_ack_on(address, notify, command_id.value());
                     } else {
-                        self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                        self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                     }
                 } else {
-                    self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                    self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                 }
             }
             Command::ReadSettings => {
                 // Read Settings — respond with encoded settings on Data Notify.
-                if let Ok(state_arc) = self.connected_state().await {
+                if let Ok(state_arc) = self.device_state(address).await {
                     let state = state_arc.lock().await;
                     let encoded = state.settings.encode();
                     drop(state);
@@ -307,16 +407,16 @@ impl VirtualClockTransport {
                     response.push(0x13);
                     response.push(command_id.value());
                     response.extend_from_slice(&encoded);
-                    self.send_data_notification(response);
+                    self.send_data_notification(address, response);
                 }
             }
             Command::SetBrightness => {
                 // Set Brightness — accept, no-op.
-                self.send_success_ack_on(notify, command_id.value());
+                self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::PreviewRingtone => {
                 // Preview Ringtone — accept, no-op.
-                self.send_success_ack_on(notify, command_id.value());
+                self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::SetAlarm => {
                 // Set/Delete Alarm.
@@ -326,34 +426,34 @@ impl VirtualClockTransport {
 
                     if entry_bytes.iter().all(|&b| b == 0xFF) {
                         if let Ok(slot) = AlarmSlotIndex::new(slot_byte) {
-                            if let Ok(state_arc) = self.connected_state().await {
+                            if let Ok(state_arc) = self.device_state(address).await {
                                 let mut state = state_arc.lock().await;
                                 state.alarms[slot.value() as usize] = None;
                             }
-                            self.send_success_ack_on(notify, command_id.value());
+                            self.send_success_ack_on(address, notify, command_id.value());
                         } else {
-                            self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                            self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                         }
                     } else if let Ok(Some(entry)) = AlarmEntry::decode(entry_bytes) {
                         if let Ok(slot) = AlarmSlotIndex::new(slot_byte) {
-                            if let Ok(state_arc) = self.connected_state().await {
+                            if let Ok(state_arc) = self.device_state(address).await {
                                 let mut state = state_arc.lock().await;
                                 state.alarms[slot.value() as usize] = Some(entry);
                             }
-                            self.send_success_ack_on(notify, command_id.value());
+                            self.send_success_ack_on(address, notify, command_id.value());
                         } else {
-                            self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                            self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                         }
                     } else {
-                        self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                        self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                     }
                 } else {
-                    self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                    self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                 }
             }
             Command::ReadAlarms => {
                 // Read Alarms — send 6 packets with 3 entries each.
-                if let Ok(state_arc) = self.connected_state().await {
+                if let Ok(state_arc) = self.device_state(address).await {
                     let state = state_arc.lock().await;
                     let alarms: Vec<Option<AlarmEntry>> = state.alarms.clone();
                     drop(state);
@@ -377,7 +477,7 @@ impl VirtualClockTransport {
                                 response.extend_from_slice(&[0xFF; 5]);
                             }
                         }
-                        self.send_data_notification(response);
+                        self.send_data_notification(address, response);
                     }
                 }
             }
@@ -385,21 +485,21 @@ impl VirtualClockTransport {
                 // Audio Init — accept, start upload.
                 if payload.len() >= 7 {
                     let total_size = u32::from_le_bytes([payload[0], payload[1], payload[2], 0]) as usize;
-                    if let Ok(state_arc) = self.connected_state().await {
+                    if let Ok(state_arc) = self.device_state(address).await {
                         let mut state = state_arc.lock().await;
                         state.audio_upload_active = true;
                         state.audio_upload_total = total_size;
                         state.audio_upload_received = 0;
                         state.audio_block_packets = 0;
                     }
-                    self.send_ack_on(notify, command_id.value(), 0x00, 0x00);
+                    self.send_ack_on(address, notify, command_id.value(), 0x00, 0x00);
                 } else {
-                    self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                    self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                 }
             }
             Command::AudioData => {
                 // Audio Data Packet — accept, track progress.
-                if let Ok(state_arc) = self.connected_state().await {
+                if let Ok(state_arc) = self.device_state(address).await {
                     let mut state = state_arc.lock().await;
                     if state.audio_upload_active {
                         let payload_len = payload.len();
@@ -418,28 +518,38 @@ impl VirtualClockTransport {
                         drop(state);
 
                         if block_done {
-                            self.send_success_ack_on(notify, command_id.value());
+                            self.send_success_ack_on(address, notify, command_id.value());
                         }
                     } else {
                         drop(state);
-                        self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                        self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
                     }
                 }
             }
             _ => {
-                self.send_ack_on(notify, command_id.value(), 0x01, 0x00);
+                self.send_ack_on(address, notify, command_id.value(), 0x01, 0x00);
             }
         }
     }
 
     /// Start a background task that periodically sends sensor notifications
-    /// with slight temperature/humidity drift and battery drain.
-    fn start_sensor_task(&self) {
-        let tx = self.notifications_tx.clone();
+    /// with slight temperature/humidity drift and battery drain for a
+    /// specific connected device.
+    fn start_sensor_task(&self, address: MacAddress) {
+        // Get the notification sender for this device.
+        let tx = {
+            let connections = self.connections.try_lock();
+            match connections {
+                Ok(conns) => match conns.get(&address) {
+                    Some(conn) => conn.notifications_tx.clone(),
+                    None => return,
+                },
+                Err(_) => return,
+            }
+        };
         let sensor_uuid = CharacteristicUuid::SensorNotify.uuid();
         let battery_uuid = CharacteristicUuid::BatteryLevel.uuid();
         let devices = self.devices.clone();
-        let connected_mac = self.connected_mac.clone();
 
         let handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
@@ -454,14 +564,8 @@ impl VirtualClockTransport {
                 tick_count += 1;
 
                 // Get the connected device's state.
-                let mac_guard = connected_mac.lock().await;
-                let mac = match *mac_guard {
-                    Some(m) => m,
-                    None => continue,
-                };
-                drop(mac_guard);
                 let devices_map = devices.lock().await;
-                let state_arc = match devices_map.get(&mac) {
+                let state_arc = match devices_map.get(&address) {
                     Some(s) => s.clone(),
                     None => continue,
                 };
@@ -497,9 +601,10 @@ impl VirtualClockTransport {
                 let battery = state.battery;
                 drop(state);
 
-                // Send sensor notification.
-                let sensor = SensorNotification::new(temp, hum);
-                if tx.send((sensor_uuid, sensor.encode().to_vec())).is_err() {
+                // Send sensor notification with battery appended so callers
+                // can verify that battery-from-sensor-notification works.
+                let sensor = SensorNotification::with_battery(temp, hum, battery);
+                if tx.send((sensor_uuid, sensor.encode())).is_err() {
                     break;
                 }
 
@@ -510,8 +615,11 @@ impl VirtualClockTransport {
             }
         });
 
-        if let Ok(mut handle_guard) = self.sensor_task_handle.try_lock() {
-            *handle_guard = Some(handle);
+        // Store the task handle in the connection entry.
+        if let Ok(mut connections) = self.connections.try_lock() {
+            if let Some(conn) = connections.get_mut(&address) {
+                conn.sensor_task_handle = Some(handle);
+            }
         }
     }
 }
@@ -565,39 +673,42 @@ impl BleTransport for VirtualClockTransport {
                 devices.insert(*address, Arc::new(Mutex::new(VirtualDeviceState::default())));
             }
         }
+        // Create per-device notification channel and connection entry.
+        let (tx, rx) = mpsc::unbounded_channel();
         {
-            let mut mac = self.connected_mac.lock().await;
-            *mac = Some(*address);
+            let mut connections = self.connections.lock().await;
+            connections.insert(
+                *address,
+                VirtualConnection {
+                    notifications_tx: tx,
+                    notifications_rx: Arc::new(Mutex::new(rx)),
+                    sensor_task_handle: None,
+                    subscribed: Vec::new(),
+                },
+            );
         }
-        self.connected.store(true, Ordering::SeqCst);
-        // Start periodic sensor notifications.
-        self.start_sensor_task();
+        // Start periodic sensor notifications for this device.
+        self.start_sensor_task(*address);
         Ok(())
     }
 
-    async fn disconnect(&self) -> Result<()> {
-        self.connected.store(false, Ordering::SeqCst);
-        {
-            let mut mac = self.connected_mac.lock().await;
-            *mac = None;
-        }
-        // Mark the previously connected device as unauthenticated.
-        // (We can't easily access it here without tracking the old MAC,
-        // but the sensor task will stop on its own when mac is None.)
-        // Stop the sensor task.
-        #[allow(clippy::collapsible_if)]
-        if let Ok(mut handle_guard) = self.sensor_task_handle.try_lock() {
-            if let Some(handle) = handle_guard.take() {
+    async fn disconnect(&self, address: &MacAddress) -> Result<()> {
+        let entry = {
+            let mut connections = self.connections.lock().await;
+            connections.remove(address)
+        };
+        if let Some(mut entry) = entry {
+            if let Some(handle) = entry.sensor_task_handle.take() {
                 handle.abort();
             }
         }
         Ok(())
     }
 
-    async fn write(&self, characteristic: CharacteristicUuid, data: &[u8]) -> Result<()> {
+    async fn write(&self, address: &MacAddress, characteristic: CharacteristicUuid, data: &[u8]) -> Result<()> {
         match characteristic {
-            CharacteristicUuid::AuthWrite => self.handle_auth_write(data).await,
-            CharacteristicUuid::DataWrite => self.handle_data_write(data).await,
+            CharacteristicUuid::AuthWrite => self.handle_auth_write(address, data).await,
+            CharacteristicUuid::DataWrite => self.handle_data_write(address, data).await,
             _ => {
                 // Ignore writes to other characteristics.
             }
@@ -605,19 +716,22 @@ impl BleTransport for VirtualClockTransport {
         Ok(())
     }
 
-    async fn subscribe(&self, characteristic: CharacteristicUuid) -> Result<()> {
-        self.subscribed.lock().await.push(characteristic);
+    async fn subscribe(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<()> {
+        let mut connections = self.connections.lock().await;
+        let conn = connections.get_mut(address).ok_or(TransportError::NotConnected)?;
+        conn.subscribed.push(characteristic);
         Ok(())
     }
 
-    async fn next_notification(&self) -> Option<(Uuid, Vec<u8>)> {
-        self.notifications_rx.lock().await.recv().await
+    async fn next_notification(&self, address: &MacAddress) -> Option<(Uuid, Vec<u8>)> {
+        let rx_arc = self.notification_rx(address).await?;
+        rx_arc.lock().await.recv().await
     }
 
-    async fn read(&self, characteristic: CharacteristicUuid) -> Result<Vec<u8>> {
+    async fn read(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<Vec<u8>> {
         match characteristic {
             CharacteristicUuid::BatteryLevel => {
-                let state_arc = self.connected_state().await?;
+                let state_arc = self.device_state(address).await?;
                 let state = state_arc.lock().await;
                 Ok(vec![state.battery.value()])
             }
@@ -625,12 +739,16 @@ impl BleTransport for VirtualClockTransport {
         }
     }
 
-    async fn request_mtu(&self, mtu: u16) -> Result<u16> {
+    async fn request_mtu(&self, _address: &MacAddress, mtu: u16) -> Result<u16> {
         Ok(mtu)
     }
 
-    fn is_connected(&self) -> bool {
-        self.connected.load(Ordering::SeqCst)
+    fn is_connected(&self, address: &MacAddress) -> bool {
+        if let Ok(connections) = self.connections.try_lock() {
+            connections.contains_key(address)
+        } else {
+            false
+        }
     }
 }
 
@@ -655,11 +773,11 @@ mod tests {
     async fn virtual_connect_disconnect() {
         let transport = VirtualClockTransport::new();
         let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
-        assert!(!transport.is_connected());
+        assert!(!transport.is_connected(&addr));
         transport.connect(&addr).await.unwrap();
-        assert!(transport.is_connected());
-        transport.disconnect().await.unwrap();
-        assert!(!transport.is_connected());
+        assert!(transport.is_connected(&addr));
+        transport.disconnect(&addr).await.unwrap();
+        assert!(!transport.is_connected(&addr));
     }
 
     #[tokio::test]
@@ -671,18 +789,18 @@ mod tests {
         // Send Auth Init with a 16-byte token.
         let token = [0xAA; 16];
         let frame = CommandFrame::from_command(Command::AuthInit, token.to_vec());
-        transport.write(CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
         // Expect ACK on Auth Notify.
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::AuthNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
 
         // Send Auth Confirm.
         let frame = CommandFrame::from_command(Command::AuthConfirm, token.to_vec());
-        transport.write(CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::AuthNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x02, 0x00, 0x00]);
 
@@ -698,9 +816,9 @@ mod tests {
         transport.connect(&addr).await.unwrap();
 
         let frame = CommandFrame::from_command(Command::ReadFirmware, vec![]);
-        transport.write(CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::AuthNotify.uuid());
         // Response: [length] [0x0d] [version string]
         assert_eq!(data[1], 0x0d);
@@ -713,9 +831,9 @@ mod tests {
         let transport = VirtualClockTransport::new();
         let addr = MacAddress::parse("AA:BB:CC:DD:E0:01").unwrap();
         transport.connect(&addr).await.unwrap();
-        transport.set_battery(42).await;
+        transport.set_battery(&addr, 42).await;
 
-        let data = transport.read(CharacteristicUuid::BatteryLevel).await.unwrap();
+        let data = transport.read(&addr, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data, vec![42]);
     }
 
@@ -729,20 +847,20 @@ mod tests {
         let entry = AlarmEntry::new(ClockTime::new(7, 30).unwrap(), DayMask::WEEKDAYS, true, true);
         let payload = entry.encode_set_payload(AlarmSlotIndex::new(2).unwrap());
         let frame = CommandFrame::from_command(Command::SetAlarm, payload.to_vec());
-        transport.write(CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
         // Expect ACK.
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
 
         // Read alarms — should get 6 packets.
         let frame = CommandFrame::from_command(Command::ReadAlarms, vec![]);
-        transport.write(CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
         let mut packets = Vec::new();
         for _ in 0..6 {
-            let (uuid, data) = transport.next_notification().await.unwrap();
+            let (uuid, data) = transport.next_notification(&addr).await.unwrap();
             assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
             packets.push(data);
         }
@@ -763,14 +881,14 @@ mod tests {
 
         // Set alarm at slot 0.
         let entry = AlarmEntry::new(ClockTime::new(6, 0).unwrap(), DayMask::EVERY_DAY, true, false);
-        transport.set_alarm(AlarmSlotIndex::new(0).unwrap(), entry).await;
+        transport.set_alarm(&addr, AlarmSlotIndex::new(0).unwrap(), entry).await;
 
         // Delete alarm at slot 0.
         let payload = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
         let frame = CommandFrame::from_command(Command::SetAlarm, payload.to_vec());
-        transport.write(CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
 
@@ -786,9 +904,9 @@ mod tests {
         transport.connect(&addr).await.unwrap();
 
         let frame = CommandFrame::from_command(Command::ReadSettings, vec![]);
-        transport.write(CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
         assert_eq!(data[1], 0x02); // command echo
         assert_eq!(data.len(), 20); // 2 header + 18 payload
@@ -819,9 +937,9 @@ mod tests {
 
         let payload = settings.encode();
         let frame = CommandFrame::from_command(Command::SetSettings, payload.to_vec());
-        transport.write(CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x01, 0x00, 0x00]);
 
@@ -864,32 +982,34 @@ mod tests {
 
         // Connect to device 1 and set battery.
         transport.connect(&addr1).await.unwrap();
-        transport.set_battery(42).await;
-        transport.disconnect().await.unwrap();
+        transport.set_battery(&addr1, 42).await;
+        transport.disconnect(&addr1).await.unwrap();
 
         // Connect to device 2 and set a different battery.
         transport.connect(&addr2).await.unwrap();
-        transport.set_battery(99).await;
-        transport.disconnect().await.unwrap();
+        transport.set_battery(&addr2, 99).await;
+        transport.disconnect(&addr2).await.unwrap();
 
         // Reconnect to device 1 — battery should still be 42.
         transport.connect(&addr1).await.unwrap();
-        let data = transport.read(CharacteristicUuid::BatteryLevel).await.unwrap();
+        let data = transport.read(&addr1, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data, vec![42]);
-        transport.disconnect().await.unwrap();
+        transport.disconnect(&addr1).await.unwrap();
 
         // Reconnect to device 2 — battery should still be 99.
         transport.connect(&addr2).await.unwrap();
-        let data = transport.read(CharacteristicUuid::BatteryLevel).await.unwrap();
+        let data = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data, vec![99]);
     }
 
     #[tokio::test]
     async fn virtual_sensor_notification() {
         let transport = VirtualClockTransport::new();
-        transport.push_sensor_notification(23.45, 56.0);
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        transport.connect(&addr).await.unwrap();
+        transport.push_sensor_notification(&addr, 23.45, 56.0);
 
-        let (uuid, data) = transport.next_notification().await.unwrap();
+        let (uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(uuid, CharacteristicUuid::SensorNotify.uuid());
         let sensor = SensorNotification::parse(&data).unwrap();
         assert_eq!(sensor.temperature.value(), 23.45);
@@ -904,9 +1024,9 @@ mod tests {
 
         let timestamp: u32 = 1700000000;
         let frame = CommandFrame::from_command(Command::TimeSync, timestamp.to_le_bytes().to_vec());
-        transport.write(CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
+        transport.write(&addr, CharacteristicUuid::AuthWrite, &frame.encode()).await.unwrap();
 
-        let (_uuid, data) = transport.next_notification().await.unwrap();
+        let (_uuid, data) = transport.next_notification(&addr).await.unwrap();
         assert_eq!(data, vec![0x04, 0xff, 0x09, 0x00, 0x00]);
 
         let state_arc = transport.connected_state().await.unwrap();
@@ -916,8 +1036,153 @@ mod tests {
         drop(state);
 
         // Device time should be approximately the synced timestamp.
-        let device_time = transport.device_time().await.unwrap();
+        let device_time = transport.device_time(&addr).await.unwrap();
         assert!(device_time >= timestamp);
         assert!(device_time <= timestamp + 2);
+    }
+
+    #[tokio::test]
+    async fn virtual_multi_connect_simultaneous() {
+        let transport = VirtualClockTransport::new_differentiated();
+        let addr1 = MacAddress::parse("AA:BB:CC:DD:E0:01").unwrap();
+        let addr2 = MacAddress::parse("AA:BB:CC:DD:E0:02").unwrap();
+
+        // Connect to both devices simultaneously.
+        transport.connect(&addr1).await.unwrap();
+        transport.connect(&addr2).await.unwrap();
+
+        // Both should be connected.
+        assert!(transport.is_connected(&addr1));
+        assert!(transport.is_connected(&addr2));
+
+        // Read battery from device 1 — should be 100.
+        let data1 = transport.read(&addr1, CharacteristicUuid::BatteryLevel).await.unwrap();
+        assert_eq!(data1, vec![100]);
+
+        // Read battery from device 2 — should be 87.
+        let data2 = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
+        assert_eq!(data2, vec![87]);
+
+        // Disconnect device 1; device 2 should still be connected.
+        transport.disconnect(&addr1).await.unwrap();
+        assert!(!transport.is_connected(&addr1));
+        assert!(transport.is_connected(&addr2));
+
+        // Device 2 battery should still be readable.
+        let data2_again = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
+        assert_eq!(data2_again, vec![87]);
+
+        transport.disconnect(&addr2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn virtual_selective_disconnect() {
+        let transport = VirtualClockTransport::new_differentiated();
+        let addr1 = MacAddress::parse("AA:BB:CC:DD:E0:01").unwrap();
+        let addr2 = MacAddress::parse("AA:BB:CC:DD:E0:03").unwrap();
+
+        transport.connect(&addr1).await.unwrap();
+        transport.connect(&addr2).await.unwrap();
+
+        // Disconnect only device 1.
+        transport.disconnect(&addr1).await.unwrap();
+        assert!(!transport.is_connected(&addr1));
+        assert!(transport.is_connected(&addr2));
+
+        // Device 2 should still have its state — verify battery (65 for device 3).
+        let battery = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
+        assert_eq!(battery, vec![65]);
+
+        transport.disconnect(&addr2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn virtual_notification_routing() {
+        let transport = VirtualClockTransport::new();
+        let addr1 = MacAddress::parse("AA:BB:CC:DD:E0:01").unwrap();
+        let addr2 = MacAddress::parse("AA:BB:CC:DD:E0:02").unwrap();
+
+        transport.connect(&addr1).await.unwrap();
+        transport.connect(&addr2).await.unwrap();
+
+        // Push a sensor notification on device 1's channel.
+        transport.push_sensor_notification(&addr1, 27.7, 50.3);
+
+        // Device 1 should receive it.
+        let (uuid1, data1) = transport.next_notification(&addr1).await.unwrap();
+        assert_eq!(uuid1, CharacteristicUuid::SensorNotify.uuid());
+        let sensor1 = SensorNotification::parse(&data1).unwrap();
+        assert_eq!(sensor1.temperature.value(), 27.7);
+        assert_eq!(sensor1.humidity.value(), 50.3);
+
+        // Push a different notification on device 2's channel.
+        transport.push_sensor_notification(&addr2, 22.1, 45.0);
+
+        // Device 2 should receive its own notification.
+        let (uuid2, data2) = transport.next_notification(&addr2).await.unwrap();
+        assert_eq!(uuid2, CharacteristicUuid::SensorNotify.uuid());
+        let sensor2 = SensorNotification::parse(&data2).unwrap();
+        assert_eq!(sensor2.temperature.value(), 22.1);
+        assert_eq!(sensor2.humidity.value(), 45.0);
+
+        transport.disconnect(&addr1).await.unwrap();
+        transport.disconnect(&addr2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn virtual_differentiated_devices_have_distinct_values() {
+        let transport = VirtualClockTransport::new_differentiated();
+
+        let test_cases = [
+            ("AA:BB:CC:DD:E0:01", 100u8, 27.7, 50.3),
+            ("AA:BB:CC:DD:E0:02", 87, 22.1, 45.0),
+            ("AA:BB:CC:DD:E0:03", 65, 18.5, 60.0),
+            ("AA:BB:CC:DD:E0:04", 20, 15.0, 30.0),
+            ("AA:BB:CC:DD:E0:05", 100, 30.2, 70.0),
+        ];
+
+        for (mac_str, expected_battery, expected_temp, expected_humidity) in test_cases {
+            let addr = MacAddress::parse(mac_str).unwrap();
+            transport.connect(&addr).await.unwrap();
+
+            let battery = transport.read(&addr, CharacteristicUuid::BatteryLevel).await.unwrap();
+            assert_eq!(battery[0], expected_battery, "battery mismatch for {mac_str}");
+
+            // Push sensor notification and verify values.
+            transport.push_sensor_notification(&addr, expected_temp, expected_humidity);
+            let (_uuid, data) = transport.next_notification(&addr).await.unwrap();
+            let sensor = SensorNotification::parse(&data).unwrap();
+            assert_eq!(sensor.temperature.value(), expected_temp, "temp mismatch for {mac_str}");
+            assert_eq!(sensor.humidity.value(), expected_humidity, "humidity mismatch for {mac_str}");
+
+            transport.disconnect(&addr).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn virtual_scan_while_connected() {
+        let transport = VirtualClockTransport::new_differentiated();
+        let addr1 = MacAddress::parse("AA:BB:CC:DD:E0:01").unwrap();
+
+        transport.connect(&addr1).await.unwrap();
+        assert!(transport.is_connected(&addr1));
+
+        // Scanning should still work while connected.
+        transport.start_scan(CharacteristicUuid::AuthWrite.uuid()).await.unwrap();
+        let mut found = false;
+        for _ in 0..5 {
+            if let Some(adv) = transport.next_advertisement().await {
+                if adv.mac == addr1 {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        assert!(found, "connected device should appear in scan results");
+
+        // Connection should still be active after scan.
+        assert!(transport.is_connected(&addr1));
+
+        transport.disconnect(&addr1).await.unwrap();
     }
 }
