@@ -67,13 +67,28 @@ sequenceDiagram
     participant Transport as BleTransport
     participant CGD1 as CGD1 Device
 
-    App->>Manager: connect(mac)
+    App->>Manager: connect_authenticate_and_sync(mac, token)
     Manager->>Transport: connect(address)
     Transport->>CGD1: BLE connection
     CGD1-->>Transport: Connected
-    Transport-->>Manager: Ok
-    Manager-->>App: ClockDevice
+    Manager->>Transport: subscribe(Auth/Data/Sensor Notify)
+    Manager->>CGD1: authenticate(token)
+    CGD1-->>Manager: Auth ACKs
+    Manager->>CGD1: sync_timezone()
+    CGD1-->>Manager: Settings response
+    Manager->>CGD1: sync_time_now()
+    CGD1-->>Manager: TimeSync ACK
+    Manager-->>App: ClockDevice (ready)
 ```
+
+The full `connect_authenticate_and_sync` flow performs:
+
+1. **BLE connect** — `transport.connect(address)`
+2. **Subscribe** to Auth Notify, Data Notify, and Sensor Notify characteristics
+3. **Spawn notification task** — Background task for processing BLE notifications
+4. **Authenticate** — Two-step token handshake (Auth Init + Auth Confirm)
+5. **Sync timezone** — Read device settings, compute local UTC offset, write correct timezone
+6. **Sync time** — Send current Unix timestamp; token is persisted only after this succeeds
 
 ### Connecting with the Library
 
@@ -109,7 +124,7 @@ device_b.read_alarms().await?;
 manager.disconnect(&mac).await?;
 ```
 
-This tears down the BLE connection and stops the notification task for that device.
+This aborts the notification task (via `JoinHandle::abort()`) and tears down the BLE connection. Aborting the notification task is critical — without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.
 
 ### Virtual Backend (Testing)
 

@@ -91,6 +91,7 @@ device.set_token_store(store.clone() as Arc<dyn TokenStore>);
 device.authenticate(&token_result).await?;
 
 // Token is confirmed only after a privileged command succeeds
+device.sync_timezone().await?; // optional but recommended
 device.sync_time_now().await?;
 
 if token_result.is_new() {
