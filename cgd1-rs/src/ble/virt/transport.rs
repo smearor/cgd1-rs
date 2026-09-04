@@ -107,7 +107,7 @@ impl VirtualClockTransport {
     }
 
     /// Create a virtual transport with 5 devices that have differentiated
-    /// sensor values, settings, and battery levels — so multi-device behavior
+    /// sensor values, settings, and battery levels - so multi-device behavior
     /// is visually verifiable in the UI and testable.
     ///
     /// | Device | MAC Suffix | Temp | Humidity | Battery | Time Format | Timezone | Language |
@@ -315,7 +315,7 @@ impl VirtualClockTransport {
 
         match command {
             Command::AuthInit => {
-                // Auth Init — accept any 16-byte token.
+                // Auth Init - accept any 16-byte token.
                 if let Ok(state_arc) = self.device_state(address).await {
                     let mut state = state_arc.lock().await;
                     if payload.len() >= 16 {
@@ -327,7 +327,7 @@ impl VirtualClockTransport {
                 self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::AuthConfirm => {
-                // Auth Confirm — accept and mark as authenticated.
+                // Auth Confirm - accept and mark as authenticated.
                 if let Ok(state_arc) = self.device_state(address).await {
                     let mut state = state_arc.lock().await;
                     state.authenticated = true;
@@ -335,7 +335,7 @@ impl VirtualClockTransport {
                 self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::TimeSync => {
-                // Time Sync — store the timestamp and the instant it was set.
+                // Time Sync - store the timestamp and the instant it was set.
                 if payload.len() >= 4 {
                     let timestamp = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
                     if let Ok(state_arc) = self.device_state(address).await {
@@ -349,7 +349,7 @@ impl VirtualClockTransport {
                 }
             }
             Command::ReadFirmware => {
-                // Read Firmware — respond with version string on Auth Notify.
+                // Read Firmware - respond with version string on Auth Notify.
                 let version_bytes = VIRTUAL_FIRMWARE.as_bytes();
                 let mut response = Vec::with_capacity(2 + version_bytes.len());
                 response.push((1 + version_bytes.len()) as u8);
@@ -382,7 +382,7 @@ impl VirtualClockTransport {
 
         match command {
             Command::SetSettings => {
-                // Set Settings — decode and store.
+                // Set Settings - decode and store.
                 if payload.len() >= 18 {
                     if let Ok(settings) = DeviceSettings::decode(payload) {
                         if let Ok(state_arc) = self.device_state(address).await {
@@ -398,7 +398,7 @@ impl VirtualClockTransport {
                 }
             }
             Command::ReadSettings => {
-                // Read Settings — respond with encoded settings on Data Notify.
+                // Read Settings - respond with encoded settings on Data Notify.
                 if let Ok(state_arc) = self.device_state(address).await {
                     let state = state_arc.lock().await;
                     let encoded = state.settings.encode();
@@ -411,11 +411,11 @@ impl VirtualClockTransport {
                 }
             }
             Command::SetBrightness => {
-                // Set Brightness — accept, no-op.
+                // Set Brightness - accept, no-op.
                 self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::PreviewRingtone => {
-                // Preview Ringtone — accept, no-op.
+                // Preview Ringtone - accept, no-op.
                 self.send_success_ack_on(address, notify, command_id.value());
             }
             Command::SetAlarm => {
@@ -452,7 +452,7 @@ impl VirtualClockTransport {
                 }
             }
             Command::ReadAlarms => {
-                // Read Alarms — send 6 packets with 3 entries each.
+                // Read Alarms - send 6 packets with 3 entries each.
                 if let Ok(state_arc) = self.device_state(address).await {
                     let state = state_arc.lock().await;
                     let alarms: Vec<Option<AlarmEntry>> = state.alarms.clone();
@@ -482,7 +482,7 @@ impl VirtualClockTransport {
                 }
             }
             Command::AudioInit => {
-                // Audio Init — accept, start upload.
+                // Audio Init - accept, start upload.
                 if payload.len() >= 7 {
                     let total_size = u32::from_le_bytes([payload[0], payload[1], payload[2], 0]) as usize;
                     if let Ok(state_arc) = self.device_state(address).await {
@@ -498,7 +498,7 @@ impl VirtualClockTransport {
                 }
             }
             Command::AudioData => {
-                // Audio Data Packet — accept, track progress.
+                // Audio Data Packet - accept, track progress.
                 if let Ok(state_arc) = self.device_state(address).await {
                     let mut state = state_arc.lock().await;
                     if state.audio_upload_active {
@@ -854,7 +854,7 @@ mod tests {
         assert_eq!(uuid, CharacteristicUuid::DataNotify.uuid());
         assert_eq!(data, vec![0x04, 0xff, 0x05, 0x00, 0x00]);
 
-        // Read alarms — should get 6 packets.
+        // Read alarms - should get 6 packets.
         let frame = CommandFrame::from_command(Command::ReadAlarms, vec![]);
         transport.write(&addr, CharacteristicUuid::DataWrite, &frame.encode()).await.unwrap();
 
@@ -990,13 +990,13 @@ mod tests {
         transport.set_battery(&addr2, 99).await;
         transport.disconnect(&addr2).await.unwrap();
 
-        // Reconnect to device 1 — battery should still be 42.
+        // Reconnect to device 1 - battery should still be 42.
         transport.connect(&addr1).await.unwrap();
         let data = transport.read(&addr1, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data, vec![42]);
         transport.disconnect(&addr1).await.unwrap();
 
-        // Reconnect to device 2 — battery should still be 99.
+        // Reconnect to device 2 - battery should still be 99.
         transport.connect(&addr2).await.unwrap();
         let data = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data, vec![99]);
@@ -1055,11 +1055,11 @@ mod tests {
         assert!(transport.is_connected(&addr1));
         assert!(transport.is_connected(&addr2));
 
-        // Read battery from device 1 — should be 100.
+        // Read battery from device 1 - should be 100.
         let data1 = transport.read(&addr1, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data1, vec![100]);
 
-        // Read battery from device 2 — should be 87.
+        // Read battery from device 2 - should be 87.
         let data2 = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(data2, vec![87]);
 
@@ -1089,7 +1089,7 @@ mod tests {
         assert!(!transport.is_connected(&addr1));
         assert!(transport.is_connected(&addr2));
 
-        // Device 2 should still have its state — verify battery (65 for device 3).
+        // Device 2 should still have its state - verify battery (65 for device 3).
         let battery = transport.read(&addr2, CharacteristicUuid::BatteryLevel).await.unwrap();
         assert_eq!(battery, vec![65]);
 

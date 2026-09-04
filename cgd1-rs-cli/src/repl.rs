@@ -111,7 +111,7 @@ pub async fn run(backend: Backend, initial_address: Option<MacAddress>) -> Resul
         state.connect(&mac).await?;
     }
 
-    println!("cgd1 REPL — type 'help' for commands, 'exit' to quit.");
+    println!("cgd1 REPL - type 'help' for commands, 'exit' to quit.");
 
     loop {
         let prompt = match state.connection {

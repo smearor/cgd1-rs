@@ -54,7 +54,7 @@ fn pre_generate_token(xdg_data_home: &Path) {
     create_dir_all(&token_dir).unwrap();
     // The token file name is the MAC with colons replaced by underscores.
     let token_file = token_dir.join(VIRTUAL_MAC.replace(':', "_"));
-    // Write a 16-byte zero token — the virtual device accepts any token.
+    // Write a 16-byte zero token - the virtual device accepts any token.
     std::fs::write(&token_file, [0u8; 16]).unwrap();
 }
 

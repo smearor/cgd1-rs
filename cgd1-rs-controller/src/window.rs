@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::mpsc::TryRecvError;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -14,6 +15,7 @@ use cgd1_rs::MacAddress;
 use cgd1_rs::TokenStore;
 
 use tracing::debug;
+use tracing::error;
 use tracing::info;
 use tracing::warn;
 
@@ -319,7 +321,7 @@ impl MainWindow {
 
         top.append(&top_content);
 
-        // Middle section: ~60% of window height — time display
+        // Middle section: ~60% of window height - time display
         middle.set_vexpand(true);
         middle.add_css_class("clock-middle");
         let middle_content = Box::builder()
@@ -333,7 +335,7 @@ impl MainWindow {
         middle_content.append(&self.time_display);
         middle.append(&middle_content);
 
-        // Bottom section: ~25% of window height — sensors
+        // Bottom section: ~25% of window height - sensors
         bottom.set_vexpand(false);
         bottom.add_css_class("clock-bottom");
         let bottom_content = Box::builder()
@@ -442,7 +444,7 @@ impl MainWindow {
             let connected = match cgd1_rs::MacAddress::parse(addr_text) {
                 Ok(addr) => {
                     let states = device_states_bind.lock().unwrap_or_else(|p| {
-                        tracing::warn!("mutex poisoned — recovering");
+                        warn!("mutex poisoned - recovering");
                         p.into_inner()
                     });
                     states.get(&addr).map_or(false, |s| s.connected)
@@ -523,7 +525,7 @@ impl MainWindow {
                             let found_addrs: Vec<MacAddress> = found.iter().map(|(_, a, _)| *a).collect();
                             let connected_addrs: Vec<MacAddress> = {
                                 let states = device_states_for_scan.lock().unwrap_or_else(|p| {
-                                    tracing::warn!("mutex poisoned — recovering");
+                                    warn!("mutex poisoned - recovering");
                                     p.into_inner()
                                 });
                                 states.keys().copied().collect()
@@ -532,11 +534,11 @@ impl MainWindow {
                             {
                                 let persisted = known_device_store_for_scan.load();
                                 let mut missed = missed_scans.lock().unwrap_or_else(|p| {
-                                    tracing::warn!("mutex poisoned — recovering");
+                                    warn!("mutex poisoned - recovering");
                                     p.into_inner()
                                 });
                                 let mut known = known_devices.lock().unwrap_or_else(|p| {
-                                    tracing::warn!("mutex poisoned — recovering");
+                                    warn!("mutex poisoned - recovering");
                                     p.into_inner()
                                 });
                                 for addr in &found_addrs {
@@ -573,7 +575,7 @@ impl MainWindow {
 
                             let labels: Vec<String> = {
                                 let known = known_devices.lock().unwrap_or_else(|p| {
-                                    tracing::warn!("mutex poisoned — recovering");
+                                    warn!("mutex poisoned - recovering");
                                     p.into_inner()
                                 });
                                 known
@@ -598,7 +600,7 @@ impl MainWindow {
                                 if !connect_switch.is_active() {
                                     if let Some(idx) = {
                                         let known = known_devices.lock().unwrap_or_else(|p| {
-                                            tracing::warn!("mutex poisoned — recovering");
+                                            warn!("mutex poisoned - recovering");
                                             p.into_inner()
                                         });
                                         known.iter().position(|a| found_addrs.contains(a))
@@ -611,7 +613,7 @@ impl MainWindow {
 
                             // Update battery from advertising data for all found devices.
                             let selected_addr = *selected_address_for_scan.lock().unwrap_or_else(|p| {
-                                tracing::warn!("mutex poisoned — recovering");
+                                warn!("mutex poisoned - recovering");
                                 p.into_inner()
                             });
                             for (_, addr, battery) in &found {
@@ -621,7 +623,7 @@ impl MainWindow {
                                     scan_battery_cache_for_scan
                                         .lock()
                                         .unwrap_or_else(|p| {
-                                            tracing::warn!("mutex poisoned — recovering");
+                                            warn!("mutex poisoned - recovering");
                                             p.into_inner()
                                         })
                                         .insert(*addr, *level);
@@ -630,7 +632,7 @@ impl MainWindow {
                                     }
 
                                     let mut states = device_states_for_scan.lock().unwrap_or_else(|p| {
-                                        tracing::warn!("mutex poisoned — recovering");
+                                        warn!("mutex poisoned - recovering");
                                         p.into_inner()
                                     });
                                     if let Some(state) = states.get_mut(addr) {
@@ -717,7 +719,7 @@ impl MainWindow {
                     let is_new_token = token_result.is_new();
                     let token: AuthToken = (*token_result).clone();
                     if is_new_token {
-                        warn!(%addr, "no stored token found, generated new random token — device must be unpaired (factory reset) to accept it");
+                        warn!(%addr, "no stored token found, generated new random token - device must be unpaired (factory reset) to accept it");
                     } else {
                         debug!(%addr, "using stored token from file");
                     }
@@ -736,7 +738,7 @@ impl MainWindow {
                             if let Some(level) = scan_battery_cache
                                 .lock()
                                 .unwrap_or_else(|p| {
-                                    tracing::warn!("mutex poisoned — recovering");
+                                    warn!("mutex poisoned - recovering");
                                     p.into_inner()
                                 })
                                 .get(&addr)
@@ -784,13 +786,13 @@ impl MainWindow {
                         match result {
                             Ok(msg) => {
                                 *selected_address_for_connect.lock().unwrap_or_else(|p| {
-                                    tracing::warn!("mutex poisoned — recovering");
+                                    warn!("mutex poisoned - recovering");
                                     p.into_inner()
                                 }) = Some(addr_for_connect);
                                 device_states_for_connect
                                     .lock()
                                     .unwrap_or_else(|p| {
-                                        tracing::warn!("mutex poisoned — recovering");
+                                        warn!("mutex poisoned - recovering");
                                         p.into_inner()
                                     })
                                     .insert(addr_for_connect, DeviceRuntimeState::new());
@@ -831,7 +833,7 @@ impl MainWindow {
                 glib::source::idle_add_local(move || match event_rx.borrow_mut().try_recv() {
                     Ok(event) => {
                         let is_selected = *selected_address_for_events.lock().unwrap_or_else(|p| {
-                            tracing::warn!("mutex poisoned — recovering");
+                            warn!("mutex poisoned - recovering");
                             p.into_inner()
                         }) == Some(addr_for_connect);
                         match event {
@@ -839,7 +841,7 @@ impl MainWindow {
                                 debug!(%addr_for_connect, temp = %temperature.value(), hum = %humidity.value(), "SensorUpdate event received");
                                 {
                                     let mut states = device_states_for_events.lock().unwrap_or_else(|p| {
-                                        tracing::warn!("mutex poisoned — recovering");
+                                        warn!("mutex poisoned - recovering");
                                         p.into_inner()
                                     });
                                     if let Some(state) = states.get_mut(&addr_for_connect) {
@@ -861,7 +863,7 @@ impl MainWindow {
                                 let pct = level.value();
                                 {
                                     let mut states = device_states_for_events.lock().unwrap_or_else(|p| {
-                                        tracing::warn!("mutex poisoned — recovering");
+                                        warn!("mutex poisoned - recovering");
                                         p.into_inner()
                                     });
                                     if let Some(state) = states.get_mut(&addr_for_connect) {
@@ -878,7 +880,7 @@ impl MainWindow {
                             ClockEvent::Disconnected => {
                                 {
                                     let mut states = device_states_for_events.lock().unwrap_or_else(|p| {
-                                        tracing::warn!("mutex poisoned — recovering");
+                                        warn!("mutex poisoned - recovering");
                                         p.into_inner()
                                     });
                                     if let Some(state) = states.get_mut(&addr_for_connect) {
@@ -894,7 +896,7 @@ impl MainWindow {
                             ClockEvent::Reconnected => {
                                 {
                                     let mut states = device_states_for_events.lock().unwrap_or_else(|p| {
-                                        tracing::warn!("mutex poisoned — recovering");
+                                        warn!("mutex poisoned - recovering");
                                         p.into_inner()
                                     });
                                     if let Some(state) = states.get_mut(&addr_for_connect) {
@@ -911,19 +913,19 @@ impl MainWindow {
                         }
                         glib::ControlFlow::Continue
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
                 });
             } else {
                 info!(%addr, "controller: manual disconnect");
                 *selected_address.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 }) = None;
                 device_states
                     .lock()
                     .unwrap_or_else(|p| {
-                        tracing::warn!("mutex poisoned — recovering");
+                        warn!("mutex poisoned - recovering");
                         p.into_inner()
                     })
                     .remove(&addr);
@@ -968,21 +970,21 @@ impl MainWindow {
             };
             debug!(address = %addr, "controller: dropdown selection changed");
             let previous = *selected_address.lock().unwrap_or_else(|p| {
-                tracing::warn!("mutex poisoned — recovering");
+                warn!("mutex poisoned - recovering");
                 p.into_inner()
             });
             if previous == Some(addr) {
                 return;
             }
             *selected_address.lock().unwrap_or_else(|p| {
-                tracing::warn!("mutex poisoned — recovering");
+                warn!("mutex poisoned - recovering");
                 p.into_inner()
             }) = Some(addr);
 
             let state = device_states
                 .lock()
                 .unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 })
                 .get(&addr)
@@ -1065,7 +1067,7 @@ impl MainWindow {
             {
                 Ok(dt) => dt,
                 Err(e) => {
-                    tracing::error!(error = ?e, "all glib DateTime constructors failed, skipping clock tick");
+                    error!(error = ?e, "all glib DateTime constructors failed, skipping clock tick");
                     return glib::ControlFlow::Continue;
                 }
             };
@@ -1091,7 +1093,7 @@ impl MainWindow {
     /// Populate the dropdown with persisted known devices on startup.
     fn populate_known_devices(&self) {
         let known = self.known_devices.lock().unwrap_or_else(|p| {
-            tracing::warn!("mutex poisoned — recovering");
+            warn!("mutex poisoned - recovering");
             p.into_inner()
         });
         if known.is_empty() {
@@ -1129,7 +1131,7 @@ impl MainWindow {
             if let Some(first) = persisted.first() {
                 debug!(address = %first, "controller: attempting startup connect to persisted known device");
                 let known = known_devices.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 if let Some(idx) = known.iter().position(|a| a == first) {
@@ -1144,7 +1146,7 @@ impl MainWindow {
         // Trigger initial scan immediately
         scan_btn.emit_clicked();
         *last_scan_time.lock().unwrap_or_else(|p| {
-            tracing::warn!("mutex poisoned — recovering");
+            warn!("mutex poisoned - recovering");
             p.into_inner()
         }) = Some(Instant::now());
 
@@ -1153,7 +1155,7 @@ impl MainWindow {
             let has_connected = !device_states
                 .lock()
                 .unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 })
                 .is_empty();
@@ -1161,7 +1163,7 @@ impl MainWindow {
                 // Check all connected devices for staleness
                 let stale_addrs: Vec<MacAddress> = {
                     let states = device_states.lock().unwrap_or_else(|p| {
-                        tracing::warn!("mutex poisoned — recovering");
+                        warn!("mutex poisoned - recovering");
                         p.into_inner()
                     });
                     states
@@ -1182,7 +1184,7 @@ impl MainWindow {
                     // Remove stale devices from state
                     {
                         let mut states = device_states.lock().unwrap_or_else(|p| {
-                            tracing::warn!("mutex poisoned — recovering");
+                            warn!("mutex poisoned - recovering");
                             p.into_inner()
                         });
                         for addr in &stale_addrs {
@@ -1190,7 +1192,7 @@ impl MainWindow {
                         }
                     }
                     *selected_address.lock().unwrap_or_else(|p| {
-                        tracing::warn!("mutex poisoned — recovering");
+                        warn!("mutex poisoned - recovering");
                         p.into_inner()
                     }) = None;
 
@@ -1206,7 +1208,7 @@ impl MainWindow {
                         if !device_states
                             .lock()
                             .unwrap_or_else(|p| {
-                                tracing::warn!("mutex poisoned — recovering");
+                                warn!("mutex poisoned - recovering");
                                 p.into_inner()
                             })
                             .is_empty()
@@ -1216,7 +1218,7 @@ impl MainWindow {
                         }
                         // Find the device in the dropdown by address
                         let known = known_devices.lock().unwrap_or_else(|p| {
-                            tracing::warn!("mutex poisoned — recovering");
+                            warn!("mutex poisoned - recovering");
                             p.into_inner()
                         });
                         if let Some(idx) = known.iter().position(|a| *a == first_stale) {
@@ -1238,7 +1240,7 @@ impl MainWindow {
 
             let should_scan = {
                 let last = last_scan_time.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
                 match *last {
@@ -1250,7 +1252,7 @@ impl MainWindow {
             if should_scan {
                 debug!(connected = has_connected, interval_secs = interval.as_secs(), "controller: triggering periodic scan");
                 *last_scan_time.lock().unwrap_or_else(|p| {
-                    tracing::warn!("mutex poisoned — recovering");
+                    warn!("mutex poisoned - recovering");
                     p.into_inner()
                 }) = Some(Instant::now());
                 scan_btn.emit_clicked();

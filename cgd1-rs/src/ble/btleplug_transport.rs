@@ -91,7 +91,7 @@ impl BleTransport for BtleplugTransport {
             }
         }
 
-        // Start scanning with an empty filter — we filter manually in
+        // Start scanning with an empty filter - we filter manually in
         // `next_advertisement` because `ScanFilter` matches advertised
         // service UUIDs, not service-data UUIDs.
         self.adapter.start_scan(ScanFilter::default()).await.map_err(ClockError::from)?;
@@ -230,7 +230,7 @@ impl BleTransport for BtleplugTransport {
         }
 
         if let Some(entry) = entry {
-            // Timeout the peripheral disconnect — BlueZ can hang indefinitely
+            // Timeout the peripheral disconnect - BlueZ can hang indefinitely
             // on disconnect if the device is unresponsive, which blocks all
             // subsequent adapter operations (peripherals(), scan, etc).
             match tokio::time::timeout(Duration::from_secs(5), entry.peripheral.disconnect()).await {
