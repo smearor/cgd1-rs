@@ -1,16 +1,19 @@
+use crate::dialog::AlarmsDialog;
+use crate::dialog::AudioDialog;
+use crate::dialog::InfoDialog;
+use crate::dialog::SensorOverviewDialog;
+use crate::dialog::SettingsDialog;
+use crate::window::MainWindow;
 use cgd1_rs::Backend;
+use cgd1_rs::TokenStore;
 use gio::ApplicationFlags;
 use glib::clone;
 use gtk4::Application;
 use gtk4::gio;
 use gtk4::glib;
 use gtk4::prelude::*;
-
-use crate::dialog::AlarmsDialog;
-use crate::dialog::AudioDialog;
-use crate::dialog::InfoDialog;
-use crate::dialog::SettingsDialog;
-use crate::window::MainWindow;
+use tracing::info;
+use tracing::warn;
 
 /// GTK 4 application for the CGD1 alarm clock controller.
 pub struct ClockControllerApp {
@@ -34,7 +37,7 @@ impl ClockControllerApp {
 
             let manager = window.manager().clone();
             let runtime = window.runtime().clone();
-            let connected_address = window.connected_address_arc();
+            let connected_address = window.selected_address_arc();
 
             // Ensure the process exits when the window is closed.
             // The tokio runtime keeps background threads alive otherwise.
@@ -59,6 +62,86 @@ impl ClockControllerApp {
             });
             add_action(app, "info", window.window(), |w| {
                 let _ = InfoDialog::new(w);
+            });
+
+            let device_states_overview = window.device_states_arc();
+            let known_devices_overview = window.known_devices_arc();
+            add_action(app, "sensor_overview", window.window(), move |w| {
+                let states = device_states_overview
+                    .lock()
+                    .unwrap_or_else(|p| {
+                        warn!("mutex poisoned — recovering");
+                        p.into_inner()
+                    })
+                    .clone();
+                let known = known_devices_overview
+                    .lock()
+                    .unwrap_or_else(|p| {
+                        warn!("mutex poisoned — recovering");
+                        p.into_inner()
+                    })
+                    .clone();
+                let _ = SensorOverviewDialog::new(w, &states, &known);
+            });
+
+            let token_store_reset = window.token_store_arc();
+            let selected_address_reset = connected_address.clone();
+            let manager_reset = manager.clone();
+            let connect_switch_reset = window.connect_switch_arc();
+            add_action(app, "reset_token", window.window(), move |w| {
+                let addr = selected_address_reset.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned — recovering");
+                    p.into_inner()
+                });
+                let Some(addr) = *addr else {
+                    let dialog = gtk4::MessageDialog::builder()
+                        .transient_for(w)
+                        .modal(true)
+                        .message_type(gtk4::MessageType::Warning)
+                        .buttons(gtk4::ButtonsType::Ok)
+                        .text("No device selected")
+                        .secondary_text("Select a device in the dropdown first.")
+                        .build();
+                    dialog.connect_response(|d, _| d.close());
+                    dialog.present();
+                    return;
+                };
+
+                let dialog = gtk4::MessageDialog::builder()
+                    .transient_for(w)
+                    .modal(true)
+                    .message_type(gtk4::MessageType::Question)
+                    .buttons(gtk4::ButtonsType::YesNo)
+                    .text("Reset auth token?")
+                    .secondary_text(&format!(
+                        "This deletes the stored token for {addr}.\n\
+                         The device must be factory reset to accept a new token.\n\n\
+                         Disconnect first if currently connected."
+                    ))
+                    .build();
+
+                let token_store = token_store_reset.clone();
+                let manager = manager_reset.clone();
+                let connect_switch = connect_switch_reset.clone();
+                let addr_for_delete = addr;
+                dialog.connect_response(move |d, response| {
+                    if response == gtk4::ResponseType::Yes {
+                        if let Err(e) = token_store.delete(&addr_for_delete) {
+                            warn!(%addr_for_delete, error = %e, "failed to delete token");
+                        } else {
+                            info!(%addr_for_delete, "token deleted by user");
+                        }
+                        // Disconnect if connected
+                        let manager = manager.clone();
+                        let connect_switch = connect_switch.clone();
+                        glib::spawn_future_local(clone!(async move {
+                            let _ = manager.disconnect(&addr_for_delete).await;
+                            connect_switch.set_active(false);
+                        }));
+                    }
+                    d.close();
+                });
+                dialog.present();
             });
         }));
 

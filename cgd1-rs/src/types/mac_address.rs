@@ -32,9 +32,13 @@ impl MacAddress {
         &self.0
     }
 
-    /// Parse a MAC address from a colon-separated string (e.g. `aa:bb:cc:dd:ee:ff`).
+    /// Parse a MAC address from a string.
+    ///
+    /// Accepts colon- or dash-separated formats (e.g. `aa:bb:cc:dd:ee:ff`).
+    /// Extra text after the address (e.g. ` (offline)`, ` (-45 dBm)`) is ignored.
     pub fn parse(s: &str) -> Result<Self, MacAddressParseError> {
-        let normalized = normalized(s);
+        let token = s.split_whitespace().next().unwrap_or(s);
+        let normalized = normalized(token);
         if normalized.len() != 12 {
             return Err(MacAddressParseError {
                 input: s.to_string(),
@@ -121,6 +125,12 @@ mod tests {
     #[test]
     fn parse_with_dashes() {
         let mac = MacAddress::parse("AA-BB-CC-DD-EE-FF").unwrap();
+        assert_eq!(mac.as_bytes(), &[0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
+    }
+
+    #[test]
+    fn parse_with_suffix() {
+        let mac = MacAddress::parse("aa:bb:cc:dd:ee:ff (offline)").unwrap();
         assert_eq!(mac.as_bytes(), &[0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
     }
 

@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::time::timeout;
 use tracing::debug;
+use tracing::info;
 
 use crate::AdvertisementData;
 use crate::BleTransport;
@@ -38,21 +39,24 @@ impl ClockScanner {
     /// continues scanning until `stop_passive` is called or the transport
     /// stops yielding advertisements.
     pub async fn scan_passive(&self) -> Result<broadcast::Receiver<AdvertisementData>> {
+        debug!("scan_passive: starting");
         self.transport.start_scan(FDCD_UUID).await?;
         let sender = self.advertisement_sender.clone();
         let transport = self.transport.clone();
 
         tokio::spawn(async move {
+            debug!("scan_passive: entering advertisement loop");
             while let Some(data) = transport.next_advertisement().await {
                 debug!(
                     mac = %data.mac,
                     temp = data.temperature.value(),
                     humidity = data.humidity.value(),
                     battery = data.battery.value(),
-                    "received advertisement"
+                    "scan_passive: received advertisement"
                 );
                 let _ = sender.send(data);
             }
+            debug!("scan_passive: advertisement stream ended");
         });
 
         Ok(self.advertisement_sender.subscribe())
@@ -69,6 +73,7 @@ impl ClockScanner {
     /// passive advertisements. Devices that broadcast CGD1 service data are
     /// included in the result.
     pub async fn scan_active(&self, duration: Duration) -> Result<Vec<DiscoveredDevice>> {
+        debug!(duration_secs = duration.as_secs(), "scan_active: starting");
         self.transport.start_scan(FDCD_UUID).await?;
 
         let mut devices: HashMap<MacAddress, DiscoveredDevice> = HashMap::new();
@@ -78,6 +83,7 @@ impl ClockScanner {
             let result = timeout(deadline, self.transport.next_advertisement()).await;
             match result {
                 Ok(Some(data)) => {
+                    debug!(mac = %data.mac, "scan_active: found device");
                     devices.insert(
                         data.mac,
                         DiscoveredDevice {
@@ -93,6 +99,8 @@ impl ClockScanner {
         }
 
         self.transport.stop_scan().await?;
+        let count = devices.len();
+        info!(device_count = count, "scan_active: complete");
         Ok(devices.into_values().collect())
     }
 }

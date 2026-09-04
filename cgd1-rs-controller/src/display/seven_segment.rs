@@ -11,9 +11,9 @@ mod imp {
     use gtk4::subclass::prelude::*;
 
     /// Bundled DSEG7 Classic Regular font (7-segment style).
-    const DSEG7_CLASSIC_REGULAR: &[u8] = include_bytes!("../assets/fonts/DSEG7Classic-Regular.ttf");
+    const DSEG7_CLASSIC_REGULAR: &[u8] = include_bytes!("../../assets/fonts/DSEG7Classic-Regular.ttf");
     /// Bundled DSEG7 Classic Light font (for dim/ghost segments).
-    const DSEG7_CLASSIC_LIGHT: &[u8] = include_bytes!("../assets/fonts/DSEG7Classic-Light.ttf");
+    const DSEG7_CLASSIC_LIGHT: &[u8] = include_bytes!("../../assets/fonts/DSEG7Classic-Light.ttf");
 
     static FONT_LOAD: Once = Once::new();
 

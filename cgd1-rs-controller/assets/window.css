@@ -1,0 +1,48 @@
+.clock-top {
+    background-color: #1a1a2e;
+}
+.clock-middle {
+    background-color: #000000;
+}
+.clock-bottom {
+    background-color: #1a1a2e;
+}
+.clock-battery-bar {
+    min-height: 6px;
+}
+.clock-bluetooth-label {
+    color: #5588ff;
+    font-size: 24px;
+}
+.clock-battery-label {
+    color: #00ff41;
+    font-size: 14px;
+}
+.clock-section {
+    padding: 8px;
+}
+.connect-dot {
+    min-width: 10px;
+    min-height: 10px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 9999px;
+    background: #ff4444;
+}
+.connect-dot.connected {
+    background: #00ff41;
+}
+
+.dropdown-dot {
+    min-width: 8px;
+    min-height: 8px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 9999px;
+    background: #666666;
+}
+.dropdown-dot.connected {
+    background: #00ff41;
+}

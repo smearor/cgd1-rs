@@ -78,6 +78,21 @@
 2. Reconnect with `sync-time` to generate a new token
 3. Note: The official app and `cgd1-rs` cannot share the same token. Using one will invalidate the other's token
 
+### `sync-time` times out (token not accepted)
+
+**Symptom**: Authentication ACKs succeed (`04 ff 01 00 ..`, `04 ff 02 00 ..`), but `sync-time` receives no ACK and times out after 10 seconds.
+
+**Cause**: The device sends Auth ACKs even with a bad token. The real token acceptance is only proven by a privileged command like `sync-time`. If `sync-time` times out, the device has a different token stored from a previous pairing (another app, a prior run with a different random token, etc.). The device requires an explicit factory reset before it accepts a new token.
+
+**Solutions**:
+
+1. Perform a factory reset on the CGD1 device (see [Factory Reset](#factory-reset) below)
+2. Delete any stored token file for this device:
+   ```bash
+   rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
+   ```
+3. Reconnect — a new token will be generated and, after `sync-time` succeeds, persisted automatically
+
 ### `sync-time` succeeds but other commands fail
 
 **Symptom**: `sync-time` works, but `alarm-set` or `settings-write` returns errors.
@@ -155,6 +170,33 @@ cgd1 --backend virtual alarm-list AA:BB:CC:DD:EE:FF
 ```
 
 This works without any BLE hardware and is useful for testing CLI behavior, scripts, and the WebSocket server.
+
+## Factory Reset
+
+A factory reset clears the stored authentication token on the CGD1, allowing it to accept a new token. This is required when:
+
+- `sync-time` times out after successful Auth ACKs (token mismatch)
+- The device was previously paired with the official Qingping app or another host
+- A previous run generated a random token that was never persisted but the device stored it
+
+### Step-by-Step Instructions
+
+1. **Batteriefach öffnen**: Öffnen Sie die Abdeckung auf der Rückseite des Geräts und entnehmen Sie die Batterien.
+2. **Gerät gedrückt halten**: Drücken und halten Sie das gesamte Gehäuse von oben nach unten (die "Snooze/Licht"-Taste des Weckers drückt sich dadurch am Boden ein).
+3. **Batterien wiedereinsetzen**: Setzen Sie die Batterien ein, während Sie das Gerät weiterhin kontinuierlich gedrückt halten.
+4. **Halten für 12 Sekunden**: Halten Sie das Gerät für mindestens 12 Sekunden fixiert nach unten gedrückt.
+5. **Ergebnis prüfen**: Sobald auf dem Display alle Zahlen als "8" aufleuchten, ist der Werksreset abgeschlossen. Lassen Sie das Gerät nun los.
+
+### After the Reset
+
+1. Delete any stale token files for this device:
+   ```bash
+   rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
+   ```
+2. Reconnect with `cgd1-rs` — a new random token will be generated
+3. After `sync-time` succeeds, the token is automatically persisted for future connections
+
+> **Warning**: Factory reset clears all device settings (alarms, brightness, volume, etc.) in addition to the auth token.
 
 ## Reporting Issues
 

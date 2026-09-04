@@ -78,6 +78,15 @@ impl TokenStore for FileTokenStore {
         std::fs::write(path, token.as_bytes()).map_err(ClockError::from)?;
         Ok(())
     }
+
+    fn delete(&self, address: &MacAddress) -> Result<()> {
+        let path = self.path_for(address);
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(ClockError::from(e)),
+        }
+    }
 }
 
 #[cfg(test)]

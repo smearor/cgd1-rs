@@ -21,6 +21,8 @@ use gtk4::ToggleButton;
 use gtk4::Window;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tracing::error;
+use tracing::warn;
 
 /// Alarms dialog for alarm management.
 #[allow(dead_code)]
@@ -131,7 +133,10 @@ impl AlarmsDialog {
                 .collect();
 
             refresh_button.connect_clicked(move |_| {
-                let addr = *connected_address.lock().expect("mutex poisoned");
+                let addr = *connected_address.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned — recovering");
+                    p.into_inner()
+                });
                 let Some(addr) = addr else {
                     status_label.set_label("No device connected");
                     return;
@@ -198,7 +203,10 @@ impl AlarmsDialog {
 
         // Set and Delete per row
         for (slot, widgets) in rows.iter().map(|(s, w)| (*s, w.clone())) {
-            let slot_idx = AlarmSlotIndex::new(slot).expect("slot index 0-15 is valid");
+            let Ok(slot_idx) = AlarmSlotIndex::new(slot) else {
+                error!(slot, "invalid alarm slot index, skipping row");
+                continue;
+            };
             let manager_set = manager.clone();
             let runtime_set = runtime.clone();
             let connected_address_set = connected_address.clone();
@@ -210,7 +218,10 @@ impl AlarmsDialog {
             let repeat_dropdown = widgets.repeat_dropdown.clone();
 
             widgets.set_button.connect_clicked(move |_| {
-                let addr = *connected_address_set.lock().expect("mutex poisoned");
+                let addr = *connected_address_set.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned — recovering");
+                    p.into_inner()
+                });
                 let Some(addr) = addr else {
                     status_label_set.set_label("No device connected");
                     return;
@@ -268,7 +279,10 @@ impl AlarmsDialog {
             let status_label_del = status_label.clone();
 
             widgets.delete_button.connect_clicked(move |_| {
-                let addr = *connected_address_del.lock().expect("mutex poisoned");
+                let addr = *connected_address_del.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned — recovering");
+                    p.into_inner()
+                });
                 let Some(addr) = addr else {
                     status_label_del.set_label("No device connected");
                     return;
