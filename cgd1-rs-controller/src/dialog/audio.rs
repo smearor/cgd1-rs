@@ -1,3 +1,8 @@
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::TryRecvError;
 
@@ -118,6 +123,51 @@ const RINGTONE_SIGNATURES: &[RingtoneSignature] = &[
     RingtoneSignature::Unused,
 ];
 
+/// Derive a deterministic 4-byte signature from a filename by hashing.
+///
+/// Avoids collisions with all known built-in and slot signatures by
+/// incrementing a salt until a non-colliding hash is found.
+fn derive_custom_signature(filename: &str) -> [u8; 4] {
+    let known: Vec<[u8; 4]> = RINGTONE_SIGNATURES.iter().map(|s| s.bytes()).collect();
+    let mut attempt = 0u64;
+    loop {
+        let mut hasher = DefaultHasher::new();
+        filename.hash(&mut hasher);
+        attempt.hash(&mut hasher);
+        let hash = hasher.finish().to_le_bytes();
+        let sig = [hash[0], hash[1], hash[2], hash[3]];
+        if !known.contains(&sig) {
+            return sig;
+        }
+        attempt += 1;
+    }
+}
+
+/// Scan `~/.config/cgd1-rs/ringtones/*.pcm` for custom ringtone files.
+///
+/// Returns a map from derived signature bytes to file path.
+fn scan_custom_ringtones() -> HashMap<[u8; 4], PathBuf> {
+    let mut map = HashMap::new();
+    let config_dir = match dirs::config_dir() {
+        Some(d) => d.join("cgd1-rs").join("ringtones"),
+        None => return map,
+    };
+    let entries = match std::fs::read_dir(&config_dir) {
+        Ok(e) => e,
+        Err(_) => return map,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("pcm") {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                let sig_bytes = derive_custom_signature(stem);
+                map.insert(sig_bytes, path);
+            }
+        }
+    }
+    map
+}
+
 /// Embeddable audio editor widget for ringtone selection, preview, and upload.
 #[allow(dead_code)]
 pub struct AudioEditorWidget {
@@ -139,6 +189,10 @@ pub struct AudioEditorWidget {
     runtime: Arc<tokio::runtime::Runtime>,
     /// Connected device address.
     connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
+    /// Map from signature bytes to file path for custom ringtones from ~/.config/cgd1-rs/ringtones/.
+    custom_ringtone_files: HashMap<[u8; 4], PathBuf>,
+    /// All ringtone signatures in dropdown order (built-in + custom + slots).
+    ringtone_signatures: Vec<RingtoneSignature>,
 }
 
 /// Create a frame with an icon + title header.
@@ -208,8 +262,46 @@ impl AudioEditorWidget {
             .margin_end(12)
             .build();
 
-        let ringtone_names: Vec<&str> = RINGTONE_SIGNATURES.iter().map(|s| s.name()).collect();
-        let ringtone_model = StringList::new(&ringtone_names);
+        let custom_ringtone_files = scan_custom_ringtones();
+
+        let builtin_sigs: Vec<RingtoneSignature> = RINGTONE_SIGNATURES
+            .iter()
+            .filter(|s| !matches!(s, RingtoneSignature::CustomSlotA | RingtoneSignature::CustomSlotB | RingtoneSignature::Unused))
+            .copied()
+            .collect();
+
+        let mut custom_sigs: Vec<RingtoneSignature> = custom_ringtone_files
+            .keys()
+            .map(|bytes| RingtoneSignature::from_bytes(*bytes))
+            .collect();
+        custom_sigs.sort_by_key(|s| {
+            custom_ringtone_files
+                .get(&s.bytes())
+                .and_then(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
+                .unwrap_or_default()
+        });
+
+        let mut ringtone_signatures = builtin_sigs;
+        ringtone_signatures.extend(custom_sigs);
+        ringtone_signatures.push(RingtoneSignature::CustomSlotA);
+        ringtone_signatures.push(RingtoneSignature::CustomSlotB);
+        ringtone_signatures.push(RingtoneSignature::Unused);
+
+        let ringtone_names: Vec<String> = ringtone_signatures
+            .iter()
+            .map(|s| {
+                if let Some(path) = custom_ringtone_files.get(&s.bytes()) {
+                    path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(String::from)
+                        .unwrap_or_else(|| s.name().to_string())
+                } else {
+                    s.name().to_string()
+                }
+            })
+            .collect();
+        let ringtone_names_ref: Vec<&str> = ringtone_names.iter().map(|s| s.as_str()).collect();
+        let ringtone_model = StringList::new(&ringtone_names_ref);
         let ringtone_row = audio_row("Ringtone");
         let ringtone_dropdown = DropDown::new(Some(ringtone_model), None::<&gtk4::Expression>);
         ringtone_dropdown.set_selected(0);
@@ -353,6 +445,7 @@ impl AudioEditorWidget {
             let status_label = status_label.clone();
             let ringtone_dropdown = ringtone_dropdown.clone();
             let volume_scale = volume_scale.clone();
+            let ringtone_signatures = ringtone_signatures.clone();
 
             read_button.connect_clicked(move |_| {
                 let addr = *connected_address.lock().unwrap_or_else(|p| {
@@ -378,12 +471,13 @@ impl AudioEditorWidget {
                 let ringtone_dropdown = ringtone_dropdown.clone();
                 let volume_scale = volume_scale.clone();
                 let status_label = status_label.clone();
+                let ringtone_signatures = ringtone_signatures.clone();
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
                         match result {
                             Ok(settings) => {
                                 let sig = settings.ringtone_signature();
-                                if let Some(idx) = RINGTONE_SIGNATURES.iter().position(|s| *s == sig) {
+                                if let Some(idx) = ringtone_signatures.iter().position(|s| *s == sig) {
                                     ringtone_dropdown.set_selected(idx as u32);
                                 }
                                 volume_scale.set_value(settings.volume().value() as f64);
@@ -460,6 +554,8 @@ impl AudioEditorWidget {
             let volume_scale = volume_scale.clone();
             let ringtone_progress = ringtone_progress.clone();
             let read_button = read_button.clone();
+            let ringtone_signatures = ringtone_signatures.clone();
+            let custom_ringtone_files = custom_ringtone_files.clone();
 
             apply_ringtone_button.connect_clicked(move |_| {
                 let addr = *connected_address.lock().unwrap_or_else(|p| {
@@ -471,7 +567,7 @@ impl AudioEditorWidget {
                     return;
                 };
                 let selected = ringtone_dropdown.selected() as usize;
-                let signature = RINGTONE_SIGNATURES[selected];
+                let signature = ringtone_signatures[selected];
                 let volume = match Volume::new(volume_scale.value() as u8) {
                     Ok(v) => v,
                     Err(e) => {
@@ -480,7 +576,17 @@ impl AudioEditorWidget {
                     }
                 };
 
-                let pcm_data = builtin_ringtone_pcm(signature).map(|d| d.to_vec());
+                let pcm_data = if let Some(path) = custom_ringtone_files.get(&signature.bytes()) {
+                    match std::fs::read(path) {
+                        Ok(data) => Some(extract_pcm_from_wav(&data).to_vec()),
+                        Err(e) => {
+                            status_label.set_label(&format!("Failed to read custom ringtone: {e}"));
+                            return;
+                        }
+                    }
+                } else {
+                    builtin_ringtone_pcm(signature).map(|d| d.to_vec())
+                };
                 let is_builtin = pcm_data.is_some();
 
                 if is_builtin {
@@ -677,6 +783,8 @@ impl AudioEditorWidget {
             manager,
             runtime,
             connected_address,
+            custom_ringtone_files,
+            ringtone_signatures,
         }
     }
 }
