@@ -8,6 +8,8 @@ use cgd1_rs::MacAddress;
 use std::sync::Arc;
 use std::sync::mpsc::TryRecvError;
 
+use crate::dialog::TimeEntry;
+
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
@@ -15,7 +17,7 @@ use gtk4::Label;
 use gtk4::Orientation;
 use gtk4::ScrolledWindow;
 use gtk4::Separator;
-use gtk4::SpinButton;
+use gtk4::Switch;
 use gtk4::ToggleButton;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -32,7 +34,7 @@ pub struct AlarmEditorWidget {
     /// Refresh button.
     pub refresh_button: Button,
     /// Row widgets for reading alarm state back from device.
-    row_widgets: Vec<(SpinButton, SpinButton, ToggleButton, ToggleButton, ToggleButton, Vec<ToggleButton>)>,
+    row_widgets: Vec<(TimeEntry, Switch, ToggleButton, ToggleButton, Vec<ToggleButton>)>,
     /// Clock manager for device communication.
     manager: Arc<ClockManager>,
     /// Async runtime.
@@ -44,9 +46,8 @@ pub struct AlarmEditorWidget {
 /// Widgets for a single alarm row.
 #[derive(Clone)]
 struct AlarmRowWidgets {
-    hour_spin: SpinButton,
-    minute_spin: SpinButton,
-    enabled_toggle: ToggleButton,
+    time_entry: TimeEntry,
+    enabled_switch: Switch,
     snooze_toggle: ToggleButton,
     once_toggle: ToggleButton,
     day_toggles: Vec<ToggleButton>,
@@ -109,9 +110,8 @@ impl AlarmEditorWidget {
             let runtime_set = runtime.clone();
             let connected_address_set = connected_address.clone();
             let status_label_set = status_label.clone();
-            let hour_spin = widgets.hour_spin.clone();
-            let minute_spin = widgets.minute_spin.clone();
-            let enabled_toggle = widgets.enabled_toggle.clone();
+            let time_entry = widgets.time_entry.clone();
+            let enabled_switch = widgets.enabled_switch.clone();
             let snooze_toggle = widgets.snooze_toggle.clone();
             let once_toggle = widgets.once_toggle.clone();
             let day_toggles = widgets.day_toggles.clone();
@@ -125,9 +125,11 @@ impl AlarmEditorWidget {
                     status_label_set.set_label("No device connected");
                     return;
                 };
-                let hour = hour_spin.value() as u8;
-                let minute = minute_spin.value() as u8;
-                let enabled = enabled_toggle.is_active();
+                let Some((hour, minute)) = time_entry.get_time() else {
+                    status_label_set.set_label("Invalid time");
+                    return;
+                };
+                let enabled = enabled_switch.is_active();
                 let snooze = snooze_toggle.is_active();
                 let repeat_mask = if once_toggle.is_active() {
                     DayMask::ONCE
@@ -221,13 +223,12 @@ impl AlarmEditorWidget {
             });
         }
 
-        let row_widgets: Vec<(SpinButton, SpinButton, ToggleButton, ToggleButton, ToggleButton, Vec<ToggleButton>)> = rows
+        let row_widgets: Vec<(TimeEntry, Switch, ToggleButton, ToggleButton, Vec<ToggleButton>)> = rows
             .iter()
             .map(|(_, w)| {
                 (
-                    w.hour_spin.clone(),
-                    w.minute_spin.clone(),
-                    w.enabled_toggle.clone(),
+                    w.time_entry.clone(),
+                    w.enabled_switch.clone(),
                     w.snooze_toggle.clone(),
                     w.once_toggle.clone(),
                     w.day_toggles.clone(),
@@ -255,9 +256,8 @@ impl AlarmEditorWidget {
                 .iter()
                 .map(|(_, w)| {
                     (
-                        w.hour_spin.clone(),
-                        w.minute_spin.clone(),
-                        w.enabled_toggle.clone(),
+                        w.time_entry.clone(),
+                        w.enabled_switch.clone(),
                         w.snooze_toggle.clone(),
                         w.once_toggle.clone(),
                         w.day_toggles.clone(),
@@ -291,12 +291,11 @@ impl AlarmEditorWidget {
                     Ok(result) => {
                         match result {
                             Ok(slots) => {
-                                for (i, (hour, minute, enabled, snooze, once, days)) in row_widgets.iter().enumerate() {
+                                for (i, (time_entry, enabled, snooze, once, days)) in row_widgets.iter().enumerate() {
                                     let slot_alarm = slots.iter().find(|s| s.index.value() as usize == i);
                                     match slot_alarm {
                                         Some(s) => {
-                                            hour.set_value(s.entry.hour() as f64);
-                                            minute.set_value(s.entry.minute() as f64);
+                                            time_entry.set_time(s.entry.hour(), s.entry.minute());
                                             enabled.set_active(s.entry.enabled());
                                             snooze.set_active(s.entry.snooze());
                                             let mask = s.entry.repeat_mask().value();
@@ -358,12 +357,11 @@ impl AlarmEditorWidget {
             Ok(result) => {
                 match result {
                     Ok(slots) => {
-                        for (i, (hour, minute, enabled, snooze, once, days)) in row_widgets.iter().enumerate() {
+                        for (i, (time_entry, enabled, snooze, once, days)) in row_widgets.iter().enumerate() {
                             let slot_alarm = slots.iter().find(|s| s.index.value() as usize == i);
                             match slot_alarm {
                                 Some(s) => {
-                                    hour.set_value(s.entry.hour() as f64);
-                                    minute.set_value(s.entry.minute() as f64);
+                                    time_entry.set_time(s.entry.hour(), s.entry.minute());
                                     enabled.set_active(s.entry.enabled());
                                     snooze.set_active(s.entry.snooze());
                                     let mask = s.entry.repeat_mask().value();
@@ -398,26 +396,18 @@ impl AlarmEditorWidget {
 fn create_alarm_row() -> (Box, AlarmRowWidgets) {
     let row = Box::builder().orientation(Orientation::Horizontal).spacing(4).build();
 
-    let enabled_toggle = ToggleButton::builder().label("On").build();
-    enabled_toggle.set_active(false);
-    row.append(&enabled_toggle);
+    let enabled_switch = Switch::builder().tooltip_text("Enable alarm").build();
+    enabled_switch.set_active(false);
+    row.append(&enabled_switch);
 
-    let hour_spin = SpinButton::with_range(0.0, 23.0, 1.0);
-    hour_spin.set_value(7.0);
-    row.append(&hour_spin);
+    let time_entry = TimeEntry::new();
+    row.append(time_entry.widget());
 
-    let colon_label = Label::builder().label(":").build();
-    row.append(&colon_label);
-
-    let minute_spin = SpinButton::with_range(0.0, 59.0, 1.0);
-    minute_spin.set_value(30.0);
-    row.append(&minute_spin);
-
-    let snooze_toggle = ToggleButton::builder().label("Snooze").build();
+    let snooze_toggle = ToggleButton::builder().icon_name("nf-iec-sleep-mode-symbolic").tooltip_text("Snooze").build();
     snooze_toggle.set_active(true);
     row.append(&snooze_toggle);
 
-    let once_toggle = ToggleButton::builder().label("Once").build();
+    let once_toggle = ToggleButton::builder().icon_name("nf-cod-calendar-symbolic").tooltip_text("Once").build();
     once_toggle.set_active(true);
     row.append(&once_toggle);
 
@@ -450,16 +440,15 @@ fn create_alarm_row() -> (Box, AlarmRowWidgets) {
     let spacer = Box::builder().hexpand(true).build();
     row.append(&spacer);
 
-    let set_button = Button::builder().label("Set").css_classes(["suggested-action"]).build();
+    let set_button = Button::builder().icon_name("nf-cod-check-symbolic").tooltip_text("Set").css_classes(["suggested-action"]).build();
     row.append(&set_button);
 
-    let delete_button = Button::builder().label("Del").css_classes(["destructive-action"]).build();
+    let delete_button = Button::builder().icon_name("nf-cod-trash-symbolic").tooltip_text("Del").css_classes(["destructive-action"]).build();
     row.append(&delete_button);
 
     let widgets = AlarmRowWidgets {
-        hour_spin,
-        minute_spin,
-        enabled_toggle,
+        time_entry,
+        enabled_switch,
         snooze_toggle,
         once_toggle,
         day_toggles,

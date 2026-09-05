@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use cgd1_rs::MacAddress;
+
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
@@ -8,58 +11,75 @@ use gtk4::ColumnView;
 use gtk4::ColumnViewColumn;
 use gtk4::Label;
 use gtk4::Orientation;
-use gtk4::Window;
 use gtk4::gio;
+use gtk4::glib;
 use gtk4::prelude::*;
 
 use crate::device_runtime_state::DeviceRuntimeState;
 
-/// Sensor overview dialog showing a table of all known devices and their sensor data.
+/// Reusable sensor overview widget - can be embedded in the main window or a dialog.
 #[allow(dead_code)]
-pub struct SensorOverviewDialog {
-    window: Window,
+pub struct SensorOverviewWidget {
+    /// The container box holding all sensor overview content.
+    pub container: Box,
+    /// Refresh button.
+    pub refresh_button: Button,
+    /// The ListStore backing the column view.
+    model: gio::ListStore,
 }
 
-impl SensorOverviewDialog {
-    /// Create and show the sensor overview dialog.
-    pub fn new(parent: &Window, device_states: &HashMap<MacAddress, DeviceRuntimeState>, known_devices: &[MacAddress]) -> Self {
-        let window = gtk4::Window::builder()
-            .title("Sensor Overview - Alarm Clock CGD1")
-            .transient_for(parent)
-            .modal(true)
-            .default_width(500)
-            .default_height(360)
-            .build();
-
-        let main_box = Box::builder()
+impl SensorOverviewWidget {
+    /// Build the sensor overview content (without window chrome).
+    pub fn new(
+        device_states: Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
+        known_devices: Arc<Mutex<Vec<MacAddress>>>,
+    ) -> Self {
+        let container = Box::builder()
             .orientation(Orientation::Vertical)
-            .spacing(12)
-            .margin_top(12)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
+            .spacing(8)
+            .margin_top(8)
+            .margin_bottom(8)
+            .margin_start(8)
+            .margin_end(8)
             .build();
 
         let (model, column_view) = build_column_view();
-        populate_model(&model, device_states, known_devices);
-        main_box.append(&column_view);
+        container.append(&column_view);
 
         let button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(Align::End).build();
+        let refresh_button = Button::builder().label("Refresh").build();
+        button_box.append(&refresh_button);
+        container.append(&button_box);
 
-        let close_button = Button::builder().label("Close").build();
+        let widget = Self {
+            container,
+            refresh_button: refresh_button.clone(),
+            model: model.clone(),
+        };
 
-        let win = window.clone();
-        close_button.connect_clicked(move |_| {
-            win.close();
-        });
+        // Initial populate
+        widget.populate(&device_states, &known_devices);
 
-        button_box.append(&close_button);
-        main_box.append(&button_box);
+        // Refresh button
+        {
+            let model = model.clone();
+            let device_states = device_states.clone();
+            let known_devices = known_devices.clone();
+            refresh_button.connect_clicked(move |_| {
+                populate_model(&model, &device_states, &known_devices);
+            });
+        }
 
-        window.set_child(Some(&main_box));
-        window.present();
+        widget
+    }
 
-        Self { window }
+    /// Populate the model from the current device states and known devices.
+    pub fn populate(
+        &self,
+        device_states: &Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
+        known_devices: &Arc<Mutex<Vec<MacAddress>>>,
+    ) {
+        populate_model(&self.model, device_states, known_devices);
     }
 }
 
@@ -69,6 +89,8 @@ fn build_column_view() -> (gio::ListStore, ColumnView) {
 
     let selection_model = gtk4::SingleSelection::new(Some(model.clone()));
     let column_view = ColumnView::new(Some(selection_model));
+    column_view.set_hexpand(true);
+    column_view.set_vexpand(true);
 
     let addr_col = build_text_column("MAC Address", |item| item.address());
     let temp_col = build_text_column("Temp", |item| item.temperature());
@@ -116,9 +138,16 @@ where
 }
 
 /// Populate the ListStore from device_states and known_devices.
-fn populate_model(model: &gio::ListStore, device_states: &HashMap<MacAddress, DeviceRuntimeState>, known_devices: &[MacAddress]) {
-    for addr in known_devices {
-        let state = device_states.get(addr);
+fn populate_model(
+    model: &gio::ListStore,
+    device_states: &Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
+    known_devices: &Arc<Mutex<Vec<MacAddress>>>,
+) {
+    model.remove_all();
+    let states = device_states.lock().unwrap_or_else(|p| p.into_inner());
+    let known = known_devices.lock().unwrap_or_else(|p| p.into_inner());
+    for addr in known.iter() {
+        let state = states.get(addr);
         let item = DeviceRowItem::new(addr, state);
         model.append(&item);
     }
@@ -157,8 +186,6 @@ mod imp {
     impl ObjectImpl for DeviceRowItem {}
 }
 
-use gtk4::glib;
-
 glib::wrapper! {
     pub struct DeviceRowItem(ObjectSubclass<imp::DeviceRowItem>);
 }
@@ -167,9 +194,9 @@ impl DeviceRowItem {
     fn new(addr: &MacAddress, state: Option<&DeviceRuntimeState>) -> Self {
         let (temperature, humidity, battery) = match state {
             Some(s) => (
-                s.temperature.map_or("--".to_string(), |t| format!("{:.1} °C", t)),
-                s.humidity.map_or("--".to_string(), |h| format!("{:.0} %", h)),
-                s.battery_level.map_or("--".to_string(), |b| format!("{:.0} %", b)),
+                s.temperature.map_or("--".to_string(), |t| format!("{:.1} °C", t.value())),
+                s.humidity.map_or("--".to_string(), |h| format!("{:.0} %", h.value())),
+                s.battery_level.map_or("--".to_string(), |b| format!("{:.0} %", b.value())),
             ),
             None => ("--".to_string(), "--".to_string(), "--".to_string()),
         };

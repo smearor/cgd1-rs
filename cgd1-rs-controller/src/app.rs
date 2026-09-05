@@ -1,8 +1,4 @@
-use crate::dialog::AlarmsDialog;
-use crate::dialog::AudioDialog;
 use crate::dialog::InfoDialog;
-use crate::dialog::SensorOverviewDialog;
-use crate::dialog::SettingsDialog;
 use crate::window::MainWindow;
 use cgd1_rs::Backend;
 use cgd1_rs::TokenStore;
@@ -32,11 +28,15 @@ impl ClockControllerApp {
     pub fn run(&self) {
         let backend = self.backend;
         self.app.connect_activate(clone!(move |app| {
+            nerd_fonts_gtk::init(None);
+            if let Some(display) = gtk4::gdk::Display::default() {
+                gtk4::IconTheme::for_display(&display).add_resource_path("/com/nerd/icons");
+            }
+
             let window = MainWindow::new(app, backend);
             window.present();
 
             let manager = window.manager().clone();
-            let runtime = window.runtime().clone();
             let connected_address = window.selected_address_arc();
 
             // Ensure the process exits when the window is closed.
@@ -45,43 +45,8 @@ impl ClockControllerApp {
                 std::process::exit(0);
             });
 
-            let manager_alarms = manager.clone();
-            let runtime_alarms = runtime.clone();
-            let connected_address_alarms = connected_address.clone();
-            add_action(app, "alarms", window.window(), move |w| {
-                let _ = AlarmsDialog::new(w, manager_alarms.clone(), runtime_alarms.clone(), connected_address_alarms.clone());
-            });
-            let manager_settings = manager.clone();
-            let runtime_settings = runtime.clone();
-            let connected_address_settings = connected_address.clone();
-            add_action(app, "settings", window.window(), move |w| {
-                let _ = SettingsDialog::new(w, manager_settings.clone(), runtime_settings.clone(), connected_address_settings.clone());
-            });
-            add_action(app, "audio", window.window(), |w| {
-                let _ = AudioDialog::new(w);
-            });
             add_action(app, "info", window.window(), |w| {
                 let _ = InfoDialog::new(w);
-            });
-
-            let device_states_overview = window.device_states_arc();
-            let known_devices_overview = window.known_devices_arc();
-            add_action(app, "sensor_overview", window.window(), move |w| {
-                let states = device_states_overview
-                    .lock()
-                    .unwrap_or_else(|p| {
-                        warn!("mutex poisoned - recovering");
-                        p.into_inner()
-                    })
-                    .clone();
-                let known = known_devices_overview
-                    .lock()
-                    .unwrap_or_else(|p| {
-                        warn!("mutex poisoned - recovering");
-                        p.into_inner()
-                    })
-                    .clone();
-                let _ = SensorOverviewDialog::new(w, &states, &known);
             });
 
             let token_store_reset = window.token_store_arc();

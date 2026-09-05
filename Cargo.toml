@@ -28,6 +28,7 @@ glib = "0.22"
 gtk4 = "0.11"
 hex = "0.4"
 miette = { version = "7", features = ["fancy"] }
+nerd-fonts-gtk = { path = "../nerd-fonts-gtk" }
 rand = "0.10"
 rustyline = "18"
 serde = { version = "1", features = ["derive"] }
