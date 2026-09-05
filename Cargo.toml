@@ -21,7 +21,7 @@ axum = { version = "0.8", features = ["ws"] }
 btleplug = "0.13"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
-dirs = "6"
+dirs = "7"
 futures = "0.3"
 gio = "0.22"
 glib = "0.22"
