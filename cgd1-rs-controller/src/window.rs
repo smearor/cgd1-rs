@@ -42,9 +42,9 @@ use crate::config::ConfigStore;
 use crate::device_runtime_state::DeviceRuntimeState;
 use crate::dialog::AlarmEditorWidget;
 use crate::dialog::AudioEditorWidget;
-use crate::dialog::SensorOverviewWidget;
 use crate::dialog::DisplayEditorWidget;
 use crate::dialog::RegionEditorWidget;
+use crate::dialog::SensorOverviewWidget;
 use crate::display::SevenSegmentDisplay;
 
 /// CSS for the main window layout.

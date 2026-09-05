@@ -102,10 +102,13 @@ impl ConfigStore {
 
     /// Get the current config value for blink_on_connect.
     pub fn blink_on_connect(&self) -> bool {
-        self.config.lock().unwrap_or_else(|p| {
-            warn!("config mutex poisoned - recovering");
-            p.into_inner()
-        }).blink_on_connect
+        self.config
+            .lock()
+            .unwrap_or_else(|p| {
+                warn!("config mutex poisoned - recovering");
+                p.into_inner()
+            })
+            .blink_on_connect
     }
 
     /// Set blink_on_connect and persist to disk.
@@ -138,9 +141,7 @@ mod tests {
         let path = dir.join("config.toml");
 
         let store = ConfigStore {
-            config: Arc::new(Mutex::new(AppConfig {
-                blink_on_connect: false,
-            })),
+            config: Arc::new(Mutex::new(AppConfig { blink_on_connect: false })),
             path: path.clone(),
         };
         store.save();
