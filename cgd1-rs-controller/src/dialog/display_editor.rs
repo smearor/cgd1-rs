@@ -24,6 +24,7 @@ use super::TimeEntry;
 use super::common::settings_frame;
 use super::common::settings_row;
 use crate::config::ConfigStore;
+use crate::config::TimeBasedBlink;
 
 /// Display editor widget for brightness, night brightness, screen timeout, and night mode.
 #[allow(dead_code)]
@@ -128,6 +129,25 @@ impl DisplayEditorWidget {
         blink_row.append(&blink_switch);
         blink_row.append(&Box::builder().hexpand(true).build());
         display_box.append(&blink_row);
+
+        let time_blink_row = settings_row("Time-Based Blink");
+        let time_blink_scale = Scale::with_range(Orientation::Horizontal, 0.0, 4.0, 1.0);
+        time_blink_scale.set_value(config_store.time_based_blink().index() as f64);
+        time_blink_scale.set_digits(0);
+        time_blink_scale.set_round_digits(0);
+        time_blink_scale.set_hexpand(true);
+        time_blink_scale.set_draw_value(false);
+        for variant in TimeBasedBlink::ALL {
+            time_blink_scale.add_mark(variant.index() as f64, gtk4::PositionType::Bottom, Some(variant.label()));
+        }
+        let time_blink_config = config_store.clone();
+        time_blink_scale.connect_value_changed(move |scale| {
+            if let Some(variant) = TimeBasedBlink::from_index(scale.value() as usize) {
+                time_blink_config.set_time_based_blink(variant);
+            }
+        });
+        time_blink_row.append(&time_blink_scale);
+        display_box.append(&time_blink_row);
 
         display_frame.set_child(Some(&display_box));
         content.append(&display_frame);

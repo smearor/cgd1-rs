@@ -2,30 +2,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use serde::Deserialize;
-use serde::Serialize;
 use tracing::debug;
 use tracing::warn;
 
-/// Application configuration persisted to `~/.config/cgd1-rs/config.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppConfig {
-    /// Whether to play the triple-blink visual feedback when connecting.
-    #[serde(default = "default_blink_on_connect")]
-    pub blink_on_connect: bool,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            blink_on_connect: default_blink_on_connect(),
-        }
-    }
-}
-
-fn default_blink_on_connect() -> bool {
-    true
-}
+use crate::config::AppConfig;
+use crate::config::TimeBasedBlink;
 
 /// Thread-safe shared configuration with automatic persistence.
 #[derive(Clone)]
@@ -122,17 +103,34 @@ impl ConfigStore {
         }
         self.save();
     }
+
+    /// Get the current config value for time_based_blink.
+    pub fn time_based_blink(&self) -> TimeBasedBlink {
+        self.config
+            .lock()
+            .unwrap_or_else(|p| {
+                warn!("config mutex poisoned - recovering");
+                p.into_inner()
+            })
+            .time_based_blink
+    }
+
+    /// Set time_based_blink and persist to disk.
+    pub fn set_time_based_blink(&self, value: TimeBasedBlink) {
+        {
+            let mut config = self.config.lock().unwrap_or_else(|p| {
+                warn!("config mutex poisoned - recovering");
+                p.into_inner()
+            });
+            config.time_based_blink = value;
+        }
+        self.save();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn default_has_blink_enabled() {
-        let config = AppConfig::default();
-        assert!(config.blink_on_connect);
-    }
 
     #[test]
     fn config_roundtrip() {
@@ -141,13 +139,17 @@ mod tests {
         let path = dir.join("config.toml");
 
         let store = ConfigStore {
-            config: Arc::new(Mutex::new(AppConfig { blink_on_connect: false })),
+            config: Arc::new(Mutex::new(AppConfig {
+                blink_on_connect: false,
+                time_based_blink: TimeBasedBlink::Hourly,
+            })),
             path: path.clone(),
         };
         store.save();
 
         let loaded = ConfigStore::load_from(&path);
         assert!(!loaded.blink_on_connect);
+        assert_eq!(loaded.time_based_blink, TimeBasedBlink::Hourly);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

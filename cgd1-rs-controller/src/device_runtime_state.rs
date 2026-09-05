@@ -1,5 +1,5 @@
 use std::time::Instant;
-
+use tokio::task::JoinHandle;
 use cgd1_rs::BatteryLevel;
 use cgd1_rs::Humidity;
 use cgd1_rs::Temperature;
@@ -8,7 +8,6 @@ use cgd1_rs::Temperature;
 ///
 /// Each connected device has its own `DeviceRuntimeState` entry, allowing
 /// the UI to switch between devices without losing sensor data.
-#[derive(Clone)]
 pub struct DeviceRuntimeState {
     /// Whether the device is currently connected.
     pub connected: bool,
@@ -20,6 +19,8 @@ pub struct DeviceRuntimeState {
     pub humidity: Option<Humidity>,
     /// Last known battery level percentage (0–100).
     pub battery_level: Option<BatteryLevel>,
+    /// Handle for the time-based blink task, aborted on disconnect.
+    pub time_based_blink_handle: Option<JoinHandle<()>>,
 }
 
 impl DeviceRuntimeState {
@@ -30,6 +31,7 @@ impl DeviceRuntimeState {
             temperature: None,
             humidity: None,
             battery_level: None,
+            time_based_blink_handle: None,
         }
     }
 }
