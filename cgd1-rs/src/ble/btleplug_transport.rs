@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,12 +9,10 @@ use btleplug::api::Characteristic;
 use btleplug::api::Manager as BtleplugManager;
 use btleplug::api::Peripheral as BtleplugPeripheralApi;
 use btleplug::api::ScanFilter;
-use btleplug::api::ValueNotification;
 use btleplug::api::WriteType;
 use btleplug::platform::Adapter;
 use btleplug::platform::Manager;
 use btleplug::platform::Peripheral;
-use futures::Stream;
 use futures::stream::StreamExt;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -30,23 +27,16 @@ use uuid::Uuid;
 
 use crate::ble::advertisement::AdvertisementData;
 use crate::ble::characteristic::CharacteristicUuid;
+use crate::ble::device_entry::DeviceEntry;
 use crate::ble::notification::BleNotification;
+use crate::ble::notification_channel::NotificationChannel;
+use crate::ble::notification_channel::SharedNotificationChannel;
 use crate::ble::transport::BleTransport;
 use crate::ble::transport_state::ScanState;
 use crate::error::ClockError;
 use crate::error::Result;
 use crate::error::TransportError;
 use crate::types::MacAddress;
-
-type NotificationStream = Pin<Box<dyn Stream<Item = ValueNotification> + Send>>;
-
-/// Per-device notification channel: GATT value stream + disconnect signal.
-struct NotificationChannel {
-    stream: NotificationStream,
-    disconnect_rx: watch::Receiver<bool>,
-}
-
-type SharedNotificationChannel = Arc<Mutex<NotificationChannel>>;
 
 /// btleplug implementation of [`BleTransport`].
 ///
@@ -55,9 +45,13 @@ type SharedNotificationChannel = Arc<Mutex<NotificationChannel>>;
 /// peripheral, characteristics, and notification stream. Scanning is
 /// global (shared across all devices).
 pub struct BtleplugTransport {
+    /// The btleplug Bluetooth adapter used for all BLE operations.
     adapter: Adapter,
+    /// Shared scan state, including the current service-data filter UUID.
     scan_state: Mutex<ScanState>,
+    /// Per-device connection entries (peripheral + characteristics), keyed by MAC address.
     connections: Mutex<HashMap<MacAddress, DeviceEntry>>,
+    /// Per-device notification channels (GATT stream + disconnect signal), keyed by MAC address.
     notification_streams: Mutex<HashMap<MacAddress, SharedNotificationChannel>>,
     /// Per-device disconnect signal. Sending `true` wakes `next_notification`.
     disconnect_watchers: Mutex<HashMap<MacAddress, watch::Sender<bool>>>,
@@ -67,12 +61,6 @@ pub struct BtleplugTransport {
     advertisement_rx: Mutex<mpsc::UnboundedReceiver<AdvertisementData>>,
     /// Handle to the event monitor task so it can be aborted on drop.
     event_monitor_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
-}
-
-/// Per-device connection entry holding the peripheral and characteristics.
-struct DeviceEntry {
-    peripheral: Peripheral,
-    characteristics: HashMap<Uuid, Characteristic>,
 }
 
 impl BtleplugTransport {
