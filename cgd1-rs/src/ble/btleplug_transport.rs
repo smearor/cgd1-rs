@@ -18,6 +18,10 @@ use btleplug::platform::Peripheral;
 use futures::Stream;
 use futures::stream::StreamExt;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
 use tracing::debug;
 use tracing::info;
 use tracing::trace;
@@ -35,8 +39,14 @@ use crate::error::TransportError;
 use crate::types::MacAddress;
 
 type NotificationStream = Pin<Box<dyn Stream<Item = ValueNotification> + Send>>;
-type SharedNotificationStream = Arc<Mutex<NotificationStream>>;
-type EventStream = Pin<Box<dyn Stream<Item = CentralEvent> + Send>>;
+
+/// Per-device notification channel: GATT value stream + disconnect signal.
+struct NotificationChannel {
+    stream: NotificationStream,
+    disconnect_rx: watch::Receiver<bool>,
+}
+
+type SharedNotificationChannel = Arc<Mutex<NotificationChannel>>;
 
 /// btleplug implementation of [`BleTransport`].
 ///
@@ -47,9 +57,16 @@ type EventStream = Pin<Box<dyn Stream<Item = CentralEvent> + Send>>;
 pub struct BtleplugTransport {
     adapter: Adapter,
     scan_state: Mutex<ScanState>,
-    event_stream: Mutex<Option<EventStream>>,
     connections: Mutex<HashMap<MacAddress, DeviceEntry>>,
-    notification_streams: Mutex<HashMap<MacAddress, SharedNotificationStream>>,
+    notification_streams: Mutex<HashMap<MacAddress, SharedNotificationChannel>>,
+    /// Per-device disconnect signal. Sending `true` wakes `next_notification`.
+    disconnect_watchers: Mutex<HashMap<MacAddress, watch::Sender<bool>>>,
+    /// Maps btleplug `PeripheralId` string to our `MacAddress` for event routing.
+    id_to_address: Mutex<HashMap<String, MacAddress>>,
+    /// Advertisement channel fed by the event monitor task.
+    advertisement_rx: Mutex<mpsc::UnboundedReceiver<AdvertisementData>>,
+    /// Handle to the event monitor task so it can be aborted on drop.
+    event_monitor_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 /// Per-device connection entry holding the peripheral and characteristics.
@@ -60,17 +77,141 @@ struct DeviceEntry {
 
 impl BtleplugTransport {
     /// Create a new transport by selecting the first available Bluetooth adapter.
-    pub async fn new() -> Result<Self> {
+    ///
+    /// Returns `Arc<Self>` because an event monitor task is spawned that holds
+    /// a reference to the transport for the lifetime of the object.
+    pub async fn new() -> Result<Arc<Self>> {
         let manager = Manager::new().await.map_err(ClockError::from)?;
         let adapters = manager.adapters().await.map_err(ClockError::from)?;
         let adapter = adapters.into_iter().next().ok_or(TransportError::NoAdapter)?;
-        Ok(Self {
+
+        let (advertisement_tx, advertisement_rx) = mpsc::unbounded_channel();
+
+        let transport = Arc::new(Self {
             adapter,
             scan_state: Mutex::new(ScanState::new()),
-            event_stream: Mutex::new(None),
             connections: Mutex::new(HashMap::new()),
             notification_streams: Mutex::new(HashMap::new()),
-        })
+            disconnect_watchers: Mutex::new(HashMap::new()),
+            id_to_address: Mutex::new(HashMap::new()),
+            advertisement_rx: Mutex::new(advertisement_rx),
+            event_monitor_handle: std::sync::Mutex::new(None),
+        });
+
+        // Spawn the event monitor task that owns the adapter event stream.
+        let handle = tokio::spawn(Self::event_monitor_task(Arc::clone(&transport), advertisement_tx));
+        *transport.event_monitor_handle.lock().unwrap() = Some(handle);
+
+        Ok(transport)
+    }
+
+    /// Background task that owns the `adapter.events()` stream.
+    ///
+    /// Forwards `ServiceDataAdvertisement` events to the advertisement channel
+    /// for `next_advertisement` consumers. Handles `DeviceDisconnected` by
+    /// cleaning up internal state and signalling `next_notification` via the
+    /// per-device watch channel — this is how silent BLE disconnects (e.g.
+    /// after an alarm) are detected without relying on the notification stream
+    /// itself.
+    async fn event_monitor_task(transport: Arc<Self>, advertisement_tx: mpsc::UnboundedSender<AdvertisementData>) {
+        let events = match transport.adapter.events().await {
+            Ok(events) => events,
+            Err(e) => {
+                warn!(error = %e, "event monitor: failed to get adapter event stream, task exiting");
+                return;
+            }
+        };
+        let mut stream = Box::pin(events);
+        debug!("event monitor task started");
+
+        while let Some(event) = stream.next().await {
+            match event {
+                CentralEvent::ServiceDataAdvertisement { service_data, .. } => {
+                    let filter_uuid = {
+                        let scan_state = transport.scan_state.lock().await;
+                        scan_state.scan_filter_uuid
+                    };
+                    if let Some(filter_uuid) = filter_uuid
+                        && let Some(payload) = service_data.get(&filter_uuid)
+                        && let Ok(data) = AdvertisementData::parse(payload)
+                    {
+                        debug!(
+                            mac = %data.mac,
+                            temp = data.temperature.value(),
+                            humidity = data.humidity.value(),
+                            battery = data.battery.value(),
+                            payload_len = payload.len(),
+                            "advertisement matched filter"
+                        );
+                        let _ = advertisement_tx.send(data);
+                    }
+                }
+                CentralEvent::DeviceDisconnected(id) => {
+                    let id_str = id.to_string();
+                    let address = {
+                        let map = transport.id_to_address.lock().await;
+                        map.get(&id_str).copied()
+                    };
+                    if let Some(address) = address {
+                        warn!(%address, "DeviceDisconnected event from BlueZ, cleaning up");
+                        transport.cleanup_connection(&address).await;
+                    } else {
+                        debug!(id = %id_str, "DeviceDisconnected for unknown device, ignoring");
+                    }
+                }
+                CentralEvent::DeviceConnected(id) => {
+                    debug!(id = %id, "DeviceConnected event from BlueZ");
+                }
+                CentralEvent::DeviceDiscovered(id) => {
+                    debug!(id = %id, "DeviceDiscovered event from BlueZ");
+                }
+                CentralEvent::DeviceUpdated(id) => {
+                    debug!(id = %id, "DeviceUpdated event from BlueZ");
+                }
+                CentralEvent::ManufacturerDataAdvertisement { id, .. } => {
+                    trace!(id = %id, "ManufacturerDataAdvertisement (not matched)");
+                }
+                CentralEvent::ServicesAdvertisement { id, .. } => {
+                    trace!(id = %id, "ServicesAdvertisement (not matched)");
+                }
+                CentralEvent::StateUpdate(state) => {
+                    debug!(?state, "adapter state update");
+                }
+                _ => {
+                    trace!(event = ?event, "unhandled CentralEvent variant");
+                }
+            }
+        }
+        warn!("event monitor task: adapter event stream ended");
+    }
+
+    /// Remove all internal state for a device and signal its notification task.
+    ///
+    /// Called from the event monitor on `DeviceDisconnected`, or from
+    /// `disconnect()` after sending the signal explicitly.
+    async fn cleanup_connection(&self, address: &MacAddress) {
+        // Signal the notification task to stop waiting.
+        {
+            let mut watchers = self.disconnect_watchers.lock().await;
+            if let Some(sender) = watchers.remove(address) {
+                let _ = sender.send(true);
+            }
+        }
+        // Remove from id mapping.
+        {
+            let mut map = self.id_to_address.lock().await;
+            map.retain(|_, addr| addr != address);
+        }
+        // Remove from notification streams.
+        {
+            let mut streams = self.notification_streams.lock().await;
+            streams.remove(address);
+        }
+        // Remove from connections.
+        {
+            let mut connections = self.connections.lock().await;
+            connections.remove(address);
+        }
     }
 
     /// Look up the peripheral and characteristic for a connected device.
@@ -217,17 +358,8 @@ impl BleTransport for BtleplugTransport {
             scan_state.scan_filter_uuid = Some(filter_uuid);
         }
 
-        // Ensure the event stream exists before scanning starts.
-        {
-            let mut stream_guard = self.event_stream.lock().await;
-            if stream_guard.is_none() {
-                let events = self.adapter.events().await.map_err(ClockError::from)?;
-                *stream_guard = Some(Box::pin(events));
-            }
-        }
-
         // Start scanning with an empty filter - we filter manually in
-        // `next_advertisement` because `ScanFilter` matches advertised
+        // the event monitor task because `ScanFilter` matches advertised
         // service UUIDs, not service-data UUIDs.
         self.adapter.start_scan(ScanFilter::default()).await.map_err(ClockError::from)?;
         debug!("BLE scan started");
@@ -242,41 +374,8 @@ impl BleTransport for BtleplugTransport {
     }
 
     async fn next_advertisement(&self) -> Option<AdvertisementData> {
-        let filter_uuid = {
-            let scan_state = self.scan_state.lock().await;
-            scan_state.scan_filter_uuid
-        };
-        let filter_uuid = filter_uuid?;
-
-        loop {
-            let event = {
-                let mut stream_guard = self.event_stream.lock().await;
-                let stream = stream_guard.as_mut()?;
-                stream.next().await
-            };
-
-            match event {
-                Some(CentralEvent::ServiceDataAdvertisement { service_data, .. }) => {
-                    if let Some(payload) = service_data.get(&filter_uuid)
-                        && let Ok(data) = AdvertisementData::parse(payload)
-                    {
-                        debug!(
-                            mac = %data.mac,
-                            temp = data.temperature.value(),
-                            humidity = data.humidity.value(),
-                            battery = data.battery.value(),
-                            payload_len = payload.len(),
-                            "advertisement matched filter"
-                        );
-                        return Some(data);
-                    }
-                }
-                Some(ref ev) => {
-                    trace!(event = ?ev, "ignoring non-matching advertisement event");
-                }
-                _ => continue,
-            }
-        }
+        let mut rx = self.advertisement_rx.lock().await;
+        rx.recv().await
     }
 
     async fn connect(&self, address: &MacAddress) -> Result<()> {
@@ -322,9 +421,24 @@ impl BleTransport for BtleplugTransport {
         };
 
         debug!(%address, "peripheral found, connecting");
-        target.connect().await.map_err(ClockError::from)?;
+        let connect_timeout = Duration::from_secs(10);
+        match timeout(connect_timeout, target.connect()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(ClockError::from(e)),
+            Err(_) => {
+                warn!(%address, "connect timed out after 10s");
+                return Err(TransportError::ConnectionFailed { address: *address }.into());
+            }
+        }
         debug!(%address, "BLE connected, discovering services");
-        target.discover_services().await.map_err(ClockError::from)?;
+        match timeout(connect_timeout, target.discover_services()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(ClockError::from(e)),
+            Err(_) => {
+                warn!(%address, "discover_services timed out after 10s");
+                return Err(TransportError::ConnectionFailed { address: *address }.into());
+            }
+        }
 
         let mut characteristics = HashMap::new();
         for char in target.characteristics() {
@@ -334,6 +448,20 @@ impl BleTransport for BtleplugTransport {
         debug!(char_count = characteristics.len(), %address, "services discovered");
 
         let notifications = target.notifications().await.map_err(ClockError::from)?;
+
+        // Store PeripheralId → MacAddress mapping for the event monitor.
+        let peripheral_id = target.id().to_string();
+        {
+            let mut map = self.id_to_address.lock().await;
+            map.insert(peripheral_id, *address);
+        }
+
+        // Create disconnect watch channel for this device.
+        let (watch_tx, watch_rx) = watch::channel(false);
+        {
+            let mut watchers = self.disconnect_watchers.lock().await;
+            watchers.insert(*address, watch_tx);
+        }
 
         {
             let mut connections = self.connections.lock().await;
@@ -347,7 +475,13 @@ impl BleTransport for BtleplugTransport {
         }
         {
             let mut streams = self.notification_streams.lock().await;
-            streams.insert(*address, Arc::new(Mutex::new(Box::pin(notifications))));
+            streams.insert(
+                *address,
+                Arc::new(Mutex::new(NotificationChannel {
+                    stream: Box::pin(notifications),
+                    disconnect_rx: watch_rx,
+                })),
+            );
         }
 
         info!(%address, "BLE connection established");
@@ -360,10 +494,9 @@ impl BleTransport for BtleplugTransport {
             let mut connections = self.connections.lock().await;
             connections.remove(address)
         };
-        {
-            let mut streams = self.notification_streams.lock().await;
-            streams.remove(address);
-        }
+
+        // Signal the notification task and clean up watchers + id mapping.
+        self.cleanup_connection(address).await;
 
         if let Some(entry) = entry {
             // Timeout the peripheral disconnect - BlueZ can hang indefinitely
@@ -402,27 +535,50 @@ impl BleTransport for BtleplugTransport {
     }
 
     async fn next_notification(&self, address: &MacAddress) -> Option<BleNotification> {
-        let stream_arc = {
+        let channel_arc = {
             let streams = self.notification_streams.lock().await;
             streams.get(address).cloned()
         }?;
-        let mut stream = stream_arc.lock().await;
-        let notification = stream.next().await?;
-        let characteristic = match CharacteristicUuid::try_from(notification.uuid) {
-            Ok(c) => c,
-            Err(uuid) => {
-                warn!(%address, %uuid, len = notification.value.len(), data = %format_hex(&notification.value), "notification from unknown characteristic, skipping");
-                return self.next_notification(address).await;
+        let mut channel = channel_arc.lock().await;
+        let NotificationChannel {
+            ref mut stream,
+            ref mut disconnect_rx,
+        } = *channel;
+
+        // Race between the next GATT notification and a disconnect signal.
+        // The disconnect signal is sent by the event monitor task when BlueZ
+        // reports `DeviceDisconnected`, or by `disconnect()` for explicit teardown.
+        tokio::select! {
+            notification = stream.next() => {
+                let notification = notification?;
+                let characteristic = match CharacteristicUuid::try_from(notification.uuid) {
+                    Ok(c) => c,
+                    Err(uuid) => {
+                        warn!(%address, %uuid, len = notification.value.len(), data = %format_hex(&notification.value), "notification from unknown characteristic, skipping");
+                        drop(channel);
+                        return self.next_notification(address).await;
+                    }
+                };
+                debug!(
+                    %address,
+                    characteristic = %characteristic,
+                    len = notification.value.len(),
+                    data = %format_hex(&notification.value),
+                    "notification <- device"
+                );
+                Some(BleNotification::new(characteristic, notification.value))
             }
-        };
-        debug!(
-            %address,
-            characteristic = %characteristic,
-            len = notification.value.len(),
-            data = %format_hex(&notification.value),
-            "notification <- device"
-        );
-        Some(BleNotification::new(characteristic, notification.value))
+            _ = disconnect_rx.changed() => {
+                if *disconnect_rx.borrow() {
+                    debug!(%address, "disconnect signal received in next_notification");
+                    return None;
+                }
+                // False alarm (value was already true when channel was created).
+                // Continue waiting by recursing.
+                drop(channel);
+                self.next_notification(address).await
+            }
+        }
     }
 
     async fn read(&self, address: &MacAddress, characteristic: CharacteristicUuid) -> Result<Vec<u8>> {

@@ -72,6 +72,8 @@ sequenceDiagram
     Transport->>CGD1: BLE connection
     CGD1-->>Transport: Connected
     Manager->>Transport: subscribe(Auth/Data/Sensor Notify)
+    Manager->>Manager: spawn notification task
+    Manager->>Manager: set_token_store(token_store)
     Manager->>CGD1: authenticate(token)
     CGD1-->>Manager: Auth ACKs
     Manager->>CGD1: sync_timezone()
@@ -125,6 +127,21 @@ manager.disconnect(&mac).await?;
 ```
 
 This aborts the notification task (via `JoinHandle::abort()`) and tears down the BLE connection. Aborting the notification task is critical - without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.
+
+### Automatic Reconnection
+
+When the BLE connection drops (e.g., device goes out of range, battery dies, or alarm triggers a disconnect), the notification task automatically attempts reconnection with exponential backoff:
+
+1. **Disconnect detected** - The notification stream ends or a `CentralEvent::DeviceDisconnected` is received
+2. **Transport cleanup** - `transport.disconnect()` clears the connection state to avoid `AlreadyConnected` errors on retry
+3. **Reconnect attempts** - Up to 10 attempts with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped)
+4. **BLE connect + subscribe** - `reconnect_and_restore` reconnects and re-subscribes to all notify characteristics
+5. **Re-authentication** - A separate task re-authenticates using the stored token (spawned concurrently so the notification loop can process ACKs)
+6. **State recovery** - On success, `ClockEvent::Reconnected` is emitted
+
+The `connect()` call has a 10-second timeout to prevent hanging when the device is unavailable (e.g., during an alarm). The device typically becomes discoverable again ~15-20 seconds after an alarm-triggered disconnect.
+
+> **Note**: While the alarm is sounding, the CGD1 is not discoverable. Dismissing the alarm quickly allows faster reconnection.
 
 ### Virtual Backend (Testing)
 

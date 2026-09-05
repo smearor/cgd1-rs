@@ -129,6 +129,25 @@ The controller does **not** read battery from GATT (the CGD1's Battery Service c
 
 The device only advertises battery data when **not connected** and the button is held for 3 seconds. Periodic scans (every 60 seconds when disconnected) keep the cache fresh.
 
+### Bluetooth Icon States
+
+The Bluetooth icon in the top-right corner reflects the connection state:
+
+| State                     | CSS Class            | Visual                        | When                                                          |
+|---------------------------|----------------------|-------------------------------|---------------------------------------------------------------|
+| Disconnected              | `bluetooth-off`      | Dim gray, 40% opacity         | Initial state, after manual disconnect, after connect failure |
+| Connecting / Reconnecting | `bluetooth-blinking` | Blinking animation (1s cycle) | During initial connect, during automatic reconnect            |
+| Connected                 | *(none)*             | Full color, solid             | After successful connect or reconnect                         |
+
+The icon transitions through these states as follows:
+- **Initial** → `bluetooth-off`
+- **Connect switch toggled on** → `bluetooth-blinking`
+- **Connect succeeds** → solid (remove `bluetooth-blinking` and `bluetooth-off`)
+- **Connect fails** → `bluetooth-off`
+- **Manual disconnect** → `bluetooth-off`
+- **`ClockEvent::Disconnected` (auto)** → `bluetooth-blinking` (reconnect in progress)
+- **`ClockEvent::Reconnected`** → solid (remove `bluetooth-blinking` and `bluetooth-off`)
+
 ### Alarm Editing
 
 The alarm editor dialog shows all 16 slots in a list. Each row displays:

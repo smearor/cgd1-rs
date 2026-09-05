@@ -30,6 +30,10 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.2; }
 }
+.bluetooth-off {
+    color: #555555;
+    opacity: 0.4;
+}
 .summary-label {
     color: #00ff41;
     font-family: 'DSEG7 Classic', 'Courier New', monospace;
