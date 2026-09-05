@@ -51,6 +51,12 @@ const RESPONSE_TIMEOUT_SECS: u64 = 10;
 /// involve many sequential packets over a potentially slow BLE link.
 const AUDIO_ACK_TIMEOUT_SECS: u64 = 30;
 
+/// Maximum idle period (seconds) before treating the notification stream as
+/// silently disconnected. The CGD1 device sends sensor notifications roughly
+/// every second, so a 60s gap indicates the BLE link has been dropped without
+/// btleplug/BlueZ noticing.
+const NOTIFICATION_IDLE_TIMEOUT_SECS: u64 = 60;
+
 /// Audio data packet payload size (bytes).
 const AUDIO_PACKET_PAYLOAD_SIZE: usize = 128;
 
@@ -265,7 +271,8 @@ impl ClockDevice {
                 debug!(command = ?command, "send_and_wait: frame sent, waiting for ACK");
             }
             Ok(Err(e)) => {
-                warn!(command = ?command, error = %e, "send_and_wait: write failed");
+                warn!(command = ?command, error = %e, "send_and_wait: write failed, disconnecting to trigger reconnect");
+                let _ = self.transport.disconnect(&self.address).await;
                 return Err(e);
             }
             Err(_) => {
@@ -856,8 +863,38 @@ async fn notification_task(
 
     debug!(%address, "notification task started");
     loop {
-        match transport.next_notification(&address).await {
-            Some(notif) => {
+        match timeout(Duration::from_secs(NOTIFICATION_IDLE_TIMEOUT_SECS), transport.next_notification(&address)).await {
+            Err(_) => {
+                warn!(%address, "no notification for {}s, treating as silent disconnect", NOTIFICATION_IDLE_TIMEOUT_SECS);
+                let _ = event_sender.send(ClockEvent::Disconnected);
+                is_authenticated.store(false, Ordering::SeqCst);
+                if let Err(e) = transport.disconnect(&address).await {
+                    warn!(%address, "transport cleanup after idle timeout failed: {e:?}");
+                }
+                let device = ClockDevice {
+                    transport: transport.clone(),
+                    address,
+                    event_sender: event_sender.clone(),
+                    command_mutex: command_mutex.clone(),
+                    auth_token: auth_token.clone(),
+                    is_authenticated: is_authenticated.clone(),
+                    pending: pending.clone(),
+                    pending_data_response: pending_data_response.clone(),
+                    token_store: token_store.clone(),
+                    notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
+                };
+                match reconnect_and_restore(&device, 6).await {
+                    Ok(()) => {
+                        info!(%address, "reconnect successful after idle timeout, resuming notification task");
+                        continue;
+                    }
+                    Err(e) => {
+                        warn!(%address, "reconnect failed after idle timeout: {e:?}");
+                        break;
+                    }
+                }
+            }
+            Ok(Some(notif)) => {
                 let characteristic = notif.characteristic;
                 let value = notif.value;
                 debug!(%address, characteristic = %characteristic, len = value.len(), data = %format_hex(&value), "notification received");
@@ -918,7 +955,7 @@ async fn notification_task(
                     }
                 }
             }
-            None => {
+            Ok(None) => {
                 warn!("notification stream ended, device disconnected");
                 let _ = event_sender.send(ClockEvent::Disconnected);
                 is_authenticated.store(false, Ordering::SeqCst);
