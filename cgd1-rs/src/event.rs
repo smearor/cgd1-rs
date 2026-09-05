@@ -1,7 +1,7 @@
 use crate::AdvertisementData;
 use crate::command::AckStatus;
-use crate::command::CommandId;
 use crate::command::AlarmSlotIndex;
+use crate::command::CommandId;
 use crate::types::BatteryLevel;
 use crate::types::Humidity;
 use crate::types::Temperature;

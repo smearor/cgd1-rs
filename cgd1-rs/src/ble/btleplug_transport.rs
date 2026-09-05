@@ -99,13 +99,20 @@ impl BtleplugTransport {
             }
         }
         if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::Appearance).await {
-            if let Ok(data) = peripheral.read(&char).await && data.len() >= 2 {
+            if let Ok(data) = peripheral.read(&char).await
+                && data.len() >= 2
+            {
                 let appearance = u16::from_le_bytes([data[0], data[1]]);
                 debug!(%address, appearance = appearance, "GATT Appearance");
             }
         }
-        if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::PeripheralPreferredConnectionParameters).await {
-            if let Ok(data) = peripheral.read(&char).await && data.len() >= 8 {
+        if let Ok((peripheral, char)) = self
+            .lookup_peripheral_and_char(address, CharacteristicUuid::PeripheralPreferredConnectionParameters)
+            .await
+        {
+            if let Ok(data) = peripheral.read(&char).await
+                && data.len() >= 8
+            {
                 let min_interval = u16::from_le_bytes([data[0], data[1]]);
                 let max_interval = u16::from_le_bytes([data[2], data[3]]);
                 let slave_latency = u16::from_le_bytes([data[4], data[5]]);
@@ -121,7 +128,9 @@ impl BtleplugTransport {
             }
         }
         if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::PnpId).await {
-            if let Ok(data) = peripheral.read(&char).await && data.len() >= 7 {
+            if let Ok(data) = peripheral.read(&char).await
+                && data.len() >= 7
+            {
                 let vendor_id_source = data[0];
                 let vendor_id = u16::from_le_bytes([data[1], data[2]]);
                 let product_id = u16::from_le_bytes([data[3], data[4]]);
@@ -152,7 +161,12 @@ impl BtleplugTransport {
         let unknown_uuids: Vec<Uuid> = {
             let connections = self.connections.lock().await;
             let Some(entry) = connections.get(address) else { return };
-            entry.characteristics.keys().copied().filter(|uuid| CharacteristicUuid::try_from(*uuid).is_err()).collect()
+            entry
+                .characteristics
+                .keys()
+                .copied()
+                .filter(|uuid| CharacteristicUuid::try_from(*uuid).is_err())
+                .collect()
         };
 
         for uuid in unknown_uuids {
@@ -187,11 +201,9 @@ impl BtleplugTransport {
     async fn lookup_peripheral_by_uuid(&self, address: &MacAddress, uuid: Uuid) -> Result<(Peripheral, Characteristic)> {
         let connections = self.connections.lock().await;
         let entry = connections.get(address).ok_or(ClockError::NotConnected)?;
-        let char = entry
-            .characteristics
-            .get(&uuid)
-            .cloned()
-            .ok_or(TransportError::CharacteristicNotFound { characteristic: CharacteristicUuid::AuthWrite })?;
+        let char = entry.characteristics.get(&uuid).cloned().ok_or(TransportError::CharacteristicNotFound {
+            characteristic: CharacteristicUuid::AuthWrite,
+        })?;
         Ok((entry.peripheral.clone(), char))
     }
 }

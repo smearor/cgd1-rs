@@ -177,11 +177,7 @@ impl TimeEntry {
             // Non-digit keys
             match key {
                 gtk4::gdk::Key::Up => {
-                    let (new_h, new_m) = if cursor <= 2 {
-                        ((hour + 1) % 24, minute)
-                    } else {
-                        (hour, (minute + 1) % 60)
-                    };
+                    let (new_h, new_m) = if cursor <= 2 { ((hour + 1) % 24, minute) } else { (hour, (minute + 1) % 60) };
                     guard_for_key.set(true);
                     entry_for_key.set_text(&format!("{new_h:02}:{new_m:02}"));
                     guard_for_key.set(false);
@@ -208,9 +204,7 @@ impl TimeEntry {
                     }
                     glib::Propagation::Stop
                 }
-                gtk4::gdk::Key::Left | gtk4::gdk::Key::Right => {
-                    glib::Propagation::Proceed
-                }
+                gtk4::gdk::Key::Left | gtk4::gdk::Key::Right => glib::Propagation::Proceed,
                 _ => glib::Propagation::Stop,
             }
         });

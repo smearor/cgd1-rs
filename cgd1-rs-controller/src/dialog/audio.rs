@@ -177,11 +177,7 @@ fn audio_row(label_text: &str) -> Box {
 
 impl AudioEditorWidget {
     /// Build the audio editor content (without window chrome).
-    pub fn new(
-        manager: Arc<ClockManager>,
-        runtime: Arc<tokio::runtime::Runtime>,
-        connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
-    ) -> Self {
+    pub fn new(manager: Arc<ClockManager>, runtime: Arc<tokio::runtime::Runtime>, connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>) -> Self {
         let container = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
@@ -243,8 +239,15 @@ impl AudioEditorWidget {
         ringtone_box.append(&ringtone_progress);
 
         let ringtone_button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(Align::End).build();
-        let read_button = Button::builder().icon_name("nf-cod-sync-symbolic").label("Read").tooltip_text("Read current ringtone from device").build();
-        let preview_button = Button::builder().label("Preview (Beep)").tooltip_text("Play a test beep at current volume").build();
+        let read_button = Button::builder()
+            .icon_name("nf-cod-sync-symbolic")
+            .label("Read")
+            .tooltip_text("Read current ringtone from device")
+            .build();
+        let preview_button = Button::builder()
+            .label("Preview (Beep)")
+            .tooltip_text("Play a test beep at current volume")
+            .build();
         let apply_ringtone_button = Button::builder().label("Apply").css_classes(["suggested-action"]).build();
         ringtone_button_box.append(&read_button);
         ringtone_button_box.append(&preview_button);
@@ -281,7 +284,11 @@ impl AudioEditorWidget {
         slot_row.append(&Box::builder().hexpand(true).build());
         upload_box.append(&slot_row);
 
-        let file_label = Label::builder().label("No file selected").halign(Align::Start).css_classes(["dim-label"]).build();
+        let file_label = Label::builder()
+            .label("No file selected")
+            .halign(Align::Start)
+            .css_classes(["dim-label"])
+            .build();
         upload_box.append(&file_label);
 
         let select_button = Button::builder().label("Select Audio File…").halign(Align::Start).build();

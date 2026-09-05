@@ -1,10 +1,3 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::mpsc::TryRecvError;
-use std::time::Duration;
-use std::time::Instant;
-
 use cgd1_rs::AuthToken;
 use cgd1_rs::Backend;
 use cgd1_rs::Brightness;
@@ -15,6 +8,13 @@ use cgd1_rs::FileTokenStore;
 use cgd1_rs::KnownDeviceStore;
 use cgd1_rs::MacAddress;
 use cgd1_rs::TokenStore;
+use glib::ControlFlow;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::mpsc::TryRecvError;
+use std::time::Duration;
+use std::time::Instant;
 
 use tracing::debug;
 use tracing::error;
@@ -41,8 +41,8 @@ use gtk4::subclass::prelude::*;
 use crate::device_runtime_state::DeviceRuntimeState;
 use crate::dialog::AlarmEditorWidget;
 use crate::dialog::AudioEditorWidget;
-use crate::dialog::SettingsEditorWidget;
 use crate::dialog::SensorOverviewWidget;
+use crate::dialog::SettingsEditorWidget;
 use crate::display::SevenSegmentDisplay;
 
 /// CSS for the main window layout.
@@ -161,20 +161,51 @@ impl MainWindow {
             .css_classes(["clock-top"])
             .visible(false)
             .build();
-        let summary_battery_icon = Image::builder().icon_name(battery_icon_name(None)).tooltip_text("-- %").css_classes(["summary-icon"]).hexpand(true).halign(Align::Center).build();
-        let summary_date = Label::builder().label("----.--.--").css_classes(["summary-label"]).hexpand(true).halign(Align::Center).build();
-        let summary_time = Label::builder().label("--:--").css_classes(["summary-label"]).hexpand(true).halign(Align::Center).build();
-        let summary_temp_box = Box::builder().orientation(Orientation::Horizontal).spacing(4).hexpand(true).halign(Align::Center).build();
+        let summary_battery_icon = Image::builder()
+            .icon_name(battery_icon_name(None))
+            .tooltip_text("-- %")
+            .css_classes(["summary-icon"])
+            .hexpand(true)
+            .halign(Align::Center)
+            .build();
+        let summary_date = Label::builder()
+            .label("----.--.--")
+            .css_classes(["summary-label"])
+            .hexpand(true)
+            .halign(Align::Center)
+            .build();
+        let summary_time = Label::builder()
+            .label("--:--")
+            .css_classes(["summary-label"])
+            .hexpand(true)
+            .halign(Align::Center)
+            .build();
+        let summary_temp_box = Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(4)
+            .hexpand(true)
+            .halign(Align::Center)
+            .build();
         let summary_temp_icon = Image::builder().icon_name("nf-fae-thermometer-symbolic").css_classes(["summary-icon"]).build();
         let summary_temp = Label::builder().label("--.-°C").css_classes(["summary-label"]).build();
         summary_temp_box.append(&summary_temp_icon);
         summary_temp_box.append(&summary_temp);
-        let summary_humidity_box = Box::builder().orientation(Orientation::Horizontal).spacing(4).hexpand(true).halign(Align::Center).build();
+        let summary_humidity_box = Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(4)
+            .hexpand(true)
+            .halign(Align::Center)
+            .build();
         let summary_humidity_icon = Image::builder().icon_name("nf-weather-humidity-symbolic").css_classes(["summary-icon"]).build();
         let summary_humidity = Label::builder().label("--.-%").css_classes(["summary-label"]).build();
         summary_humidity_box.append(&summary_humidity_icon);
         summary_humidity_box.append(&summary_humidity);
-        let summary_bt = Image::builder().icon_name("nf-fa-bluetooth-symbolic").css_classes(["summary-icon"]).hexpand(true).halign(Align::Center).build();
+        let summary_bt = Image::builder()
+            .icon_name("nf-fa-bluetooth-symbolic")
+            .css_classes(["summary-icon"])
+            .hexpand(true)
+            .halign(Align::Center)
+            .build();
         summary_bar.append(&summary_battery_icon);
         summary_bar.append(&summary_date);
         summary_bar.append(&summary_time);
@@ -227,7 +258,12 @@ impl MainWindow {
             .build();
 
         // Toggle bar holding all handles
-        let toggle_bar = Box::builder().orientation(Orientation::Horizontal).spacing(0).halign(Align::Fill).css_classes(["toggle-bar"]).build();
+        let toggle_bar = Box::builder()
+            .orientation(Orientation::Horizontal)
+            .spacing(0)
+            .halign(Align::Fill)
+            .css_classes(["toggle-bar"])
+            .build();
         toggle_bar.append(&alarm_toggle);
         toggle_bar.append(&settings_toggle);
         toggle_bar.append(&sensor_toggle);
@@ -260,7 +296,11 @@ impl MainWindow {
         let temp_display = SevenSegmentDisplay::new();
         let humidity_display = SevenSegmentDisplay::new();
 
-        let battery_icon = Image::builder().icon_name(battery_icon_name(None)).tooltip_text("-- %").css_classes(["battery-icon"]).build();
+        let battery_icon = Image::builder()
+            .icon_name(battery_icon_name(None))
+            .tooltip_text("-- %")
+            .css_classes(["battery-icon"])
+            .build();
         let bluetooth_icon = Image::builder().icon_name("nf-fa-bluetooth-symbolic").css_classes(["battery-icon"]).build();
 
         let self_ = Self {
@@ -424,7 +464,11 @@ impl MainWindow {
             .halign(Align::Center)
             .hexpand(true)
             .build();
-        let temp_icon = Image::builder().icon_name("nf-fae-thermometer-symbolic").css_classes(["sensor-icon"]).hexpand(false).build();
+        let temp_icon = Image::builder()
+            .icon_name("nf-fae-thermometer-symbolic")
+            .css_classes(["sensor-icon"])
+            .hexpand(false)
+            .build();
         temp_box.append(&temp_icon);
         temp_box.append(&self.temp_display);
         bottom_content.append(&temp_box);
@@ -435,7 +479,11 @@ impl MainWindow {
             .halign(Align::Center)
             .hexpand(true)
             .build();
-        let humidity_icon = Image::builder().icon_name("nf-weather-humidity-symbolic").css_classes(["sensor-icon"]).hexpand(false).build();
+        let humidity_icon = Image::builder()
+            .icon_name("nf-weather-humidity-symbolic")
+            .css_classes(["sensor-icon"])
+            .hexpand(false)
+            .build();
         humidity_box.append(&humidity_icon);
         humidity_box.append(&self.humidity_display);
         bottom_content.append(&humidity_box);
@@ -573,7 +621,10 @@ impl MainWindow {
                 .margin_end(4)
                 .build();
 
-            let bt_icon = Image::builder().icon_name("nf-fa-bluetooth-symbolic").css_classes(["clock-bluetooth-label"]).build();
+            let bt_icon = Image::builder()
+                .icon_name("nf-fa-bluetooth-symbolic")
+                .css_classes(["clock-bluetooth-label"])
+                .build();
             let addr_label = Label::builder().hexpand(true).halign(Align::Start).build();
             let dot = Box::builder().css_classes(["dropdown-dot"]).build();
 
@@ -772,9 +823,10 @@ impl MainWindow {
                             });
                             for d in &found {
                                 let addr = d.address;
-                                let (temp, hum, battery) = d.advertisement.as_ref().map_or((None, None, None), |a| {
-                                    (Some(a.temperature), Some(a.humidity), Some(a.battery))
-                                });
+                                let (temp, hum, battery) = d
+                                    .advertisement
+                                    .as_ref()
+                                    .map_or((None, None, None), |a| (Some(a.temperature), Some(a.humidity), Some(a.battery)));
 
                                 // Cache battery in memory and persist to disk.
                                 if let Some(level) = battery {
@@ -825,13 +877,13 @@ impl MainWindow {
                         }
                     }
                     (*scan_btn).set_sensitive(true);
-                    glib::ControlFlow::Break
+                    ControlFlow::Break
                 }
-                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(TryRecvError::Empty) => ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
                     (*scan_btn).set_sensitive(true);
                     status.set_label("Scan task failed");
-                    glib::ControlFlow::Break
+                    ControlFlow::Break
                 }
             });
         });
@@ -842,6 +894,7 @@ impl MainWindow {
         let manager = self.manager.clone();
         let dropdown = self.device_dropdown.clone();
         let connect_switch = self.connect_switch.clone();
+        let full_display = self.full_display.clone();
         let status = self.status_label.clone();
         let token_store = self.token_store.clone();
         let temp_display = self.temp_display.clone();
@@ -995,15 +1048,15 @@ impl MainWindow {
                                 sw.set_active(false);
                             }
                         }
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Err(TryRecvError::Empty) => ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
                         warn!(%addr_for_connect, "controller: connect task channel disconnected");
                         status.set_label("Connect task failed");
                         bluetooth_icon_for_connect.remove_css_class("bluetooth-blinking");
                         sw.set_active(false);
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
                 });
                 let temp_display = temp_display.clone();
@@ -1015,6 +1068,7 @@ impl MainWindow {
                 let device_states_for_events = device_states.clone();
                 let selected_address_for_events = selected_address.clone();
                 let dropdown_for_events = dropdown.clone();
+                let full_display_for_events = full_display.clone();
                 let event_rx = std::cell::RefCell::new(event_rx);
                 glib::source::idle_add_local(move || match event_rx.borrow_mut().try_recv() {
                     Ok(event) => {
@@ -1076,6 +1130,11 @@ impl MainWindow {
                                     let msg = format!("Alarm {} triggered", slot.value());
                                     info!(%addr_for_connect, slot = slot.value(), "alarm triggered on device");
                                     status_for_events.set_label(&msg);
+                                    full_display_for_events.add_css_class("alarm-flash");
+                                    let display = full_display_for_events.clone();
+                                    glib::source::timeout_add_local_once(Duration::from_millis(2000), move || {
+                                        display.remove_css_class("alarm-flash");
+                                    });
                                 }
                             }
                             ClockEvent::Disconnected => {
@@ -1118,10 +1177,10 @@ impl MainWindow {
                             }
                             _ => {}
                         }
-                        glib::ControlFlow::Continue
+                        ControlFlow::Continue
                     }
-                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                    Err(TryRecvError::Empty) => ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => ControlFlow::Break,
                 });
             } else {
                 info!(%addr, "controller: manual disconnect");
@@ -1244,7 +1303,7 @@ impl MainWindow {
         glib::timeout_add_local(Duration::from_millis(100), move || {
             let height = win.height();
             if height <= 0 || height == last_height_clone.get() {
-                return glib::ControlFlow::Continue;
+                return ControlFlow::Continue;
             }
             last_height_clone.set(height);
             let h = height as f64;
@@ -1256,7 +1315,7 @@ impl MainWindow {
             date_display.set_font_scale(date_scale);
             temp_display.set_font_scale(sensor_scale);
             humidity_display.set_font_scale(sensor_scale);
-            glib::ControlFlow::Continue
+            ControlFlow::Continue
         });
     }
 
@@ -1278,7 +1337,7 @@ impl MainWindow {
                 Ok(dt) => dt,
                 Err(e) => {
                     error!(error = ?e, "all glib DateTime constructors failed, skipping clock tick");
-                    return glib::ControlFlow::Continue;
+                    return ControlFlow::Continue;
                 }
             };
             let date_str = format!("{:04}-{:02}-{:02}", now.year(), now.month(), now.day_of_month());
@@ -1298,7 +1357,7 @@ impl MainWindow {
                 humidity_display.set_display_text("--.-%");
             }
 
-            glib::ControlFlow::Continue
+            ControlFlow::Continue
         });
     }
 
@@ -1430,7 +1489,7 @@ impl MainWindow {
                             .any(|s| s.connected)
                         {
                             debug!("controller: reconnect skipped, a device is connected");
-                            return glib::ControlFlow::Break;
+                            return ControlFlow::Break;
                         }
                         // Find the device in the dropdown by address
                         let known = known_devices.lock().unwrap_or_else(|p| {
@@ -1447,7 +1506,7 @@ impl MainWindow {
                         } else {
                             warn!(address = %first_stale, "controller: reconnect failed, device no longer in known list");
                         }
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     });
                 }
             }
@@ -1474,7 +1533,7 @@ impl MainWindow {
                 scan_btn.emit_clicked();
             }
 
-            glib::ControlFlow::Continue
+            ControlFlow::Continue
         });
     }
 }
