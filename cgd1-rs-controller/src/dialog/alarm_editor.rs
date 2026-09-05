@@ -1,4 +1,5 @@
 use crate::dialog::TimeEntry;
+use crate::fl;
 use cgd1_rs::AlarmEntry;
 use cgd1_rs::AlarmSlot;
 use cgd1_rs::AlarmSlotIndex;
@@ -97,7 +98,7 @@ impl AlarmEditorWidget {
         let status_label = Label::builder().label("").css_classes(["dim-label"]).halign(Align::Start).hexpand(true).build();
 
         let button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(Align::Fill).build();
-        let refresh_button = Button::builder().label("Read from Device").build();
+        let refresh_button = Button::builder().label(&fl!("alarm-read-from-device")).build();
         button_box.append(&status_label);
         button_box.append(&refresh_button);
         container.append(&button_box);
@@ -128,11 +129,11 @@ impl AlarmEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label_set.set_label("No device connected");
+                    status_label_set.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
                 let Some((hour, minute)) = time_entry.get_time() else {
-                    status_label_set.set_label("Invalid time");
+                    status_label_set.set_label(&fl!("status-invalid-time"));
                     return;
                 };
                 let enabled = enabled_switch.is_active();
@@ -151,12 +152,12 @@ impl AlarmEditorWidget {
                 let time = match ClockTime::new(hour, minute) {
                     Ok(t) => t,
                     Err(e) => {
-                        status_label_set.set_label(&format!("Invalid time: {e}"));
+                        status_label_set.set_label(&fl!("status-invalid-time-error", error = e.to_string()));
                         return;
                     }
                 };
                 let entry = AlarmEntry::new(time, repeat_mask, enabled, snooze);
-                status_label_set.set_label(&format!("Setting alarm #{slot:02}..."));
+                status_label_set.set_label(&fl!("status-setting-alarm", slot = (slot as i64)));
                 let manager_set = manager_set.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
                 runtime_set.spawn(async move {
@@ -174,16 +175,16 @@ impl AlarmEditorWidget {
                     Ok(result) => {
                         match result {
                             Ok(()) => {
-                                status_label_set.set_label(&format!("Alarm #{slot:02} set"));
+                                status_label_set.set_label(&fl!("status-alarm-set", slot = (slot as i64)));
                                 (*on_changed)();
                             }
-                            Err(e) => status_label_set.set_label(&format!("Set failed: {e}")),
+                            Err(e) => status_label_set.set_label(&fl!("status-set-failed", error = e.to_string())),
                         }
                         ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        status_label_set.set_label("Set task failed");
+                        status_label_set.set_label(&fl!("status-set-task-failed"));
                         ControlFlow::Break
                     }
                 });
@@ -201,10 +202,10 @@ impl AlarmEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label_del.set_label("No device connected");
+                    status_label_del.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
-                status_label_del.set_label(&format!("Deleting alarm #{slot:02}..."));
+                status_label_del.set_label(&fl!("status-deleting-alarm", slot = (slot as i64)));
                 let manager_del = manager_del.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
                 runtime_del.spawn(async move {
@@ -222,16 +223,16 @@ impl AlarmEditorWidget {
                     Ok(result) => {
                         match result {
                             Ok(()) => {
-                                status_label_del.set_label(&format!("Alarm #{slot:02} deleted"));
+                                status_label_del.set_label(&fl!("status-alarm-deleted", slot = (slot as i64)));
                                 (*on_changed)();
                             }
-                            Err(e) => status_label_del.set_label(&format!("Delete failed: {e}")),
+                            Err(e) => status_label_del.set_label(&fl!("status-delete-failed", error = e.to_string())),
                         }
                         ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        status_label_del.set_label("Delete task failed");
+                        status_label_del.set_label(&fl!("status-delete-task-failed"));
                         ControlFlow::Break
                     }
                 });
@@ -285,10 +286,10 @@ impl AlarmEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    widget_status.set_label("No device connected");
+                    widget_status.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
-                widget_status.set_label("Reading alarms...");
+                widget_status.set_label(&fl!("status-reading-alarms"));
                 let manager = widget_manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<cgd1_rs::AlarmSlot>, String>>();
                 widget_runtime.spawn(async move {
@@ -324,17 +325,17 @@ impl AlarmEditorWidget {
                                         }
                                     }
                                 }
-                                status_label.set_label(&format!("Loaded {} alarm(s)", slots.len()));
+                                status_label.set_label(&fl!("status-loaded-alarms", count = (slots.len() as i64)));
                             }
                             Err(e) => {
-                                status_label.set_label(&format!("Read failed: {e}"));
+                                status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                             }
                         }
                         ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        status_label.set_label("Read task failed");
+                        status_label.set_label(&fl!("status-read-task-failed"));
                         ControlFlow::Break
                     }
                 });
@@ -351,10 +352,10 @@ impl AlarmEditorWidget {
             p.into_inner()
         });
         let Some(addr) = addr else {
-            self.status_label.set_label("No device connected");
+            self.status_label.set_label(&fl!("status-no-device-connected"));
             return;
         };
-        self.status_label.set_label("Reading alarms...");
+        self.status_label.set_label(&fl!("status-reading-alarms"));
         let manager = self.manager.clone();
         let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<AlarmSlot>, String>>();
         self.runtime.spawn(async move {
@@ -390,17 +391,17 @@ impl AlarmEditorWidget {
                                 }
                             }
                         }
-                        status_label.set_label(&format!("Loaded {} alarm(s)", slots.len()));
+                        status_label.set_label(&fl!("status-loaded-alarms", count = (slots.len() as i64)));
                     }
                     Err(e) => {
-                        status_label.set_label(&format!("Read failed: {e}"));
+                        status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                     }
                 }
                 ControlFlow::Break
             }
             Err(TryRecvError::Empty) => ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
-                status_label.set_label("Read task failed");
+                status_label.set_label(&fl!("status-read-task-failed"));
                 ControlFlow::Break
             }
         });
@@ -411,22 +412,36 @@ impl AlarmEditorWidget {
 fn create_alarm_row() -> (Box, AlarmRowWidgets) {
     let row = Box::builder().orientation(Orientation::Horizontal).spacing(4).build();
 
-    let enabled_switch = Switch::builder().tooltip_text("Enable alarm").build();
+    let enabled_switch = Switch::builder().tooltip_text(&fl!("tooltip-enable-alarm")).build();
     enabled_switch.set_active(false);
     row.append(&enabled_switch);
 
     let time_entry = TimeEntry::new();
     row.append(time_entry.widget());
 
-    let snooze_toggle = ToggleButton::builder().icon_name("nf-iec-sleep-mode-symbolic").tooltip_text("Snooze").build();
+    let snooze_toggle = ToggleButton::builder()
+        .icon_name("nf-iec-sleep-mode-symbolic")
+        .tooltip_text(&fl!("tooltip-snooze"))
+        .build();
     snooze_toggle.set_active(true);
     row.append(&snooze_toggle);
 
-    let once_toggle = ToggleButton::builder().icon_name("nf-cod-calendar-symbolic").tooltip_text("Once").build();
+    let once_toggle = ToggleButton::builder()
+        .icon_name("nf-cod-calendar-symbolic")
+        .tooltip_text(&fl!("tooltip-once"))
+        .build();
     once_toggle.set_active(true);
     row.append(&once_toggle);
 
-    let day_labels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    let day_labels = [
+        &fl!("day-mo"),
+        &fl!("day-tu"),
+        &fl!("day-we"),
+        &fl!("day-th"),
+        &fl!("day-fr"),
+        &fl!("day-sa"),
+        &fl!("day-su"),
+    ];
     let day_toggles: Vec<ToggleButton> = day_labels.iter().map(|label| ToggleButton::builder().label(*label).build()).collect();
 
     // Mutual exclusivity: Once vs day toggles
@@ -457,14 +472,14 @@ fn create_alarm_row() -> (Box, AlarmRowWidgets) {
 
     let set_button = Button::builder()
         .icon_name("nf-cod-check-symbolic")
-        .tooltip_text("Set")
+        .tooltip_text(&fl!("tooltip-set"))
         .css_classes(["suggested-action"])
         .build();
     row.append(&set_button);
 
     let delete_button = Button::builder()
         .icon_name("nf-cod-trash-symbolic")
-        .tooltip_text("Del")
+        .tooltip_text(&fl!("tooltip-delete"))
         .css_classes(["destructive-action"])
         .build();
     row.append(&delete_button);

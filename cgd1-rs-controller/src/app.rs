@@ -1,4 +1,5 @@
 use crate::dialog::InfoDialog;
+use crate::fl;
 use crate::window::MainWindow;
 use cgd1_rs::Backend;
 use cgd1_rs::TokenStore;
@@ -64,8 +65,8 @@ impl ClockControllerApp {
                         .modal(true)
                         .message_type(gtk4::MessageType::Warning)
                         .buttons(gtk4::ButtonsType::Ok)
-                        .text("No device selected")
-                        .secondary_text("Select a device in the dropdown first.")
+                        .text(&fl!("dialog-no-device-title"))
+                        .secondary_text(&fl!("dialog-no-device-body"))
                         .build();
                     dialog.connect_response(|d, _| d.close());
                     dialog.present();
@@ -77,12 +78,8 @@ impl ClockControllerApp {
                     .modal(true)
                     .message_type(gtk4::MessageType::Question)
                     .buttons(gtk4::ButtonsType::YesNo)
-                    .text("Reset auth token?")
-                    .secondary_text(&format!(
-                        "This deletes the stored token for {addr}.\n\
-                         The device must be factory reset to accept a new token.\n\n\
-                         Disconnect first if currently connected."
-                    ))
+                    .text(&fl!("dialog-reset-token-title"))
+                    .secondary_text(&fl!("dialog-reset-token-body", addr = addr.to_string()))
                     .build();
 
                 let token_store = token_store_reset.clone();

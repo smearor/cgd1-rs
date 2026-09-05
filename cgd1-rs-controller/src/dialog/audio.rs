@@ -13,6 +13,8 @@ use cgd1_rs::MacAddress;
 use cgd1_rs::RingtoneSignature;
 use cgd1_rs::Volume;
 
+use crate::fl;
+
 /// Bundled PCM data for each built-in ringtone, keyed by hex signature.
 fn builtin_ringtone_pcm(sig: RingtoneSignature) -> Option<&'static [u8]> {
     match sig {
@@ -252,7 +254,7 @@ impl AudioEditorWidget {
         let content = Box::builder().orientation(Orientation::Vertical).spacing(8).build();
 
         // --- Active Ringtone frame ---
-        let ringtone_frame = audio_frame("nf-cod-bell-symbolic", "Active Ringtone");
+        let ringtone_frame = audio_frame("nf-cod-bell-symbolic", &fl!("frame-active-ringtone"));
         let ringtone_box = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(4)
@@ -299,14 +301,14 @@ impl AudioEditorWidget {
             .collect();
         let ringtone_names_ref: Vec<&str> = ringtone_names.iter().map(|s| s.as_str()).collect();
         let ringtone_model = StringList::new(&ringtone_names_ref);
-        let ringtone_row = audio_row("Ringtone");
+        let ringtone_row = audio_row(&fl!("label-ringtone"));
         let ringtone_dropdown = DropDown::new(Some(ringtone_model), None::<&gtk4::Expression>);
         ringtone_dropdown.set_selected(0);
         ringtone_dropdown.set_hexpand(true);
         ringtone_row.append(&ringtone_dropdown);
         ringtone_box.append(&ringtone_row);
 
-        let volume_row = audio_row("Volume");
+        let volume_row = audio_row(&fl!("label-volume"));
         let volume_scale = Scale::with_range(Orientation::Horizontal, 1.0, 5.0, 1.0);
         volume_scale.set_value(3.0);
         volume_scale.set_digits(0);
@@ -317,7 +319,7 @@ impl AudioEditorWidget {
         ringtone_box.append(&volume_row);
 
         let ringtone_info = Label::builder()
-            .label("Selects the ringtone and volume. Built-in ringtones are uploaded to the device (the firmware does not persist ringtone selection via settings).")
+            .label(&fl!("info-ringtone"))
             .wrap(true)
             .halign(Align::Start)
             .css_classes(["dim-label"])
@@ -330,14 +332,11 @@ impl AudioEditorWidget {
         let ringtone_button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(Align::End).build();
         let read_button = Button::builder()
             .icon_name("nf-cod-sync-symbolic")
-            .label("Read")
-            .tooltip_text("Read current ringtone from device")
+            .label(&fl!("button-read"))
+            .tooltip_text(&fl!("tooltip-read-ringtone"))
             .build();
-        let preview_button = Button::builder()
-            .label("Preview (Beep)")
-            .tooltip_text("Play a test beep at current volume")
-            .build();
-        let apply_ringtone_button = Button::builder().label("Apply").css_classes(["suggested-action"]).build();
+        let preview_button = Button::builder().label(&fl!("button-preview")).tooltip_text(&fl!("tooltip-preview")).build();
+        let apply_ringtone_button = Button::builder().label(&fl!("button-apply")).css_classes(["suggested-action"]).build();
         ringtone_button_box.append(&read_button);
         ringtone_button_box.append(&preview_button);
         ringtone_button_box.append(&apply_ringtone_button);
@@ -347,7 +346,7 @@ impl AudioEditorWidget {
         content.append(&ringtone_frame);
 
         // --- Custom Upload frame ---
-        let upload_frame = audio_frame("nf-fa-upload-symbolic", "Custom Upload");
+        let upload_frame = audio_frame("nf-fa-upload-symbolic", &fl!("frame-custom-upload"));
         let upload_box = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(4)
@@ -357,14 +356,14 @@ impl AudioEditorWidget {
             .margin_end(12)
             .build();
 
-        let slot_row = audio_row("Target Slot");
+        let slot_row = audio_row(&fl!("label-target-slot"));
         let slot_box = Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(0)
             .css_classes(["segmented"])
             .build();
-        let slot_a_toggle = ToggleButton::builder().label("Slot A").css_classes(["segmented-btn"]).build();
-        let slot_b_toggle = ToggleButton::builder().label("Slot B").css_classes(["segmented-btn"]).build();
+        let slot_a_toggle = ToggleButton::builder().label(&fl!("toggle-slot-a")).css_classes(["segmented-btn"]).build();
+        let slot_b_toggle = ToggleButton::builder().label(&fl!("toggle-slot-b")).css_classes(["segmented-btn"]).build();
         slot_a_toggle.set_active(true);
         slot_a_toggle.set_group(Some(&slot_b_toggle));
         slot_box.append(&slot_a_toggle);
@@ -374,17 +373,17 @@ impl AudioEditorWidget {
         upload_box.append(&slot_row);
 
         let file_label = Label::builder()
-            .label("No file selected")
+            .label(&fl!("label-no-file-selected"))
             .halign(Align::Start)
             .css_classes(["dim-label"])
             .build();
         upload_box.append(&file_label);
 
-        let select_button = Button::builder().label("Select Audio File…").halign(Align::Start).build();
+        let select_button = Button::builder().label(&fl!("button-select-audio-file")).halign(Align::Start).build();
         upload_box.append(&select_button);
 
         let upload_info = Label::builder()
-            .label("8-bit PCM, 8 kHz, mono, max ~12 seconds. Always alternate slots between uploads.")
+            .label(&fl!("info-upload-format"))
             .wrap(true)
             .halign(Align::Start)
             .css_classes(["dim-label"])
@@ -394,7 +393,11 @@ impl AudioEditorWidget {
         let progress = ProgressBar::builder().fraction(0.0).hexpand(true).build();
         upload_box.append(&progress);
 
-        let upload_button = Button::builder().label("Upload").css_classes(["suggested-action"]).halign(Align::End).build();
+        let upload_button = Button::builder()
+            .label(&fl!("button-upload"))
+            .css_classes(["suggested-action"])
+            .halign(Align::End)
+            .build();
         upload_box.append(&upload_button);
 
         upload_frame.set_child(Some(&upload_box));
@@ -412,14 +415,20 @@ impl AudioEditorWidget {
         let file_label_clone = file_label.clone();
         select_button.connect_clicked(move |_| {
             let filter = gtk4::FileFilter::new();
-            filter.set_name(Some("Audio files"));
+            filter.set_name(Some(&fl!("filter-audio-files")));
             filter.add_pattern("*.wav");
             filter.add_pattern("*.raw");
             filter.add_pattern("*.pcm");
 
-            let dialog = FileChooserDialog::builder().title("Select Audio File").action(FileChooserAction::Open).build();
+            let dialog = FileChooserDialog::builder()
+                .title(&fl!("file-chooser-title"))
+                .action(FileChooserAction::Open)
+                .build();
             dialog.add_filter(&filter);
-            dialog.add_buttons(&[("Cancel", gtk4::ResponseType::Cancel), ("Open", gtk4::ResponseType::Accept)]);
+            dialog.add_buttons(&[
+                (&fl!("button-cancel"), gtk4::ResponseType::Cancel),
+                (&fl!("button-open"), gtk4::ResponseType::Accept),
+            ]);
 
             let label = file_label_clone.clone();
             dialog.connect_response(move |d, response| {
@@ -450,10 +459,10 @@ impl AudioEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
-                status_label.set_label("Reading settings...");
+                status_label.set_label(&fl!("status-reading-settings"));
                 let manager = manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<DeviceSettings, String>>();
                 runtime.spawn(async move {
@@ -478,17 +487,17 @@ impl AudioEditorWidget {
                                     ringtone_dropdown.set_selected(idx as u32);
                                 }
                                 volume_scale.set_value(settings.volume().value() as f64);
-                                status_label.set_label("Settings loaded");
+                                status_label.set_label(&fl!("status-settings-loaded"));
                             }
                             Err(e) => {
-                                status_label.set_label(&format!("Read failed: {e}"));
+                                status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                             }
                         }
                         glib::ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        status_label.set_label("Read task failed");
+                        status_label.set_label(&fl!("status-read-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -508,10 +517,10 @@ impl AudioEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
-                status_label.set_label("Playing preview beep...");
+                status_label.set_label(&fl!("status-playing-preview"));
                 let manager = manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
                 runtime.spawn(async move {
@@ -527,14 +536,14 @@ impl AudioEditorWidget {
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
                         match result {
-                            Ok(()) => status_label.set_label("Preview played"),
-                            Err(e) => status_label.set_label(&format!("Preview failed: {e}")),
+                            Ok(()) => status_label.set_label(&fl!("status-preview-played")),
+                            Err(e) => status_label.set_label(&fl!("status-preview-failed", error = e.to_string())),
                         }
                         glib::ControlFlow::Break
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
-                        status_label.set_label("Preview task failed");
+                        status_label.set_label(&fl!("status-preview-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -560,7 +569,7 @@ impl AudioEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
                 let selected = ringtone_dropdown.selected() as usize;
@@ -568,7 +577,7 @@ impl AudioEditorWidget {
                 let volume = match Volume::new(volume_scale.value() as u8) {
                     Ok(v) => v,
                     Err(e) => {
-                        status_label.set_label(&format!("Invalid volume: {e}"));
+                        status_label.set_label(&fl!("status-invalid-volume", error = e.to_string()));
                         return;
                     }
                 };
@@ -577,7 +586,7 @@ impl AudioEditorWidget {
                     match std::fs::read(path) {
                         Ok(data) => Some(extract_pcm_from_wav(&data).to_vec()),
                         Err(e) => {
-                            status_label.set_label(&format!("Failed to read custom ringtone: {e}"));
+                            status_label.set_label(&fl!("status-read-custom-ringtone-failed", error = e.to_string()));
                             return;
                         }
                     }
@@ -587,9 +596,9 @@ impl AudioEditorWidget {
                 let is_builtin = pcm_data.is_some();
 
                 if is_builtin {
-                    status_label.set_label("Uploading ringtone audio to device...");
+                    status_label.set_label(&fl!("status-uploading-ringtone"));
                 } else {
-                    status_label.set_label("Writing ringtone to settings...");
+                    status_label.set_label(&fl!("status-writing-ringtone"));
                 }
 
                 ringtone_progress.set_fraction(0.0);
@@ -648,12 +657,12 @@ impl AudioEditorWidget {
                         match result {
                             Ok(()) => {
                                 ringtone_progress.set_fraction(1.0);
-                                status_label.set_label("Ringtone applied");
+                                status_label.set_label(&fl!("status-ringtone-applied"));
                                 read_button.emit_clicked();
                             }
                             Err(e) => {
                                 ringtone_progress.set_fraction(0.0);
-                                status_label.set_label(&format!("Apply failed: {e}"));
+                                status_label.set_label(&fl!("status-apply-failed", error = e.to_string()));
                             }
                         }
                         glib::ControlFlow::Break
@@ -662,7 +671,7 @@ impl AudioEditorWidget {
                     Err(TryRecvError::Disconnected) => {
                         done.store(true, std::sync::atomic::Ordering::SeqCst);
                         ringtone_progress.set_fraction(0.0);
-                        status_label.set_label("Apply task failed");
+                        status_label.set_label(&fl!("status-apply-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -687,12 +696,12 @@ impl AudioEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
                 let file_path = file_label.label().to_string();
-                if file_path == "No file selected" || file_path.is_empty() {
-                    status_label.set_label("No file selected");
+                if file_path == fl!("label-no-file-selected") || file_path.is_empty() {
+                    status_label.set_label(&fl!("label-no-file-selected"));
                     return;
                 }
                 let signature = if slot_a_toggle.is_active() {
@@ -703,12 +712,12 @@ impl AudioEditorWidget {
                 let raw = match std::fs::read(&file_path) {
                     Ok(data) => data,
                     Err(e) => {
-                        status_label.set_label(&format!("Read failed: {e}"));
+                        status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                         return;
                     }
                 };
                 let audio = extract_pcm_from_wav(&raw).to_vec();
-                status_label.set_label(&format!("Uploading to {}...", signature.name()));
+                status_label.set_label(&fl!("status-uploading-to", name = signature.name().to_string()));
                 progress.set_fraction(0.0);
                 let manager = manager.clone();
                 let sig_bytes = signature.bytes();
@@ -745,12 +754,12 @@ impl AudioEditorWidget {
                         match result {
                             Ok(()) => {
                                 progress_idle.set_fraction(1.0);
-                                status_label_idle.set_label("Upload complete");
+                                status_label_idle.set_label(&fl!("status-upload-complete"));
                                 read_button_idle.emit_clicked();
                             }
                             Err(e) => {
                                 progress_idle.set_fraction(0.0);
-                                status_label_idle.set_label(&format!("Upload failed: {e}"));
+                                status_label_idle.set_label(&fl!("status-upload-failed", error = e.to_string()));
                             }
                         }
                         glib::ControlFlow::Break
@@ -759,7 +768,7 @@ impl AudioEditorWidget {
                     Err(TryRecvError::Disconnected) => {
                         done.store(true, std::sync::atomic::Ordering::SeqCst);
                         progress_idle.set_fraction(0.0);
-                        status_label_idle.set_label("Upload task failed");
+                        status_label_idle.set_label(&fl!("status-upload-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });

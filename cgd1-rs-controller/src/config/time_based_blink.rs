@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::i18n::get;
+
 /// Frequency of time-based visual blink feedback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -29,14 +31,15 @@ impl TimeBasedBlink {
     ];
 
     /// Short label suitable for slider tick marks.
-    pub const fn label(self) -> &'static str {
-        match self {
-            TimeBasedBlink::Off => "Off",
-            TimeBasedBlink::Hourly => "1h",
-            TimeBasedBlink::EveryFifteenMinutes => "15m",
-            TimeBasedBlink::EveryFiveMinutes => "5m",
-            TimeBasedBlink::EveryMinute => "1m",
-        }
+    pub fn label(self) -> String {
+        let key = match self {
+            TimeBasedBlink::Off => "label-off",
+            TimeBasedBlink::Hourly => "label-hourly",
+            TimeBasedBlink::EveryFifteenMinutes => "label-15m",
+            TimeBasedBlink::EveryFiveMinutes => "label-5m",
+            TimeBasedBlink::EveryMinute => "label-1m",
+        };
+        get(key)
     }
 
     /// Numeric index for slider positioning (0-based).

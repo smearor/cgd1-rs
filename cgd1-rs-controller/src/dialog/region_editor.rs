@@ -26,6 +26,7 @@ use super::common::find_timezone_index;
 use super::common::settings_frame;
 use super::common::settings_row;
 use super::common::timezone_list;
+use crate::fl;
 
 /// Region editor widget for time format, temperature unit, language, and timezone.
 #[allow(dead_code)]
@@ -81,7 +82,7 @@ impl RegionEditorWidget {
         let content = Box::builder().orientation(Orientation::Vertical).spacing(8).build();
 
         // --- Regional frame ---
-        let regional_frame = settings_frame("nf-cod-globe-symbolic", "Regional");
+        let regional_frame = settings_frame("nf-cod-globe-symbolic", &fl!("frame-regional"));
         let regional_box = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(4)
@@ -91,14 +92,14 @@ impl RegionEditorWidget {
             .margin_end(12)
             .build();
 
-        let time_format_row = settings_row("Time Format");
+        let time_format_row = settings_row(&fl!("label-time-format"));
         let time_format_box = Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(0)
             .css_classes(["segmented"])
             .build();
-        let time_format_24h = ToggleButton::builder().label("24h").css_classes(["segmented-btn"]).build();
-        let time_format_12h = ToggleButton::builder().label("12h").css_classes(["segmented-btn"]).build();
+        let time_format_24h = ToggleButton::builder().label(&fl!("toggle-24h")).css_classes(["segmented-btn"]).build();
+        let time_format_12h = ToggleButton::builder().label(&fl!("toggle-12h")).css_classes(["segmented-btn"]).build();
         time_format_24h.set_active(true);
         time_format_24h.set_group(Some(&time_format_12h));
         time_format_box.append(&time_format_24h);
@@ -107,7 +108,7 @@ impl RegionEditorWidget {
         time_format_row.append(&Box::builder().hexpand(true).build());
         regional_box.append(&time_format_row);
 
-        let temp_unit_row = settings_row("Temperature");
+        let temp_unit_row = settings_row(&fl!("label-temperature"));
         let temp_unit_box = Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(0)
@@ -123,14 +124,14 @@ impl RegionEditorWidget {
         temp_unit_row.append(&Box::builder().hexpand(true).build());
         regional_box.append(&temp_unit_row);
 
-        let language_row = settings_row("Language");
+        let language_row = settings_row(&fl!("label-language"));
         let language_box = Box::builder()
             .orientation(Orientation::Horizontal)
             .spacing(0)
             .css_classes(["segmented"])
             .build();
-        let lang_en = ToggleButton::builder().label("English").css_classes(["segmented-btn"]).build();
-        let lang_zh = ToggleButton::builder().label("中文").css_classes(["segmented-btn"]).build();
+        let lang_en = ToggleButton::builder().label(&fl!("toggle-english")).css_classes(["segmented-btn"]).build();
+        let lang_zh = ToggleButton::builder().label(&fl!("toggle-chinese")).css_classes(["segmented-btn"]).build();
         lang_en.set_active(true);
         lang_en.set_group(Some(&lang_zh));
         language_box.append(&lang_en);
@@ -143,7 +144,7 @@ impl RegionEditorWidget {
         let timezone_labels: Vec<&str> = timezone_entries.iter().map(|(label, _)| *label).collect();
         let timezone_model = StringList::new(&timezone_labels);
 
-        let timezone_row = settings_row("Timezone");
+        let timezone_row = settings_row(&fl!("label-timezone"));
         let timezone_dropdown = DropDown::new(Some(timezone_model), None::<&gtk4::Expression>);
         timezone_dropdown.set_selected(0);
         timezone_dropdown.set_hexpand(true);
@@ -152,14 +153,14 @@ impl RegionEditorWidget {
 
         let sync_tz_button = Button::builder()
             .icon_name("nf-cod-sync-symbolic")
-            .label("Sync from System")
-            .tooltip_text("Set timezone from the computer's local clock")
+            .label(&fl!("button-sync-from-system"))
+            .tooltip_text(&fl!("tooltip-sync-from-system"))
             .css_classes(["suggested-action"])
             .build();
         regional_box.append(&sync_tz_button);
 
         let tz_info_label = Label::builder()
-            .label("The device has no DST logic. Timezone is auto-synced on connect. Reconnect after a DST change to update.")
+            .label(&fl!("info-tz-dst"))
             .wrap(true)
             .halign(Align::Start)
             .css_classes(["dim-label"])
@@ -179,13 +180,13 @@ impl RegionEditorWidget {
         let button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(Align::Fill).build();
         let refresh_button = Button::builder()
             .icon_name("nf-cod-sync-symbolic")
-            .label("Read")
-            .tooltip_text("Read region settings from device")
+            .label(&fl!("button-read"))
+            .tooltip_text(&fl!("tooltip-read-region"))
             .build();
         let apply_button = Button::builder()
             .icon_name("nf-cod-check-symbolic")
-            .label("Write")
-            .tooltip_text("Write region settings to device")
+            .label(&fl!("button-write"))
+            .tooltip_text(&fl!("tooltip-write-region"))
             .css_classes(["suggested-action"])
             .build();
         button_box.append(&status_label);
@@ -204,10 +205,10 @@ impl RegionEditorWidget {
                 match find_timezone_index(offset_minutes) {
                     Some(idx) => {
                         timezone_dropdown.set_selected(idx);
-                        status_label.set_label(&format!("Timezone set to match system (UTC{offset_minutes:+})"));
+                        status_label.set_label(&fl!("status-tz-synced", offset = offset_minutes.to_string()));
                     }
                     None => {
-                        status_label.set_label(&format!("System timezone UTC{offset_minutes:+} not in list"));
+                        status_label.set_label(&fl!("status-tz-not-in-list", offset = offset_minutes.to_string()));
                     }
                 }
             });
@@ -233,10 +234,10 @@ impl RegionEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
-                status_label.set_label("Reading settings...");
+                status_label.set_label(&fl!("status-reading-settings"));
                 let manager = manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<DeviceSettings, String>>();
                 runtime.spawn(async move {
@@ -275,17 +276,17 @@ impl RegionEditorWidget {
                                 if let Some(idx) = find_timezone_index(settings.timezone().minutes()) {
                                     timezone_dropdown.set_selected(idx);
                                 }
-                                status_label.set_label("Region settings loaded");
+                                status_label.set_label(&fl!("status-region-settings-loaded"));
                             }
                             Err(e) => {
-                                status_label.set_label(&format!("Read failed: {e}"));
+                                status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                             }
                         }
                         glib::ControlFlow::Break
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        status_label.set_label("Read task failed");
+                        status_label.set_label(&fl!("status-read-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -309,7 +310,7 @@ impl RegionEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
 
@@ -330,12 +331,12 @@ impl RegionEditorWidget {
                 let timezone = match Timezone::from_minutes(timezone_minutes) {
                     Ok(t) => t,
                     Err(e) => {
-                        status_label.set_label(&format!("Invalid timezone: {e}"));
+                        status_label.set_label(&fl!("status-invalid-timezone", error = e.to_string()));
                         return;
                     }
                 };
 
-                status_label.set_label("Writing settings...");
+                status_label.set_label(&fl!("status-writing-settings"));
                 let manager = manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
                 runtime.spawn(async move {
@@ -367,14 +368,14 @@ impl RegionEditorWidget {
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
                         match result {
-                            Ok(()) => status_label.set_label("Region settings written"),
-                            Err(e) => status_label.set_label(&format!("Write failed: {e}")),
+                            Ok(()) => status_label.set_label(&fl!("status-region-settings-written")),
+                            Err(e) => status_label.set_label(&fl!("status-write-failed", error = e.to_string())),
                         }
                         glib::ControlFlow::Break
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        status_label.set_label("Write task failed");
+                        status_label.set_label(&fl!("status-write-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -405,10 +406,10 @@ impl RegionEditorWidget {
             p.into_inner()
         });
         let Some(addr) = addr else {
-            self.status_label.set_label("No device connected");
+            self.status_label.set_label(&fl!("status-no-device-connected"));
             return;
         };
-        self.status_label.set_label("Reading settings...");
+        self.status_label.set_label(&fl!("status-reading-settings"));
         let manager = self.manager.clone();
         let (tx, rx) = std::sync::mpsc::channel::<Result<DeviceSettings, String>>();
         self.runtime.spawn(async move {
@@ -447,17 +448,17 @@ impl RegionEditorWidget {
                         if let Some(idx) = find_timezone_index(settings.timezone().minutes()) {
                             timezone_dropdown.set_selected(idx);
                         }
-                        status_label.set_label("Region settings loaded");
+                        status_label.set_label(&fl!("status-region-settings-loaded"));
                     }
                     Err(e) => {
-                        status_label.set_label(&format!("Read failed: {e}"));
+                        status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                     }
                 }
                 glib::ControlFlow::Break
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
-                status_label.set_label("Read task failed");
+                status_label.set_label(&fl!("status-read-task-failed"));
                 glib::ControlFlow::Break
             }
         });

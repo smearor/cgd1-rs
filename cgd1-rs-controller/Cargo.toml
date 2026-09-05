@@ -20,16 +20,21 @@ cgd1-rs = { path = "../cgd1-rs", version = "0.1.0" }
 chrono.workspace = true
 dirs.workspace = true
 clap.workspace = true
+fluent-bundle.workspace = true
 gio.workspace = true
 glib.workspace = true
 gtk4 = { workspace = true, features = ["v4_6"] }
+i18n-embed.workspace = true
+i18n-embed-fl.workspace = true
 nerd-fonts-gtk = { workspace = true, features = ["gtk"] }
 pango = { version = "0.22", features = ["v1_56"] }
+rust-embed.workspace = true
 serde = { workspace = true }
 tokio.workspace = true
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+unic-langid.workspace = true
 
 [features]
 default = ["btleplug"]
