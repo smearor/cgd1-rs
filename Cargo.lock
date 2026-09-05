@@ -398,7 +398,9 @@ dependencies = [
  "gtk4",
  "nerd-fonts-gtk",
  "pango",
+ "serde",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]

@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod device_runtime_state;
 mod dialog;
 mod display;

@@ -89,7 +89,7 @@
     padding: 4px;
 }
 .frame-icon {
-    -gtk-icon-size: 16px;
+    -gtk-icon-size: 20px;
     color: #5588ff;
 }
 .frame-title {
