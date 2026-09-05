@@ -87,14 +87,8 @@ fn settings_row(label_text: &str) -> Box {
 
 /// Create a frame with an icon + title header.
 fn settings_frame(icon_name: &str, title: &str) -> Frame {
-    let header = Box::builder()
-        .orientation(Orientation::Horizontal)
-        .spacing(6)
-        .build();
-    let icon = Image::builder()
-        .icon_name(icon_name)
-        .css_classes(["frame-icon"])
-        .build();
+    let header = Box::builder().orientation(Orientation::Horizontal).spacing(6).build();
+    let icon = Image::builder().icon_name(icon_name).css_classes(["frame-icon"]).build();
     let label = Label::builder().label(title).css_classes(["frame-title"]).build();
     header.append(&icon);
     header.append(&label);
@@ -109,11 +103,7 @@ fn settings_frame(icon_name: &str, title: &str) -> Frame {
 
 impl SettingsEditorWidget {
     /// Build the settings editor content (without window chrome).
-    pub fn new(
-        manager: Arc<ClockManager>,
-        runtime: Arc<tokio::runtime::Runtime>,
-        connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
-    ) -> Self {
+    pub fn new(manager: Arc<ClockManager>, runtime: Arc<tokio::runtime::Runtime>, connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>) -> Self {
         let container = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
@@ -165,10 +155,7 @@ impl SettingsEditorWidget {
         display_box.append(&night_brightness_row);
 
         let screen_duration_row = settings_row("Screen Timeout");
-        let screen_duration_inner = Box::builder()
-            .orientation(Orientation::Horizontal)
-            .spacing(4)
-            .build();
+        let screen_duration_inner = Box::builder().orientation(Orientation::Horizontal).spacing(4).build();
         let screen_duration_spin = SpinButton::with_range(0.0, 255.0, 1.0);
         screen_duration_spin.set_value(10.0);
         let screen_duration_suffix = Label::builder().label("s").css_classes(["dim-label"]).build();
@@ -186,7 +173,6 @@ impl SettingsEditorWidget {
 
         display_frame.set_child(Some(&display_box));
         content.append(&display_frame);
-
 
         // --- Regional frame ---
         let regional_frame = settings_frame("nf-cod-globe-symbolic", "Regional");

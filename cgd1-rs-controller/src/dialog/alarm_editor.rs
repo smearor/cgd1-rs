@@ -440,10 +440,18 @@ fn create_alarm_row() -> (Box, AlarmRowWidgets) {
     let spacer = Box::builder().hexpand(true).build();
     row.append(&spacer);
 
-    let set_button = Button::builder().icon_name("nf-cod-check-symbolic").tooltip_text("Set").css_classes(["suggested-action"]).build();
+    let set_button = Button::builder()
+        .icon_name("nf-cod-check-symbolic")
+        .tooltip_text("Set")
+        .css_classes(["suggested-action"])
+        .build();
     row.append(&set_button);
 
-    let delete_button = Button::builder().icon_name("nf-cod-trash-symbolic").tooltip_text("Del").css_classes(["destructive-action"]).build();
+    let delete_button = Button::builder()
+        .icon_name("nf-cod-trash-symbolic")
+        .tooltip_text("Del")
+        .css_classes(["destructive-action"])
+        .build();
     row.append(&delete_button);
 
     let widgets = AlarmRowWidgets {

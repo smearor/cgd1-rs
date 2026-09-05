@@ -785,7 +785,12 @@ impl ClockDevice {
 
         // Step 3: Send data packets in blocks of 4
         let total_packets = upload_data.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
-        debug!(original_len = audio.len(), padded_len = upload_data.len(), total_packets, "audio upload: padded to block boundary");
+        debug!(
+            original_len = audio.len(),
+            padded_len = upload_data.len(),
+            total_packets,
+            "audio upload: padded to block boundary"
+        );
         let mut packet_index = 0usize;
 
         for chunk in upload_data.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
@@ -1098,20 +1103,22 @@ mod tests {
         let data_notify = CharacteristicUuid::DataNotify;
 
         // Packet 0: slots 0-2, slot 0 has alarm at 07:30 weekdays
-        mock.push_notification(
-            BleNotification::new(data_notify, vec![
+        mock.push_notification(BleNotification::new(
+            data_notify,
+            vec![
                 0x11, 0x06, 0x00, 0x01, 0x07, 0x1E, 0x3E, 0x01, // slot 0: enabled, 7:30, weekdays, snooze
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 1: empty
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 2: empty
-            ]),
-        );
+            ],
+        ));
         // Packets 1-5: all empty slots
         for base in [3u8, 6, 9, 12, 15] {
-            mock.push_notification(
-                BleNotification::new(data_notify, vec![
+            mock.push_notification(BleNotification::new(
+                data_notify,
+                vec![
                     0x11, 0x06, base, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-                ]),
-            );
+                ],
+            ));
         }
 
         let slots = device.read_alarms().await.unwrap();

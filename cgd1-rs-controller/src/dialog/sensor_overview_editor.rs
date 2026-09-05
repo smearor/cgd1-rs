@@ -30,10 +30,7 @@ pub struct SensorOverviewWidget {
 
 impl SensorOverviewWidget {
     /// Build the sensor overview content (without window chrome).
-    pub fn new(
-        device_states: Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
-        known_devices: Arc<Mutex<Vec<MacAddress>>>,
-    ) -> Self {
+    pub fn new(device_states: Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>, known_devices: Arc<Mutex<Vec<MacAddress>>>) -> Self {
         let container = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
@@ -74,11 +71,7 @@ impl SensorOverviewWidget {
     }
 
     /// Populate the model from the current device states and known devices.
-    pub fn populate(
-        &self,
-        device_states: &Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
-        known_devices: &Arc<Mutex<Vec<MacAddress>>>,
-    ) {
+    pub fn populate(&self, device_states: &Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>, known_devices: &Arc<Mutex<Vec<MacAddress>>>) {
         populate_model(&self.model, device_states, known_devices);
     }
 }
@@ -138,11 +131,7 @@ where
 }
 
 /// Populate the ListStore from device_states and known_devices.
-fn populate_model(
-    model: &gio::ListStore,
-    device_states: &Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
-    known_devices: &Arc<Mutex<Vec<MacAddress>>>,
-) {
+fn populate_model(model: &gio::ListStore, device_states: &Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>, known_devices: &Arc<Mutex<Vec<MacAddress>>>) {
     model.remove_all();
     let states = device_states.lock().unwrap_or_else(|p| p.into_inner());
     let known = known_devices.lock().unwrap_or_else(|p| p.into_inner());
