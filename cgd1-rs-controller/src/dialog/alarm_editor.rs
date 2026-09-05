@@ -1,26 +1,30 @@
+use crate::dialog::TimeEntry;
 use cgd1_rs::AlarmEntry;
+use cgd1_rs::AlarmSlot;
 use cgd1_rs::AlarmSlotIndex;
 use cgd1_rs::ClockError;
 use cgd1_rs::ClockManager;
 use cgd1_rs::ClockTime;
 use cgd1_rs::DayMask;
 use cgd1_rs::MacAddress;
+use glib::ControlFlow;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::mpsc::TryRecvError;
-
-use crate::dialog::TimeEntry;
 
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
 use gtk4::Label;
 use gtk4::Orientation;
+use gtk4::PolicyType;
 use gtk4::ScrolledWindow;
 use gtk4::Separator;
 use gtk4::Switch;
 use gtk4::ToggleButton;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tokio::runtime::Runtime;
 use tracing::error;
 use tracing::warn;
 
@@ -38,9 +42,9 @@ pub struct AlarmEditorWidget {
     /// Clock manager for device communication.
     manager: Arc<ClockManager>,
     /// Async runtime.
-    runtime: Arc<tokio::runtime::Runtime>,
+    runtime: Arc<Runtime>,
     /// Connected device address.
-    connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
+    connected_address: Arc<Mutex<Option<MacAddress>>>,
 }
 
 /// Widgets for a single alarm row.
@@ -57,7 +61,8 @@ struct AlarmRowWidgets {
 
 impl AlarmEditorWidget {
     /// Build the alarm editor content (without window chrome).
-    pub fn new(manager: Arc<ClockManager>, runtime: Arc<tokio::runtime::Runtime>, connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>) -> Self {
+    pub fn new(manager: Arc<ClockManager>, runtime: Arc<Runtime>, connected_address: Arc<Mutex<Option<MacAddress>>>, on_changed: impl Fn() + 'static) -> Self {
+        let on_changed = Arc::new(on_changed);
         let container = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
@@ -68,8 +73,8 @@ impl AlarmEditorWidget {
             .build();
 
         let scrolled = ScrolledWindow::builder()
-            .hscrollbar_policy(gtk4::PolicyType::Never)
-            .vscrollbar_policy(gtk4::PolicyType::Automatic)
+            .hscrollbar_policy(PolicyType::Never)
+            .vscrollbar_policy(PolicyType::Automatic)
             .vexpand(true)
             .max_content_height(300)
             .propagate_natural_height(true)
@@ -110,6 +115,7 @@ impl AlarmEditorWidget {
             let runtime_set = runtime.clone();
             let connected_address_set = connected_address.clone();
             let status_label_set = status_label.clone();
+            let on_changed_set = on_changed.clone();
             let time_entry = widgets.time_entry.clone();
             let enabled_switch = widgets.enabled_switch.clone();
             let snooze_toggle = widgets.snooze_toggle.clone();
@@ -163,18 +169,22 @@ impl AlarmEditorWidget {
                 });
                 let rx = std::cell::RefCell::new(rx);
                 let status_label_set = status_label_set.clone();
+                let on_changed = on_changed_set.clone();
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
                         match result {
-                            Ok(()) => status_label_set.set_label(&format!("Alarm #{slot:02} set")),
+                            Ok(()) => {
+                                status_label_set.set_label(&format!("Alarm #{slot:02} set"));
+                                (*on_changed)();
+                            }
                             Err(e) => status_label_set.set_label(&format!("Set failed: {e}")),
                         }
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Err(TryRecvError::Empty) => ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
                         status_label_set.set_label("Set task failed");
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
                 });
             });
@@ -183,6 +193,7 @@ impl AlarmEditorWidget {
             let runtime_del = runtime.clone();
             let connected_address_del = connected_address.clone();
             let status_label_del = status_label.clone();
+            let on_changed_del = on_changed.clone();
 
             widgets.delete_button.connect_clicked(move |_| {
                 let addr = *connected_address_del.lock().unwrap_or_else(|p| {
@@ -206,18 +217,22 @@ impl AlarmEditorWidget {
                 });
                 let rx = std::cell::RefCell::new(rx);
                 let status_label_del = status_label_del.clone();
+                let on_changed = on_changed_del.clone();
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
                         match result {
-                            Ok(()) => status_label_del.set_label(&format!("Alarm #{slot:02} deleted")),
+                            Ok(()) => {
+                                status_label_del.set_label(&format!("Alarm #{slot:02} deleted"));
+                                (*on_changed)();
+                            }
                             Err(e) => status_label_del.set_label(&format!("Delete failed: {e}")),
                         }
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
-                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(TryRecvError::Empty) => ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
                         status_label_del.set_label("Delete task failed");
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
                 });
             });
@@ -315,12 +330,12 @@ impl AlarmEditorWidget {
                                 status_label.set_label(&format!("Read failed: {e}"));
                             }
                         }
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
-                    Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                    Err(TryRecvError::Empty) => ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
                         status_label.set_label("Read task failed");
-                        glib::ControlFlow::Break
+                        ControlFlow::Break
                     }
                 });
             });
@@ -341,7 +356,7 @@ impl AlarmEditorWidget {
         };
         self.status_label.set_label("Reading alarms...");
         let manager = self.manager.clone();
-        let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<cgd1_rs::AlarmSlot>, String>>();
+        let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<AlarmSlot>, String>>();
         self.runtime.spawn(async move {
             let result = async {
                 let device = manager.device(&addr).await.ok_or_else(|| ClockError::Parse("device not found".into()))?;
@@ -381,12 +396,12 @@ impl AlarmEditorWidget {
                         status_label.set_label(&format!("Read failed: {e}"));
                     }
                 }
-                glib::ControlFlow::Break
+                ControlFlow::Break
             }
-            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(TryRecvError::Empty) => ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
                 status_label.set_label("Read task failed");
-                glib::ControlFlow::Break
+                ControlFlow::Break
             }
         });
     }

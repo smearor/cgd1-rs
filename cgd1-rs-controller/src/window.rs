@@ -1,6 +1,7 @@
 use cgd1_rs::AuthToken;
 use cgd1_rs::Backend;
 use cgd1_rs::Brightness;
+use cgd1_rs::ClockError;
 use cgd1_rs::ClockEvent;
 use cgd1_rs::ClockManager;
 use cgd1_rs::DiscoveredDevice;
@@ -23,6 +24,14 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
+use crate::config::ConfigStore;
+use crate::device_runtime_state::DeviceRuntimeState;
+use crate::dialog::AlarmEditorWidget;
+use crate::dialog::AudioEditorWidget;
+use crate::dialog::DisplayEditorWidget;
+use crate::dialog::RegionEditorWidget;
+use crate::dialog::SensorOverviewWidget;
+use crate::display::SevenSegmentDisplay;
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
@@ -39,15 +48,7 @@ use gtk4::gio;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-
-use crate::config::ConfigStore;
-use crate::device_runtime_state::DeviceRuntimeState;
-use crate::dialog::AlarmEditorWidget;
-use crate::dialog::AudioEditorWidget;
-use crate::dialog::DisplayEditorWidget;
-use crate::dialog::RegionEditorWidget;
-use crate::dialog::SensorOverviewWidget;
-use crate::display::SevenSegmentDisplay;
+use tokio::runtime::Runtime;
 
 /// CSS for the main window layout.
 const WINDOW_CSS: &str = include_str!("../assets/window.css");
@@ -56,7 +57,7 @@ const WINDOW_CSS: &str = include_str!("../assets/window.css");
 #[allow(dead_code)]
 pub struct MainWindow {
     window: Window,
-    runtime: Arc<tokio::runtime::Runtime>,
+    runtime: Arc<Runtime>,
     manager: Arc<ClockManager>,
     token_store: Arc<FileTokenStore>,
     /// Address of the device currently displayed in the UI.
@@ -65,6 +66,8 @@ pub struct MainWindow {
     device_states: Arc<Mutex<HashMap<MacAddress, DeviceRuntimeState>>>,
     date_display: SevenSegmentDisplay,
     time_display: SevenSegmentDisplay,
+    /// Label showing the next alarm time below the clock.
+    next_alarm_label: Label,
     temp_display: SevenSegmentDisplay,
     humidity_display: SevenSegmentDisplay,
     battery_icon: Image,
@@ -302,7 +305,7 @@ impl MainWindow {
 
         window.set_child(Some(&main_box));
 
-        let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap_or_else(|e| {
+        let runtime = Arc::new(Runtime::new().unwrap_or_else(|e| {
             eprintln!("Error: Failed to create async runtime: {e}.");
             std::process::exit(1);
         }));
@@ -317,6 +320,13 @@ impl MainWindow {
 
         let date_display = SevenSegmentDisplay::new();
         let time_display = SevenSegmentDisplay::new();
+        let next_alarm_label = Label::builder()
+            .label("")
+            .css_classes(["dim-label", "next-alarm"])
+            .halign(Align::Center)
+            .valign(Align::Start)
+            .margin_top(12)
+            .build();
         let temp_display = SevenSegmentDisplay::new();
         let humidity_display = SevenSegmentDisplay::new();
 
@@ -339,6 +349,7 @@ impl MainWindow {
             device_states: Arc::new(Mutex::new(HashMap::new())),
             date_display,
             time_display,
+            next_alarm_label,
             temp_display,
             humidity_display,
             battery_icon,
@@ -385,6 +396,7 @@ impl MainWindow {
         self_.setup_audio_panel();
         self_.start_clock_tick();
         self_.setup_resize_handler();
+        self_.setup_next_alarm_refresh();
         self_.populate_known_devices();
         self_.start_auto_scan();
 
@@ -408,7 +420,7 @@ impl MainWindow {
 
     /// Get the tokio runtime.
     #[allow(dead_code)]
-    pub fn runtime(&self) -> &Arc<tokio::runtime::Runtime> {
+    pub fn runtime(&self) -> &Arc<Runtime> {
         &self.runtime
     }
 
@@ -476,6 +488,7 @@ impl MainWindow {
             .hexpand(true)
             .build();
         middle_content.append(&self.time_display);
+        middle_content.append(&self.next_alarm_label);
         middle.append(&middle_content);
 
         // Bottom section: ~25% of window height - sensors
@@ -524,7 +537,55 @@ impl MainWindow {
 
     /// Set up the collapsible alarm editor panel with compact summary bar.
     fn setup_alarm_panel(&self) {
-        let editor = AlarmEditorWidget::new(self.manager.clone(), self.runtime.clone(), self.selected_address.clone());
+        let next_alarm_label = self.next_alarm_label.clone();
+        let device_states = self.device_states.clone();
+        let selected_address = self.selected_address.clone();
+        let manager_for_panel = self.manager.clone();
+        let runtime_for_panel = self.runtime.clone();
+        let editor = AlarmEditorWidget::new(self.manager.clone(), self.runtime.clone(), self.selected_address.clone(), move || {
+            let addr = *selected_address.lock().unwrap_or_else(|p| {
+                warn!("mutex poisoned - recovering");
+                p.into_inner()
+            });
+            let Some(addr) = addr else { return };
+            let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<cgd1_rs::AlarmSlot>, String>>();
+            let manager = manager_for_panel.clone();
+            runtime_for_panel.spawn(async move {
+                let result = async {
+                    let device = manager.device(&addr).await.ok_or_else(|| ClockError::Parse("device not found".into()))?;
+                    device.read_alarms().await
+                }
+                .await;
+                let _ = tx.send(result.map_err(|e| e.to_string()));
+            });
+            let device_states = device_states.clone();
+            let next_alarm_label = next_alarm_label.clone();
+            let rx = std::cell::RefCell::new(rx);
+            glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
+                Ok(result) => {
+                    match result {
+                        Ok(slots) => {
+                            let label_text = crate::next_alarm::next_alarm(&slots).map(|na| na.label.clone()).unwrap_or_default();
+                            next_alarm_label.set_label(&label_text);
+                            device_states
+                                .lock()
+                                .unwrap_or_else(|p| {
+                                    warn!("mutex poisoned - recovering");
+                                    p.into_inner()
+                                })
+                                .get_mut(&addr)
+                                .map(|s| s.alarms = Some(slots));
+                        }
+                        Err(e) => {
+                            warn!(%addr, error = %e, "on_changed: failed to re-read alarms");
+                        }
+                    }
+                    ControlFlow::Break
+                }
+                Err(TryRecvError::Empty) => ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => ControlFlow::Break,
+            });
+        });
         self.alarm_revealer.set_child(Some(&editor.container));
 
         let full_display = self.full_display.clone();
@@ -926,6 +987,7 @@ impl MainWindow {
                                     humidity: None,
                                     battery_level: None,
                                     time_based_blink_handle: None,
+                                    alarms: None,
                                 });
                                 if let Some(t) = temp {
                                     state.temperature = Some(t);
@@ -973,6 +1035,7 @@ impl MainWindow {
         let humidity_display = self.humidity_display.clone();
         let time_display = self.time_display.clone();
         let date_display = self.date_display.clone();
+        let next_alarm_label = self.next_alarm_label.clone();
         let battery_icon = self.battery_icon.clone();
         let bluetooth_icon = self.bluetooth_icon.clone();
         let summary_temp = self.summary_temp.clone();
@@ -983,6 +1046,7 @@ impl MainWindow {
         let known_device_store = self.known_device_store.clone();
         let scan_battery_cache_for_connect = self.scan_battery_cache.clone();
         let config_store_for_connect = self.config_store.clone();
+        let next_alarm_label_for_signals = self.next_alarm_label.clone();
 
         connect_switch.connect_active_notify(move |sw| {
             let _runtime_keepalive = runtime_arc.clone();
@@ -1010,6 +1074,8 @@ impl MainWindow {
                 bluetooth_icon.remove_css_class("bluetooth-off");
                 bluetooth_icon.add_css_class("bluetooth-blinking");
                 let manager = manager.clone();
+                let manager_for_alarms = manager.clone();
+                let manager_for_events = manager.clone();
                 let token_store = token_store.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
                 let (event_tx, event_rx) = std::sync::mpsc::channel::<ClockEvent>();
@@ -1098,6 +1164,33 @@ impl MainWindow {
                                             let minute = Local::now().minute();
                                             if mode.should_blink(minute) && last_blink_minute != Some(minute) {
                                                 last_blink_minute = Some(minute);
+                                                // Skip blink if night mode is active and current time is in the night window.
+                                                let in_night_mode = match blink_device.read_settings().await {
+                                                    Ok(settings) => {
+                                                        if !settings.night_mode_enabled() {
+                                                            false
+                                                        } else {
+                                                            let now = Local::now();
+                                                            let cur = now.hour() * 60 + now.minute();
+                                                            let start = settings.night_start().hour() as i32 * 60 + settings.night_start().minute() as i32;
+                                                            let end = settings.night_end().hour() as i32 * 60 + settings.night_end().minute() as i32;
+                                                            if start <= end {
+                                                                (cur as i32) >= start && (cur as i32) < end
+                                                            } else {
+                                                                // Night window wraps past midnight, e.g. 22:00–07:00.
+                                                                (cur as i32) >= start || (cur as i32) < end
+                                                            }
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        warn!(%addr, error = %e, "time-based blink: failed to read settings, skipping night mode check");
+                                                        false
+                                                    }
+                                                };
+                                                if in_night_mode {
+                                                    debug!(%addr, mode = ?mode, minute, "time-based blink skipped (night mode active)");
+                                                    continue;
+                                                }
                                                 debug!(%addr, mode = ?mode, minute, "time-based blink triggered");
                                                 if let Err(e) = blink_device.set_brightness(Brightness::new(80).unwrap_or(Brightness::MAX)).await {
                                                     warn!(%addr, error = %e, "time-based blink: failed to set brightness");
@@ -1145,6 +1238,8 @@ impl MainWindow {
                 let known_device_store_for_connect = known_device_store.clone();
                 let addr_for_connect = addr;
                 let dropdown_for_result = dropdown.clone();
+                let next_alarm_label_for_connect = next_alarm_label_for_signals.clone();
+                let runtime_for_alarms = runtime.clone();
                 let rx = std::cell::RefCell::new(rx);
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
@@ -1174,6 +1269,53 @@ impl MainWindow {
                                 if let Some(model) = dropdown_for_result.model() {
                                     dropdown_for_result.set_model(Some(&model));
                                 }
+
+                                // Read alarms from device and update next-alarm label.
+                                let (alarm_tx, alarm_rx) = std::sync::mpsc::channel::<Result<Vec<cgd1_rs::AlarmSlot>, String>>();
+                                let manager_clone = manager_for_alarms.clone();
+                                let alarm_addr = addr_for_connect;
+                                runtime_for_alarms.spawn(async move {
+                                    let result = async {
+                                        let device = manager_clone
+                                            .device(&alarm_addr)
+                                            .await
+                                            .ok_or_else(|| ClockError::Parse("device not found".into()))?;
+                                        device.read_alarms().await
+                                    }
+                                    .await;
+                                    let _ = alarm_tx.send(result.map_err(|e| e.to_string()));
+                                });
+                                let device_states_for_alarms = device_states_for_connect.clone();
+                                let next_alarm_label = next_alarm_label_for_connect.clone();
+                                let alarm_rx = std::cell::RefCell::new(alarm_rx);
+                                glib::source::idle_add_local(move || match alarm_rx.borrow_mut().try_recv() {
+                                    Ok(result) => {
+                                        match result {
+                                            Ok(slots) => {
+                                                let label_text = crate::next_alarm::next_alarm(&slots).map(|na| na.label.clone()).unwrap_or_default();
+                                                next_alarm_label.set_label(&label_text);
+                                                device_states_for_alarms
+                                                    .lock()
+                                                    .unwrap_or_else(|p| {
+                                                        warn!("mutex poisoned - recovering");
+                                                        p.into_inner()
+                                                    })
+                                                    .get_mut(&addr_for_connect)
+                                                    .map(|s| s.alarms = Some(slots));
+                                            }
+                                            Err(e) => {
+                                                warn!(%addr_for_connect, error = %e, "failed to read alarms after connect");
+                                                next_alarm_label.set_label("");
+                                            }
+                                        }
+                                        ControlFlow::Break
+                                    }
+                                    Err(TryRecvError::Empty) => ControlFlow::Continue,
+                                    Err(TryRecvError::Disconnected) => {
+                                        next_alarm_label.set_label("");
+                                        ControlFlow::Break
+                                    }
+                                });
                             }
                             Err(e) => {
                                 warn!(%addr_for_connect, error = %e, "controller: connect failed");
@@ -1206,6 +1348,8 @@ impl MainWindow {
                 let selected_address_for_events = selected_address.clone();
                 let dropdown_for_events = dropdown.clone();
                 let full_display_for_events = full_display.clone();
+                let runtime_for_events = runtime.clone();
+                let next_alarm_label_for_events = next_alarm_label_for_signals.clone();
                 let event_rx = std::cell::RefCell::new(event_rx);
                 glib::source::idle_add_local(move || match event_rx.borrow_mut().try_recv() {
                     Ok(event) => {
@@ -1272,6 +1416,8 @@ impl MainWindow {
                                     glib::source::timeout_add_local_once(Duration::from_millis(2000), move || {
                                         display.remove_css_class("alarm-flash");
                                     });
+                                    // Device disconnects after alarm — clear label until reconnect re-reads alarms.
+                                    next_alarm_label_for_events.set_label("");
                                 }
                             }
                             ClockEvent::Disconnected => {
@@ -1315,6 +1461,49 @@ impl MainWindow {
                                 if let Some(model) = dropdown_for_events.model() {
                                     dropdown_for_events.set_model(Some(&model));
                                 }
+                                // Re-read alarms after reconnect to update next-alarm label
+                                // (e.g. after alarm-triggered disconnect, the triggered alarm may be disabled).
+                                let (alarm_tx, alarm_rx) = std::sync::mpsc::channel::<Result<Vec<cgd1_rs::AlarmSlot>, String>>();
+                                let manager_clone = manager_for_events.clone();
+                                let alarm_addr = addr_for_connect;
+                                runtime_for_events.spawn(async move {
+                                    let result = async {
+                                        let device = manager_clone
+                                            .device(&alarm_addr)
+                                            .await
+                                            .ok_or_else(|| ClockError::Parse("device not found".into()))?;
+                                        device.read_alarms().await
+                                    }
+                                    .await;
+                                    let _ = alarm_tx.send(result.map_err(|e| e.to_string()));
+                                });
+                                let device_states_for_alarms = device_states_for_events.clone();
+                                let next_alarm_label = next_alarm_label_for_events.clone();
+                                let alarm_rx = std::cell::RefCell::new(alarm_rx);
+                                glib::source::idle_add_local(move || match alarm_rx.borrow_mut().try_recv() {
+                                    Ok(result) => {
+                                        match result {
+                                            Ok(slots) => {
+                                                let label_text = crate::next_alarm::next_alarm(&slots).map(|na| na.label.clone()).unwrap_or_default();
+                                                next_alarm_label.set_label(&label_text);
+                                                device_states_for_alarms
+                                                    .lock()
+                                                    .unwrap_or_else(|p| {
+                                                        warn!("mutex poisoned - recovering");
+                                                        p.into_inner()
+                                                    })
+                                                    .get_mut(&addr_for_connect)
+                                                    .map(|s| s.alarms = Some(slots));
+                                            }
+                                            Err(e) => {
+                                                warn!(%addr_for_connect, error = %e, "failed to re-read alarms after reconnect");
+                                            }
+                                        }
+                                        ControlFlow::Break
+                                    }
+                                    Err(TryRecvError::Empty) => ControlFlow::Continue,
+                                    Err(TryRecvError::Disconnected) => ControlFlow::Break,
+                                });
                             }
                             _ => {}
                         }
@@ -1350,6 +1539,7 @@ impl MainWindow {
                 humidity_display.set_display_text("");
                 time_display.set_display_text("");
                 date_display.set_display_text("");
+                next_alarm_label.set_label("");
                 set_battery_icon(&battery_icon, None);
                 bluetooth_icon.remove_css_class("bluetooth-blinking");
                 bluetooth_icon.add_css_class("bluetooth-off");
@@ -1368,6 +1558,7 @@ impl MainWindow {
         let temp_display = self.temp_display.clone();
         let humidity_display = self.humidity_display.clone();
         let battery_icon = self.battery_icon.clone();
+        let next_alarm_label = self.next_alarm_label.clone();
         let selected_address = self.selected_address.clone();
         let device_states = self.device_states.clone();
 
@@ -1403,10 +1594,12 @@ impl MainWindow {
                     warn!("mutex poisoned - recovering");
                     p.into_inner()
                 });
-                states.get(&addr).map(|s| (s.connected, s.temperature, s.humidity, s.battery_level))
+                states
+                    .get(&addr)
+                    .map(|s| (s.connected, s.temperature, s.humidity, s.battery_level, s.alarms.clone()))
             };
             match state_fields {
-                Some((connected, temperature, humidity, battery_level)) => {
+                Some((connected, temperature, humidity, battery_level, alarms)) => {
                     if connected && !connect_switch.is_active() {
                         connect_switch.set_active(true);
                     }
@@ -1425,17 +1618,53 @@ impl MainWindow {
                     } else {
                         set_battery_icon(&battery_icon, None);
                     }
+                    let label_text = alarms
+                        .as_ref()
+                        .and_then(|slots| crate::next_alarm::next_alarm(slots))
+                        .map(|na| na.label.clone())
+                        .unwrap_or_default();
+                    next_alarm_label.set_label(&label_text);
                     status.set_label(&format!("Selected: {addr}"));
                 }
                 None => {
                     temp_display.set_display_text("");
                     humidity_display.set_display_text("");
+                    next_alarm_label.set_label("");
                     set_battery_icon(&battery_icon, None);
                     status.set_label(&format!("Available: {addr}"));
                 }
             }
         });
     }
+
+    /// Set up a periodic timer to refresh the next-alarm label from device_states.
+    fn setup_next_alarm_refresh(&self) {
+        let next_alarm_label = self.next_alarm_label.clone();
+        let device_states = self.device_states.clone();
+        let selected_address = self.selected_address.clone();
+        glib::timeout_add_local(Duration::from_secs(60), move || {
+            let addr = *selected_address.lock().unwrap_or_else(|p| {
+                warn!("mutex poisoned - recovering");
+                p.into_inner()
+            });
+            let label_text = addr
+                .and_then(|a| {
+                    let states = device_states.lock().unwrap_or_else(|p| {
+                        warn!("mutex poisoned - recovering");
+                        p.into_inner()
+                    });
+                    states
+                        .get(&a)
+                        .and_then(|s| s.alarms.as_ref())
+                        .and_then(|slots| crate::next_alarm::next_alarm(slots))
+                })
+                .map(|na| na.label.clone())
+                .unwrap_or_default();
+            next_alarm_label.set_label(&label_text);
+            glib::ControlFlow::Continue
+        });
+    }
+
     fn setup_resize_handler(&self) {
         let time_display = self.time_display.clone();
         let date_display = self.date_display.clone();

@@ -1016,7 +1016,8 @@ async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Resul
 
         let mut all_subscribed = true;
         for char_uuid in &characteristics {
-            if device.transport.subscribe(&device.address, *char_uuid).await.is_err() {
+            if let Err(e) = device.transport.subscribe(&device.address, *char_uuid).await {
+                warn!(attempt, characteristic = %char_uuid, error = %e, "reconnect: subscribe failed");
                 all_subscribed = false;
             }
         }
