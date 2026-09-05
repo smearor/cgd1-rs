@@ -736,6 +736,7 @@ impl BleTransport for VirtualClockTransport {
                 let state = state_arc.lock().await;
                 Ok(vec![state.battery.value()])
             }
+            CharacteristicUuid::FirmwareVersion => Ok(VIRTUAL_FIRMWARE.as_bytes().to_vec()),
             _ => Err(TransportError::UnsupportedRead { characteristic }.into()),
         }
     }
