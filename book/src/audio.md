@@ -72,6 +72,58 @@ Two alternating slot signatures are used for custom uploads:
 
 > Always alternate between slots when uploading new custom audio. The device may reject uploads if the target signature matches the currently active ringtone.
 
+### Custom Ringtones from `~/.config/cgd1-rs/ringtones/`
+
+The GTK controller automatically discovers user-provided ringtone files placed in
+the XDG config directory:
+
+```
+~/.config/cgd1-rs/ringtones/*.pcm
+```
+
+Each `.pcm` file appears as a separate entry in the Audio Editor's ringtone
+dropdown, using the filename (without extension) as the display name. WAV files
+with a `.pcm` extension are also accepted — the controller automatically
+extracts the raw PCM data from the `data` chunk if the file starts with
+`RIFF....WAVE`.
+
+#### How It Works
+
+1. **Signature derivation**: The controller computes a deterministic 4-byte
+   signature by hashing the filename. The hash avoids collisions with all
+   known built-in and slot signatures by incrementing a salt until a
+   non-colliding value is found. The resulting signature is stored as a
+   `RingtoneSignature::Custom([u8; 4])`.
+
+2. **Upload on Apply**: When the user selects a custom ringtone and clicks
+   "Apply", the controller reads the PCM file from disk, uploads the audio
+   to the device under the derived signature, and writes that signature to
+   the device settings to activate it.
+
+3. **Read-back**: When reading settings from the device, if the device
+   reports a `Custom` signature that matches a known custom ringtone file,
+   the dropdown automatically selects that entry. If the file no longer
+   exists, the raw hex signature is displayed instead.
+
+#### Adding a Custom Ringtone
+
+```bash
+# Create the directory if it doesn't exist
+mkdir -p ~/.config/cgd1-rs/ringtones
+
+# Copy your PCM file (8-bit unsigned, 8 kHz, mono, max. 98 KB)
+cp my_ringtone.pcm ~/.config/cgd1-rs/ringtones/my_ringtone.pcm
+```
+
+Restart the controller (or re-open the Audio Editor panel) for the new
+ringtone to appear in the dropdown.
+
+> **Note**: Custom ringtones from the config directory use
+> `RingtoneSignature::Custom` with a derived hash signature, not the
+> fixed `CustomSlotA`/`CustomSlotB` slots. The two fixed slots remain
+> available for manual uploads via the "Custom Upload" section of the
+> Audio Editor.
+
 ## Upload Protocol
 
 ```mermaid
@@ -153,10 +205,10 @@ After the last block ACK, the device stores the audio under the given signature.
 cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
 ```
 
-| Argument | Description |
-|---|---|
-| `address` | Device MAC address |
-| `file` | Path to 8-bit PCM audio file (8 kHz, mono) |
+| Argument      | Description                                                                   |
+|---------------|-------------------------------------------------------------------------------|
+| `address`     | Device MAC address                                                            |
+| `file`        | Path to 8-bit PCM audio file (8 kHz, mono)                                    |
 | `--signature` | Ringtone name (`CustomSlotA`, `CustomSlotB`) or 4-byte hex (e.g., `deadbeef`) |
 
 After uploading, select the ringtone by writing its signature to the device settings:
