@@ -2,6 +2,7 @@ use cgd1_rs::Backend;
 use cgd1_rs::Brightness;
 use cgd1_rs::Language;
 use cgd1_rs::MacAddress;
+use cgd1_rs::RingtoneSignature;
 use cgd1_rs::TemperatureUnit;
 use cgd1_rs::TimeFormat;
 use cgd1_rs::Timezone;
@@ -28,6 +29,8 @@ pub struct SettingsWriteArgs {
     pub temp_unit: Option<TemperatureUnit>,
     /// Language: en or zh.
     pub language: Option<Language>,
+    /// Ringtone signature (name or hex, e.g. "Digital" or "0961bb77").
+    pub ringtone: Option<RingtoneSignature>,
     /// BLE backend to use.
     pub backend: Backend,
 }
@@ -57,6 +60,10 @@ pub async fn run(args: SettingsWriteArgs) -> Result<(), CliError> {
     }
     if let Some(lang) = args.language {
         settings = settings.with_language(lang);
+    }
+    if let Some(ringtone) = args.ringtone {
+        println!("Setting ringtone signature to: {ringtone}");
+        settings = settings.with_ringtone_signature(ringtone);
     }
 
     connection.device().write_settings(&settings).await?;

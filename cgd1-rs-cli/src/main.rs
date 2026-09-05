@@ -74,6 +74,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
             time_format,
             temp_unit,
             language,
+            ringtone,
         } => {
             command::settings_write::run(SettingsWriteArgs {
                 address,
@@ -84,6 +85,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
                 time_format,
                 temp_unit,
                 language,
+                ringtone,
                 backend,
             })
             .await

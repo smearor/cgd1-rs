@@ -110,6 +110,9 @@ pub enum Commands {
         /// Language: en or zh.
         #[arg(long)]
         language: Option<Language>,
+        /// Ringtone signature (name or hex, e.g. "Digital" or "0961bb77").
+        #[arg(long)]
+        ringtone: Option<RingtoneSignature>,
     },
 
     /// Set immediate brightness (preview).

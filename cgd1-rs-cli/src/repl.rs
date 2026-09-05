@@ -306,6 +306,7 @@ async fn dispatch(state: &mut ReplState, cli: Cli) -> Result<(), CliError> {
             time_format,
             temp_unit,
             language,
+            ringtone,
         } => {
             let device = require_device(state, &address)?;
             let mut settings = device.read_settings().await?;
@@ -329,6 +330,10 @@ async fn dispatch(state: &mut ReplState, cli: Cli) -> Result<(), CliError> {
             }
             if let Some(lang) = language {
                 settings = settings.with_language(lang);
+            }
+            if let Some(rt) = ringtone {
+                println!("Setting ringtone signature to: {rt}");
+                settings = settings.with_ringtone_signature(rt);
             }
             device.write_settings(&settings).await?;
             println!("Settings updated.");
