@@ -1,3 +1,4 @@
+use cgd1_rs::AlarmSlot;
 use cgd1_rs::BatteryLevel;
 use cgd1_rs::Humidity;
 use cgd1_rs::Temperature;
@@ -21,6 +22,8 @@ pub struct DeviceRuntimeState {
     pub battery_level: Option<BatteryLevel>,
     /// Handle for the time-based blink task, aborted on disconnect.
     pub time_based_blink_handle: Option<JoinHandle<()>>,
+    /// Alarms read from the device, used to compute the next alarm time.
+    pub alarms: Option<Vec<AlarmSlot>>,
 }
 
 impl DeviceRuntimeState {
@@ -32,6 +35,7 @@ impl DeviceRuntimeState {
             humidity: None,
             battery_level: None,
             time_based_blink_handle: None,
+            alarms: None,
         }
     }
 }

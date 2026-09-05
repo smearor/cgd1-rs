@@ -3,6 +3,7 @@ mod config;
 mod device_runtime_state;
 mod dialog;
 mod display;
+mod next_alarm;
 mod window;
 
 use cgd1_rs::Backend;

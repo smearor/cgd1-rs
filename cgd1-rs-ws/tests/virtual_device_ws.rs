@@ -115,7 +115,7 @@ async fn ws_full_virtual_device_flow() {
     assert!(scan_result.as_array().map(|a| !a.is_empty()).unwrap_or(false), "scan should find at least one device");
 
     // 2. Connect
-    let connect_resp = timeout(Duration::from_secs(5), send_request(&mut ws, 2, json!({ "type": "connect", "address": VIRTUAL_MAC })))
+    let connect_resp = timeout(Duration::from_secs(10), send_request(&mut ws, 2, json!({ "type": "connect", "address": VIRTUAL_MAC })))
         .await
         .expect("connect should not time out");
     let connect_result = assert_ok(&connect_resp, 2);

@@ -16,6 +16,7 @@ use btleplug::platform::Peripheral;
 use futures::stream::StreamExt;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -57,6 +58,8 @@ pub struct BtleplugTransport {
     disconnect_watchers: Mutex<HashMap<MacAddress, watch::Sender<bool>>>,
     /// Maps btleplug `PeripheralId` string to our `MacAddress` for event routing.
     id_to_address: Mutex<HashMap<String, MacAddress>>,
+    /// Pending connect signals: keyed by PeripheralId string, signaled when `DeviceConnected` arrives.
+    pending_connects: Mutex<HashMap<String, oneshot::Sender<()>>>,
     /// Advertisement channel fed by the event monitor task.
     advertisement_rx: Mutex<mpsc::UnboundedReceiver<AdvertisementData>>,
     /// Handle to the event monitor task so it can be aborted on drop.
@@ -82,6 +85,7 @@ impl BtleplugTransport {
             notification_streams: Mutex::new(HashMap::new()),
             disconnect_watchers: Mutex::new(HashMap::new()),
             id_to_address: Mutex::new(HashMap::new()),
+            pending_connects: Mutex::new(HashMap::new()),
             advertisement_rx: Mutex::new(advertisement_rx),
             event_monitor_handle: std::sync::Mutex::new(None),
         });
@@ -148,7 +152,16 @@ impl BtleplugTransport {
                     }
                 }
                 CentralEvent::DeviceConnected(id) => {
-                    debug!(id = %id, "DeviceConnected event from BlueZ");
+                    let id_str = id.to_string();
+                    debug!(id = %id_str, "DeviceConnected event from BlueZ");
+                    let sender = {
+                        let mut pending = transport.pending_connects.lock().await;
+                        pending.remove(&id_str)
+                    };
+                    if let Some(sender) = sender {
+                        info!(id = %id_str, "DeviceConnected signaled to pending connect");
+                        let _ = sender.send(());
+                    }
                 }
                 CentralEvent::DeviceDiscovered(id) => {
                     debug!(id = %id, "DeviceDiscovered event from BlueZ");
@@ -409,21 +422,104 @@ impl BleTransport for BtleplugTransport {
         };
 
         debug!(%address, "peripheral found, connecting");
-        let connect_timeout = Duration::from_secs(10);
-        match timeout(connect_timeout, target.connect()).await {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => return Err(ClockError::from(e)),
-            Err(_) => {
-                warn!(%address, "connect timed out after 10s");
-                return Err(TransportError::ConnectionFailed { address: *address }.into());
-            }
+
+        // Register the PeripheralId → MacAddress mapping early so the event
+        // monitor can route the DeviceConnected event.
+        let peripheral_id = target.id().to_string();
+        {
+            let mut map = self.id_to_address.lock().await;
+            map.insert(peripheral_id.clone(), *address);
         }
+
+        // Create a oneshot channel so the event monitor can signal us when
+        // the DeviceConnected event arrives from BlueZ.
+        let (connected_tx, connected_rx) = oneshot::channel::<()>();
+        {
+            let mut pending = self.pending_connects.lock().await;
+            pending.insert(peripheral_id.clone(), connected_tx);
+        }
+
+        // Wait for either:
+        //   1. The DeviceConnected event from BlueZ (primary signal)
+        //   2. peripheral.connect() returning (btleplug's own completion)
+        //   3. 20s fallback timeout
+        //
+        // We pin the connect future so it survives the select! and can be
+        // awaited again if DeviceConnected fires first. Calling connect() a
+        // second time returns "In Progress" without waiting, so we must keep
+        // the original future alive.
+        //
+        // The connect logic is scoped in a block so the pinned future (which
+        // borrows `target`) is dropped before we use `target` below.
+        let connect_timeout = Duration::from_secs(20);
+        let connect_result = {
+            let connect_fut = target.connect();
+            tokio::pin!(connect_fut);
+
+            tokio::select! {
+                result = &mut connect_fut => {
+                    match result {
+                        Ok(()) => {
+                            debug!(%address, "peripheral.connect() completed before DeviceConnected event");
+                            Ok(())
+                        }
+                        Err(e) => Err(ClockError::from(e)),
+                    }
+                }
+                result = connected_rx => {
+                    match result {
+                        Ok(()) => {
+                            debug!(%address, "DeviceConnected event received, waiting for peripheral.connect() to complete");
+                            match timeout(connect_timeout, &mut connect_fut).await {
+                                Ok(Ok(())) => {
+                                    debug!(%address, "peripheral.connect() completed after DeviceConnected");
+                                    Ok(())
+                                }
+                                Ok(Err(e)) => {
+                                    // DeviceConnected fired so the device IS connected,
+                                    // but btleplug returned an error. This can happen
+                                    // when btleplug's internal state disagrees with
+                                    // BlueZ. Continue anyway since GATT operations
+                                    // may still work.
+                                    warn!(%address, error = %e, "peripheral.connect() returned error after DeviceConnected, continuing");
+                                    Ok(())
+                                }
+                                Err(_) => {
+                                    warn!(%address, "peripheral.connect() did not complete within 20s after DeviceConnected");
+                                    Err(TransportError::ConnectionFailed { address: *address }.into())
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // Sender dropped (shouldn't happen normally)
+                            debug!(%address, "DeviceConnected signal dropped, waiting for peripheral.connect()");
+                            match timeout(connect_timeout, &mut connect_fut).await {
+                                Ok(Ok(())) => Ok(()),
+                                Ok(Err(e)) => Err(ClockError::from(e)),
+                                Err(_) => {
+                                    warn!(%address, "connect timed out after 20s");
+                                    Err(TransportError::ConnectionFailed { address: *address }.into())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }; // connect_fut dropped here, releasing borrow on target
+
+        // Clean up the pending connect entry regardless of outcome.
+        {
+            let mut pending = self.pending_connects.lock().await;
+            pending.remove(&peripheral_id);
+        }
+
+        connect_result?;
         debug!(%address, "BLE connected, discovering services");
         match timeout(connect_timeout, target.discover_services()).await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => return Err(ClockError::from(e)),
             Err(_) => {
-                warn!(%address, "discover_services timed out after 10s");
+                warn!(%address, "discover_services timed out after 20s");
                 return Err(TransportError::ConnectionFailed { address: *address }.into());
             }
         }
