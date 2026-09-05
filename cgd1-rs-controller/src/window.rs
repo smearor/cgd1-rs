@@ -301,7 +301,7 @@ impl MainWindow {
             .tooltip_text("-- %")
             .css_classes(["battery-icon"])
             .build();
-        let bluetooth_icon = Image::builder().icon_name("nf-fa-bluetooth-symbolic").css_classes(["battery-icon"]).build();
+        let bluetooth_icon = Image::builder().icon_name("nf-fa-bluetooth-symbolic").css_classes(["battery-icon", "bluetooth-off"]).build();
 
         let self_ = Self {
             window,
@@ -934,6 +934,7 @@ impl MainWindow {
             debug!(address = %addr, active = sw.is_active(), "controller: switch toggled");
             if sw.is_active() {
                 status.set_label("Connecting...");
+                bluetooth_icon.remove_css_class("bluetooth-off");
                 bluetooth_icon.add_css_class("bluetooth-blinking");
                 let manager = manager.clone();
                 let token_store = token_store.clone();
@@ -1036,6 +1037,7 @@ impl MainWindow {
                                 info!(%addr_for_connect, "controller: connected");
                                 status.set_label(&msg);
                                 bluetooth_icon_for_connect.remove_css_class("bluetooth-blinking");
+                                bluetooth_icon_for_connect.remove_css_class("bluetooth-off");
                                 // Refresh dropdown to update connection dot
                                 if let Some(model) = dropdown_for_result.model() {
                                     dropdown_for_result.set_model(Some(&model));
@@ -1045,6 +1047,7 @@ impl MainWindow {
                                 warn!(%addr_for_connect, error = %e, "controller: connect failed");
                                 status.set_label(&format!("Connect failed: {e}"));
                                 bluetooth_icon_for_connect.remove_css_class("bluetooth-blinking");
+                                bluetooth_icon_for_connect.add_css_class("bluetooth-off");
                                 sw.set_active(false);
                             }
                         }
@@ -1055,6 +1058,7 @@ impl MainWindow {
                         warn!(%addr_for_connect, "controller: connect task channel disconnected");
                         status.set_label("Connect task failed");
                         bluetooth_icon_for_connect.remove_css_class("bluetooth-blinking");
+                        bluetooth_icon_for_connect.add_css_class("bluetooth-off");
                         sw.set_active(false);
                         ControlFlow::Break
                     }
@@ -1065,6 +1069,7 @@ impl MainWindow {
                 let summary_temp = summary_temp.clone();
                 let summary_humidity = summary_humidity.clone();
                 let summary_battery_icon = summary_battery_icon.clone();
+                let bluetooth_icon_for_events = bluetooth_icon.clone();
                 let device_states_for_events = device_states.clone();
                 let selected_address_for_events = selected_address.clone();
                 let dropdown_for_events = dropdown.clone();
@@ -1150,7 +1155,9 @@ impl MainWindow {
                                 }
                                 if is_selected {
                                     warn!("controller: selected device disconnected event received");
-                                    status_for_events.set_label("Device disconnected");
+                                    status_for_events.set_label("Reconnecting...");
+                                    bluetooth_icon_for_events.remove_css_class("bluetooth-off");
+                                    bluetooth_icon_for_events.add_css_class("bluetooth-blinking");
                                 }
                                 if let Some(model) = dropdown_for_events.model() {
                                     dropdown_for_events.set_model(Some(&model));
@@ -1170,6 +1177,8 @@ impl MainWindow {
                                 if is_selected {
                                     info!("controller: selected device reconnected");
                                     status_for_events.set_label("Device reconnected");
+                                    bluetooth_icon_for_events.remove_css_class("bluetooth-blinking");
+                                    bluetooth_icon_for_events.remove_css_class("bluetooth-off");
                                 }
                                 if let Some(model) = dropdown_for_events.model() {
                                     dropdown_for_events.set_model(Some(&model));
@@ -1206,6 +1215,7 @@ impl MainWindow {
                 date_display.set_display_text("");
                 set_battery_icon(&battery_icon, None);
                 bluetooth_icon.remove_css_class("bluetooth-blinking");
+                bluetooth_icon.add_css_class("bluetooth-off");
                 status.set_label("Disconnected");
                 // Refresh dropdown to update connection dot
                 if let Some(model) = dropdown.model() {

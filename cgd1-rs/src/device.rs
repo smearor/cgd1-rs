@@ -51,12 +51,6 @@ const RESPONSE_TIMEOUT_SECS: u64 = 10;
 /// involve many sequential packets over a potentially slow BLE link.
 const AUDIO_ACK_TIMEOUT_SECS: u64 = 30;
 
-/// Maximum idle period (seconds) before treating the notification stream as
-/// silently disconnected. The CGD1 device sends sensor notifications roughly
-/// every second, so a 60s gap indicates the BLE link has been dropped without
-/// btleplug/BlueZ noticing.
-const NOTIFICATION_IDLE_TIMEOUT_SECS: u64 = 60;
-
 /// Audio data packet payload size (bytes).
 const AUDIO_PACKET_PAYLOAD_SIZE: usize = 128;
 
@@ -863,38 +857,8 @@ async fn notification_task(
 
     debug!(%address, "notification task started");
     loop {
-        match timeout(Duration::from_secs(NOTIFICATION_IDLE_TIMEOUT_SECS), transport.next_notification(&address)).await {
-            Err(_) => {
-                warn!(%address, "no notification for {}s, treating as silent disconnect", NOTIFICATION_IDLE_TIMEOUT_SECS);
-                let _ = event_sender.send(ClockEvent::Disconnected);
-                is_authenticated.store(false, Ordering::SeqCst);
-                if let Err(e) = transport.disconnect(&address).await {
-                    warn!(%address, "transport cleanup after idle timeout failed: {e:?}");
-                }
-                let device = ClockDevice {
-                    transport: transport.clone(),
-                    address,
-                    event_sender: event_sender.clone(),
-                    command_mutex: command_mutex.clone(),
-                    auth_token: auth_token.clone(),
-                    is_authenticated: is_authenticated.clone(),
-                    pending: pending.clone(),
-                    pending_data_response: pending_data_response.clone(),
-                    token_store: token_store.clone(),
-                    notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
-                };
-                match reconnect_and_restore(&device, 6).await {
-                    Ok(()) => {
-                        info!(%address, "reconnect successful after idle timeout, resuming notification task");
-                        continue;
-                    }
-                    Err(e) => {
-                        warn!(%address, "reconnect failed after idle timeout: {e:?}");
-                        break;
-                    }
-                }
-            }
-            Ok(Some(notif)) => {
+        match transport.next_notification(&address).await {
+            Some(notif) => {
                 let characteristic = notif.characteristic;
                 let value = notif.value;
                 debug!(%address, characteristic = %characteristic, len = value.len(), data = %format_hex(&value), "notification received");
@@ -955,7 +919,7 @@ async fn notification_task(
                     }
                 }
             }
-            Ok(None) => {
+            None => {
                 warn!("notification stream ended, device disconnected");
                 let _ = event_sender.send(ClockEvent::Disconnected);
                 is_authenticated.store(false, Ordering::SeqCst);
@@ -980,13 +944,45 @@ async fn notification_task(
                     notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
                 };
 
-                match reconnect_and_restore(&device, 6).await {
+                match reconnect_and_restore(&device, 10).await {
                     Ok(()) => {
-                        info!("reconnect successful, resuming notification task");
+                        info!(%address, "BLE reconnect successful, spawning auth task");
+
+                        // Spawn authentication in a separate task so the
+                        // notification loop can resume and process ACKs.
+                        // If auth fails, disconnect to trigger another reconnect.
+                        let auth_device = ClockDevice {
+                            transport: transport.clone(),
+                            address,
+                            event_sender: event_sender.clone(),
+                            command_mutex: command_mutex.clone(),
+                            auth_token: auth_token.clone(),
+                            is_authenticated: is_authenticated.clone(),
+                            pending: pending.clone(),
+                            pending_data_response: pending_data_response.clone(),
+                            token_store: token_store.clone(),
+                            notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
+                        };
+                        tokio::spawn(async move {
+                            let token = {
+                                let token_guard = auth_device.auth_token.lock().await;
+                                token_guard.clone()
+                            };
+                            if let Some(token) = token {
+                                if let Err(e) = auth_device.authenticate(&token).await {
+                                    warn!(%auth_device.address, "reconnect: re-authentication failed, disconnecting to trigger retry: {e:?}");
+                                    let _ = auth_device.transport.disconnect(&auth_device.address).await;
+                                    return;
+                                }
+                            }
+                            auth_device.is_authenticated.store(true, Ordering::SeqCst);
+                            let _ = auth_device.event_sender.send(ClockEvent::Reconnected);
+                            info!(%auth_device.address, "reconnect: state recovery complete");
+                        });
                         continue;
                     }
                     Err(e) => {
-                        warn!("reconnect failed after all attempts: {e:?}");
+                        warn!(%address, "reconnect failed after all attempts: {e:?}");
                         break;
                     }
                 }
@@ -995,13 +991,12 @@ async fn notification_task(
     }
 }
 
-/// Reconnect with exponential backoff and full state recovery.
+/// Reconnect with exponential backoff: BLE connect + GATT subscribe only.
 ///
 /// Delay sequence: 1s, 2s, 4s, 8s, 16s, 32s (capped).
 ///
-/// After a successful BLE connect, re-subscribes to all GATT notify
-/// characteristics and re-authenticates with the stored token. This
-/// ensures the device is fully operational before commands resume.
+/// Authentication is handled by the caller (spawned as a concurrent task)
+/// so the notification loop can resume and process ACKs.
 async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Result<()> {
     let mut delay = Duration::from_secs(1);
     let max_delay = Duration::from_secs(32);
@@ -1027,27 +1022,14 @@ async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Resul
         }
 
         if !all_subscribed {
-            warn!("reconnect: GATT re-subscription failed, retrying");
+            warn!("reconnect: GATT re-subscription failed, disconnecting before retry");
+            let _ = device.transport.disconnect(&device.address).await;
             tokio::time::sleep(delay).await;
             delay = (delay * 2).min(max_delay);
             continue;
         }
 
-        // Step 3: Re-authenticate with stored token
-        let token = device.auth_token.lock().await;
-        if let Some(ref token) = *token
-            && device.authenticate(token).await.is_err()
-        {
-            warn!("reconnect: re-authentication failed, retrying");
-            tokio::time::sleep(delay).await;
-            delay = (delay * 2).min(max_delay);
-            continue;
-        }
-
-        // Step 4: Mark as authenticated and notify subscribers
-        device.is_authenticated.store(true, Ordering::SeqCst);
-        let _ = device.event_sender.send(ClockEvent::Reconnected);
-        info!("reconnect: state recovery complete");
+        info!("reconnect: BLE connect and subscribe successful");
         return Ok(());
     }
 

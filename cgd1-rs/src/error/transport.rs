@@ -45,6 +45,13 @@ pub enum TransportError {
     #[error("reconnect with state recovery failed")]
     ReconnectFailed,
 
+    /// A connection attempt failed or timed out.
+    #[error("connection failed: {address}")]
+    ConnectionFailed {
+        /// The MAC address of the device that could not be connected.
+        address: MacAddress,
+    },
+
     /// The device is not connected.
     #[error("not connected")]
     NotConnected,

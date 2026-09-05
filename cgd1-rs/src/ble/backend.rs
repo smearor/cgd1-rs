@@ -70,7 +70,7 @@ impl Backend {
         match self {
             Self::Btleplug => {
                 let transport = BtleplugTransport::new().await?;
-                Ok(Arc::new(transport))
+                Ok(transport)
             }
             Self::Virtual => Ok(Arc::new(VirtualClockTransport::new())),
         }
