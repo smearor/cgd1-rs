@@ -1,5 +1,9 @@
 use std::time::Instant;
 
+use cgd1_rs::BatteryLevel;
+use cgd1_rs::Humidity;
+use cgd1_rs::Temperature;
+
 /// Per-device runtime state tracked by the controller.
 ///
 /// Each connected device has its own `DeviceRuntimeState` entry, allowing
@@ -11,11 +15,11 @@ pub struct DeviceRuntimeState {
     /// Timestamp of the last sensor or battery data received from this device.
     pub last_data_time: Option<Instant>,
     /// Last known temperature in degrees Celsius.
-    pub temperature: Option<f64>,
+    pub temperature: Option<Temperature>,
     /// Last known humidity percentage.
-    pub humidity: Option<f64>,
+    pub humidity: Option<Humidity>,
     /// Last known battery level percentage (0–100).
-    pub battery_level: Option<u8>,
+    pub battery_level: Option<BatteryLevel>,
 }
 
 impl DeviceRuntimeState {

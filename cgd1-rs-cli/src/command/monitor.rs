@@ -63,6 +63,9 @@ pub async fn run_monitor(device: &ClockDevice, duration: MonitorDuration) -> Res
                         info!("Device reconnected.");
                     }
                     Ok(ClockEvent::Advertisement(_)) => {}
+                    Ok(ClockEvent::AlarmTriggered { slot }) => {
+                        println!("Alarm {} triggered", slot.value());
+                    }
                     Err(RecvError::Lagged(n)) => {
                         warn!("Skipped {n} events.");
                     }

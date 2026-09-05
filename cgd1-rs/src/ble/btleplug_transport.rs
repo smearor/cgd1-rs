@@ -399,7 +399,7 @@ impl BleTransport for BtleplugTransport {
         let characteristic = match CharacteristicUuid::try_from(notification.uuid) {
             Ok(c) => c,
             Err(uuid) => {
-                warn!(%address, %uuid, "notification from unknown characteristic, skipping");
+                warn!(%address, %uuid, len = notification.value.len(), data = %format_hex(&notification.value), "notification from unknown characteristic, skipping");
                 return self.next_notification(address).await;
             }
         };

@@ -3,6 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::protocol::AckPayload;
+use crate::protocol::AlarmTriggeredPayload;
 use crate::protocol::BatteryLevelPayload;
 use crate::protocol::EmptyPayload;
 use crate::protocol::EventType;
@@ -35,6 +36,7 @@ pub(crate) fn convert_event(event: &ClockEvent) -> Option<WsEvent<Value>> {
             })?,
         ),
         ClockEvent::Advertisement(data) => WsEvent::new(EventType::Advertisement, to_value(data)?),
+        ClockEvent::AlarmTriggered { slot } => WsEvent::new(EventType::AlarmTriggered, to_value(AlarmTriggeredPayload { slot: *slot })?),
     };
     Some(ws_event)
 }

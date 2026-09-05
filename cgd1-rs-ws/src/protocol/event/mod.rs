@@ -1,10 +1,12 @@
 mod ack;
+mod alarm_triggered;
 mod battery_level;
 mod empty;
 mod sensor_update;
 mod ws;
 
 pub use ack::AckPayload;
+pub use alarm_triggered::AlarmTriggeredPayload;
 pub use battery_level::BatteryLevelPayload;
 pub use empty::EmptyPayload;
 pub use sensor_update::SensorUpdatePayload;
