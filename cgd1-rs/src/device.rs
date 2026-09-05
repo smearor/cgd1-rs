@@ -408,9 +408,33 @@ impl ClockDevice {
 
     /// Read the firmware version string from the device.
     ///
+    /// Tries the GATT Firmware Version characteristic (`00000004-...`) first,
+    /// which returns the version as a plain ASCII string without requiring
+    /// authentication. Falls back to the command-based approach (`01 0d` on
+    /// Auth Write) if the GATT characteristic is unavailable or returns
+    /// invalid data.
+    pub async fn read_firmware(&self) -> Result<String> {
+        match self.read_firmware_gatt().await {
+            Ok(version) if !version.is_empty() => Ok(version),
+            _ => self.read_firmware_command().await,
+        }
+    }
+
+    /// Read the firmware version via the GATT Firmware Version characteristic.
+    ///
+    /// This reads `00000004-0000-1000-8000-00805f9b34fb` directly, which
+    /// returns the version string as ASCII bytes without framing.
+    async fn read_firmware_gatt(&self) -> Result<String> {
+        let data = self.transport.read(&self.address, CharacteristicUuid::FirmwareVersion).await?;
+        let version = String::from_utf8_lossy(&data).to_string();
+        Ok(version)
+    }
+
+    /// Read the firmware version via the command-based protocol.
+    ///
     /// Sends: `01 0d` to Auth Write.
     /// Expects response on Auth Notify: `0b [Byte] [ASCII String]`.
-    pub async fn read_firmware(&self) -> Result<String> {
+    async fn read_firmware_command(&self) -> Result<String> {
         let _guard = self.command_mutex.lock().await;
 
         // Set up a pending mpsc channel for non-ACK data notifications.

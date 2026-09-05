@@ -84,6 +84,116 @@ impl BtleplugTransport {
             .clone();
         Ok((entry.peripheral.clone(), char))
     }
+
+    /// Read and log standard GATT characteristics for device identification.
+    ///
+    /// Call this after authentication is complete to avoid polluting the
+    /// notification stream with stale read responses before the notification
+    /// task is ready.
+    #[allow(dead_code)]
+    async fn log_standard_gatt_characteristics(&self, address: &MacAddress) {
+        if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::DeviceName).await {
+            if let Ok(data) = peripheral.read(&char).await {
+                let name = String::from_utf8_lossy(&data);
+                debug!(%address, device_name = %name, "GATT Device Name");
+            }
+        }
+        if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::Appearance).await {
+            if let Ok(data) = peripheral.read(&char).await && data.len() >= 2 {
+                let appearance = u16::from_le_bytes([data[0], data[1]]);
+                debug!(%address, appearance = appearance, "GATT Appearance");
+            }
+        }
+        if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::PeripheralPreferredConnectionParameters).await {
+            if let Ok(data) = peripheral.read(&char).await && data.len() >= 8 {
+                let min_interval = u16::from_le_bytes([data[0], data[1]]);
+                let max_interval = u16::from_le_bytes([data[2], data[3]]);
+                let slave_latency = u16::from_le_bytes([data[4], data[5]]);
+                let supervision_timeout = u16::from_le_bytes([data[6], data[7]]);
+                debug!(
+                    %address,
+                    min_interval_ms = min_interval as f32 * 1.25,
+                    max_interval_ms = max_interval as f32 * 1.25,
+                    slave_latency,
+                    supervision_timeout_ms = supervision_timeout * 10,
+                    "GATT Peripheral Preferred Connection Parameters"
+                );
+            }
+        }
+        if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::PnpId).await {
+            if let Ok(data) = peripheral.read(&char).await && data.len() >= 7 {
+                let vendor_id_source = data[0];
+                let vendor_id = u16::from_le_bytes([data[1], data[2]]);
+                let product_id = u16::from_le_bytes([data[3], data[4]]);
+                let product_version = u16::from_le_bytes([data[5], data[6]]);
+                debug!(
+                    %address,
+                    vendor_id_source,
+                    vendor_id,
+                    product_id,
+                    product_version,
+                    "GATT PnP ID"
+                );
+            }
+        }
+        if let Ok((peripheral, char)) = self.lookup_peripheral_and_char(address, CharacteristicUuid::FirmwareVersion).await {
+            if let Ok(data) = peripheral.read(&char).await {
+                let version = String::from_utf8_lossy(&data);
+                debug!(%address, firmware_version = %version, "GATT Firmware Version");
+            }
+        }
+    }
+
+    /// Read and log all characteristics that are not in the known
+    /// [`CharacteristicUuid`] enum. This helps discover undocumented
+    /// characteristics during real-device connects.
+    #[allow(dead_code)]
+    async fn log_unknown_characteristics(&self, address: &MacAddress) {
+        let unknown_uuids: Vec<Uuid> = {
+            let connections = self.connections.lock().await;
+            let Some(entry) = connections.get(address) else { return };
+            entry.characteristics.keys().copied().filter(|uuid| CharacteristicUuid::try_from(*uuid).is_err()).collect()
+        };
+
+        for uuid in unknown_uuids {
+            let (peripheral, char) = match self.lookup_peripheral_by_uuid(address, uuid).await {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            match peripheral.read(&char).await {
+                Ok(data) => {
+                    debug!(
+                        %address,
+                        uuid = %uuid,
+                        len = data.len(),
+                        data = %format_hex(&data),
+                        "unknown characteristic read"
+                    );
+                }
+                Err(e) => {
+                    debug!(
+                        %address,
+                        uuid = %uuid,
+                        error = ?e,
+                        "unknown characteristic read failed (write-only or notify-only)"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Look up the peripheral and a raw characteristic by UUID.
+    #[allow(dead_code)]
+    async fn lookup_peripheral_by_uuid(&self, address: &MacAddress, uuid: Uuid) -> Result<(Peripheral, Characteristic)> {
+        let connections = self.connections.lock().await;
+        let entry = connections.get(address).ok_or(ClockError::NotConnected)?;
+        let char = entry
+            .characteristics
+            .get(&uuid)
+            .cloned()
+            .ok_or(TransportError::CharacteristicNotFound { characteristic: CharacteristicUuid::AuthWrite })?;
+        Ok((entry.peripheral.clone(), char))
+    }
 }
 
 #[async_trait]
@@ -206,6 +316,7 @@ impl BleTransport for BtleplugTransport {
 
         let mut characteristics = HashMap::new();
         for char in target.characteristics() {
+            debug!(%address, uuid = %char.uuid, "discovered characteristic");
             characteristics.insert(char.uuid, char);
         }
         debug!(char_count = characteristics.len(), %address, "services discovered");
