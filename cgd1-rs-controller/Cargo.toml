@@ -25,7 +25,9 @@ glib.workspace = true
 gtk4 = { workspace = true, features = ["v4_6"] }
 nerd-fonts-gtk = { workspace = true, features = ["gtk"] }
 pango = { version = "0.22", features = ["v1_56"] }
+serde = { workspace = true }
 tokio.workspace = true
+toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 

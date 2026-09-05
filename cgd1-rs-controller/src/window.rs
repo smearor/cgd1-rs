@@ -38,11 +38,13 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
+use crate::config::ConfigStore;
 use crate::device_runtime_state::DeviceRuntimeState;
 use crate::dialog::AlarmEditorWidget;
 use crate::dialog::AudioEditorWidget;
 use crate::dialog::SensorOverviewWidget;
-use crate::dialog::SettingsEditorWidget;
+use crate::dialog::DisplayEditorWidget;
+use crate::dialog::RegionEditorWidget;
 use crate::display::SevenSegmentDisplay;
 
 /// CSS for the main window layout.
@@ -80,10 +82,14 @@ pub struct MainWindow {
     alarm_toggle: ToggleButton,
     /// Revealer for the collapsible alarm editor panel.
     alarm_revealer: gtk4::Revealer,
-    /// Toggle button to expand/collapse the settings editor panel.
-    settings_toggle: ToggleButton,
-    /// Revealer for the collapsible settings editor panel.
-    settings_revealer: gtk4::Revealer,
+    /// Toggle button to expand/collapse the display editor panel.
+    display_toggle: ToggleButton,
+    /// Revealer for the collapsible display editor panel.
+    display_revealer: gtk4::Revealer,
+    /// Toggle button to expand/collapse the region editor panel.
+    region_toggle: ToggleButton,
+    /// Revealer for the collapsible region editor panel.
+    region_revealer: gtk4::Revealer,
     /// Toggle button to expand/collapse the sensor overview panel.
     sensor_toggle: ToggleButton,
     /// Revealer for the collapsible sensor overview panel.
@@ -108,6 +114,8 @@ pub struct MainWindow {
     known_device_store: Arc<KnownDeviceStore>,
     /// Last battery level seen from advertising scans, keyed by device address.
     scan_battery_cache: Arc<Mutex<HashMap<MacAddress, u8>>>,
+    /// Application config store.
+    config_store: ConfigStore,
 }
 
 impl MainWindow {
@@ -216,8 +224,11 @@ impl MainWindow {
         // Alarm toggle button
         let alarm_toggle = ToggleButton::builder().label("Alarms").tooltip_text("Show / hide alarm editor").build();
 
-        // Settings toggle button (mutually exclusive with alarm toggle, handled manually)
-        let settings_toggle = ToggleButton::builder().label("Settings").tooltip_text("Show / hide settings editor").build();
+        // Display editor toggle button
+        let display_toggle = ToggleButton::builder().label("Display").tooltip_text("Show / hide display editor").build();
+
+        // Region editor toggle button
+        let region_toggle = ToggleButton::builder().label("Region").tooltip_text("Show / hide region editor").build();
 
         // Sensor overview toggle button
         let sensor_toggle = ToggleButton::builder().label("Sensors").tooltip_text("Show / hide sensor overview").build();
@@ -233,8 +244,16 @@ impl MainWindow {
             .vexpand(false)
             .build();
 
-        // Settings editor revealer (collapsed by default)
-        let settings_revealer = gtk4::Revealer::builder()
+        // Display editor revealer (collapsed by default)
+        let display_revealer = gtk4::Revealer::builder()
+            .transition_type(gtk4::RevealerTransitionType::SlideUp)
+            .transition_duration(300)
+            .reveal_child(false)
+            .vexpand(false)
+            .build();
+
+        // Region editor revealer (collapsed by default)
+        let region_revealer = gtk4::Revealer::builder()
             .transition_type(gtk4::RevealerTransitionType::SlideUp)
             .transition_duration(300)
             .reveal_child(false)
@@ -265,7 +284,8 @@ impl MainWindow {
             .css_classes(["toggle-bar"])
             .build();
         toggle_bar.append(&alarm_toggle);
-        toggle_bar.append(&settings_toggle);
+        toggle_bar.append(&display_toggle);
+        toggle_bar.append(&region_toggle);
         toggle_bar.append(&sensor_toggle);
         toggle_bar.append(&audio_toggle);
 
@@ -273,7 +293,8 @@ impl MainWindow {
         main_box.append(&summary_bar);
         main_box.append(&toggle_bar);
         main_box.append(&sensor_revealer);
-        main_box.append(&settings_revealer);
+        main_box.append(&display_revealer);
+        main_box.append(&region_revealer);
         main_box.append(&alarm_revealer);
         main_box.append(&audio_revealer);
 
@@ -290,6 +311,7 @@ impl MainWindow {
         let manager = Arc::new(ClockManager::new(transport.clone()));
         let token_store = Arc::new(FileTokenStore::default_directory());
         let known_device_store = Arc::new(KnownDeviceStore::default_path());
+        let config_store = ConfigStore::load_default();
 
         let date_display = SevenSegmentDisplay::new();
         let time_display = SevenSegmentDisplay::new();
@@ -330,8 +352,10 @@ impl MainWindow {
             summary_bar: summary_bar.clone(),
             alarm_toggle: alarm_toggle.clone(),
             alarm_revealer: alarm_revealer.clone(),
-            settings_toggle: settings_toggle.clone(),
-            settings_revealer: settings_revealer.clone(),
+            display_toggle: display_toggle.clone(),
+            display_revealer: display_revealer.clone(),
+            region_toggle: region_toggle.clone(),
+            region_revealer: region_revealer.clone(),
             sensor_toggle: sensor_toggle.clone(),
             sensor_revealer: sensor_revealer.clone(),
             audio_toggle: audio_toggle.clone(),
@@ -346,13 +370,15 @@ impl MainWindow {
             last_scan_time: Arc::new(Mutex::new(None)),
             scan_battery_cache: Arc::new(Mutex::new(known_device_store.load_battery())),
             known_device_store,
+            config_store,
         };
 
         self_.setup_layout(&main_box, &top_section, &middle_section, &bottom_section);
         self_.setup_dropdown_factory();
         self_.setup_signals();
         self_.setup_alarm_panel();
-        self_.setup_settings_panel();
+        self_.setup_display_panel();
+        self_.setup_region_panel();
         self_.setup_sensor_panel();
         self_.setup_audio_panel();
         self_.start_clock_tick();
@@ -502,7 +528,8 @@ impl MainWindow {
         let full_display = self.full_display.clone();
         let summary_bar = self.summary_bar.clone();
         let revealer = self.alarm_revealer.clone();
-        let settings_toggle = self.settings_toggle.clone();
+        let display_toggle = self.display_toggle.clone();
+        let region_toggle = self.region_toggle.clone();
         let sensor_toggle = self.sensor_toggle.clone();
         let audio_toggle = self.audio_toggle.clone();
         let editor = std::rc::Rc::new(editor);
@@ -510,7 +537,8 @@ impl MainWindow {
         self.alarm_toggle.connect_toggled(move |btn| {
             let expanded = btn.is_active();
             if expanded {
-                settings_toggle.set_active(false);
+                display_toggle.set_active(false);
+                region_toggle.set_active(false);
                 sensor_toggle.set_active(false);
                 audio_toggle.set_active(false);
             }
@@ -524,23 +552,57 @@ impl MainWindow {
         });
     }
 
-    /// Set up the collapsible settings editor panel with compact summary bar.
-    fn setup_settings_panel(&self) {
-        let editor = SettingsEditorWidget::new(self.manager.clone(), self.runtime.clone(), self.selected_address.clone());
-        self.settings_revealer.set_child(Some(&editor.container));
+    /// Set up the collapsible display editor panel with compact summary bar.
+    fn setup_display_panel(&self) {
+        let editor = DisplayEditorWidget::new(self.manager.clone(), self.runtime.clone(), self.selected_address.clone(), self.config_store.clone());
+        self.display_revealer.set_child(Some(&editor.container));
 
         let full_display = self.full_display.clone();
         let summary_bar = self.summary_bar.clone();
-        let revealer = self.settings_revealer.clone();
+        let revealer = self.display_revealer.clone();
         let alarm_toggle = self.alarm_toggle.clone();
+        let region_toggle = self.region_toggle.clone();
         let sensor_toggle = self.sensor_toggle.clone();
         let audio_toggle = self.audio_toggle.clone();
         let editor = std::rc::Rc::new(editor);
 
-        self.settings_toggle.connect_toggled(move |btn| {
+        self.display_toggle.connect_toggled(move |btn| {
             let expanded = btn.is_active();
             if expanded {
                 alarm_toggle.set_active(false);
+                region_toggle.set_active(false);
+                sensor_toggle.set_active(false);
+                audio_toggle.set_active(false);
+            }
+            full_display.set_visible(!expanded);
+            summary_bar.set_visible(expanded);
+            revealer.set_vexpand(expanded);
+            revealer.set_reveal_child(expanded);
+            if expanded {
+                editor.read_settings();
+            }
+        });
+    }
+
+    /// Set up the collapsible region editor panel with compact summary bar.
+    fn setup_region_panel(&self) {
+        let editor = RegionEditorWidget::new(self.manager.clone(), self.runtime.clone(), self.selected_address.clone());
+        self.region_revealer.set_child(Some(&editor.container));
+
+        let full_display = self.full_display.clone();
+        let summary_bar = self.summary_bar.clone();
+        let revealer = self.region_revealer.clone();
+        let alarm_toggle = self.alarm_toggle.clone();
+        let display_toggle = self.display_toggle.clone();
+        let sensor_toggle = self.sensor_toggle.clone();
+        let audio_toggle = self.audio_toggle.clone();
+        let editor = std::rc::Rc::new(editor);
+
+        self.region_toggle.connect_toggled(move |btn| {
+            let expanded = btn.is_active();
+            if expanded {
+                alarm_toggle.set_active(false);
+                display_toggle.set_active(false);
                 sensor_toggle.set_active(false);
                 audio_toggle.set_active(false);
             }
@@ -563,7 +625,8 @@ impl MainWindow {
         let summary_bar = self.summary_bar.clone();
         let revealer = self.sensor_revealer.clone();
         let alarm_toggle = self.alarm_toggle.clone();
-        let settings_toggle = self.settings_toggle.clone();
+        let display_toggle = self.display_toggle.clone();
+        let region_toggle = self.region_toggle.clone();
         let audio_toggle = self.audio_toggle.clone();
         let editor = std::rc::Rc::new(editor);
         let device_states = self.device_states.clone();
@@ -573,7 +636,8 @@ impl MainWindow {
             let expanded = btn.is_active();
             if expanded {
                 alarm_toggle.set_active(false);
-                settings_toggle.set_active(false);
+                display_toggle.set_active(false);
+                region_toggle.set_active(false);
                 audio_toggle.set_active(false);
                 editor.populate(&device_states, &known_devices);
             }
@@ -593,14 +657,16 @@ impl MainWindow {
         let summary_bar = self.summary_bar.clone();
         let revealer = self.audio_revealer.clone();
         let alarm_toggle = self.alarm_toggle.clone();
-        let settings_toggle = self.settings_toggle.clone();
+        let display_toggle = self.display_toggle.clone();
+        let region_toggle = self.region_toggle.clone();
         let sensor_toggle = self.sensor_toggle.clone();
 
         self.audio_toggle.connect_toggled(move |btn| {
             let expanded = btn.is_active();
             if expanded {
                 alarm_toggle.set_active(false);
-                settings_toggle.set_active(false);
+                display_toggle.set_active(false);
+                region_toggle.set_active(false);
                 sensor_toggle.set_active(false);
             }
             full_display.set_visible(!expanded);
@@ -913,6 +979,7 @@ impl MainWindow {
         let device_states = self.device_states.clone();
         let known_device_store = self.known_device_store.clone();
         let scan_battery_cache_for_connect = self.scan_battery_cache.clone();
+        let config_store_for_connect = self.config_store.clone();
 
         connect_switch.connect_active_notify(move |sw| {
             let _runtime_keepalive = runtime_arc.clone();
@@ -944,6 +1011,7 @@ impl MainWindow {
                 let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
                 let (event_tx, event_rx) = std::sync::mpsc::channel::<ClockEvent>();
                 let scan_battery_cache = scan_battery_cache_for_connect.clone();
+                let config_store = config_store_for_connect.clone();
                 runtime.spawn(async move {
                     let token_result = token_store.load_or_generate(&addr);
                     let is_new_token = token_result.is_new();
@@ -981,9 +1049,21 @@ impl MainWindow {
                             }
 
                             if let Some(device) = manager.device(&addr).await {
-                                // Visual feedback: briefly turn on the display light.
-                                if let Err(e) = device.set_brightness(Brightness::new(100).unwrap_or(Brightness::MAX)).await {
-                                    debug!(%addr, error = %e, "connect: failed to set brightness for visual feedback");
+                                // Visual feedback: triple blink with decreasing brightness.
+                                // Spawned as a separate task so the event forwarding loop
+                                // is not delayed by the ~8s blink sequence.
+                                if config_store.blink_on_connect() {
+                                    let blink_device = device.clone();
+                                    tokio::spawn(async move {
+                                        tokio::time::sleep(Duration::from_millis(2000)).await;
+                                        for &level in &[20u8, 50u8, 80u8] {
+                                            if let Err(e) = blink_device.set_brightness(Brightness::new(level).unwrap_or(Brightness::MAX)).await {
+                                                warn!(%addr, error = %e, "connect: failed to set brightness for visual feedback");
+                                                break;
+                                            }
+                                            tokio::time::sleep(Duration::from_millis(2000)).await;
+                                        }
+                                    });
                                 }
                                 debug!(%addr, "starting event forwarding loop");
                                 let mut rx_events = device.subscribe();
