@@ -58,7 +58,12 @@ pub struct DisplayEditorWidget {
 
 impl DisplayEditorWidget {
     /// Build the display editor content (without window chrome).
-    pub fn new(manager: Arc<ClockManager>, runtime: Arc<tokio::runtime::Runtime>, connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>, config_store: ConfigStore) -> Self {
+    pub fn new(
+        manager: Arc<ClockManager>,
+        runtime: Arc<tokio::runtime::Runtime>,
+        connected_address: Arc<std::sync::Mutex<Option<MacAddress>>>,
+        config_store: ConfigStore,
+    ) -> Self {
         let container = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(8)
@@ -165,10 +170,20 @@ impl DisplayEditorWidget {
             .margin_top(4)
             .margin_bottom(4)
             .build();
-        let night_start_label = Label::builder().label("Night Start").xalign(1.0f32).width_chars(18).css_classes(["settings-label"]).build();
+        let night_start_label = Label::builder()
+            .label("Night Start")
+            .xalign(1.0f32)
+            .width_chars(18)
+            .css_classes(["settings-label"])
+            .build();
         let night_start_entry = TimeEntry::new();
         night_start_entry.set_time(22, 0);
-        let night_end_label = Label::builder().label("Night End").xalign(1.0f32).width_chars(18).css_classes(["settings-label"]).build();
+        let night_end_label = Label::builder()
+            .label("Night End")
+            .xalign(1.0f32)
+            .width_chars(18)
+            .css_classes(["settings-label"])
+            .build();
         let night_end_entry = TimeEntry::new();
         night_end_entry.set_time(7, 0);
         night_time_row.append(&night_start_label);
@@ -200,7 +215,12 @@ impl DisplayEditorWidget {
 
         container.append(&gtk4::Separator::new(Orientation::Horizontal));
 
-        let status_label = Label::builder().label("").css_classes(["dim-label"]).halign(gtk4::Align::Start).hexpand(true).build();
+        let status_label = Label::builder()
+            .label("")
+            .css_classes(["dim-label"])
+            .halign(gtk4::Align::Start)
+            .hexpand(true)
+            .build();
 
         let button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(gtk4::Align::Fill).build();
         let refresh_button = Button::builder()
