@@ -1086,10 +1086,7 @@ impl MainWindow {
                                                 .with_second(0)
                                                 .and_then(|t| t.with_nanosecond(0))
                                                 .unwrap_or(now + chrono::Duration::minutes(1));
-                                            let sleep_dur = next_minute
-                                                .signed_duration_since(now)
-                                                .to_std()
-                                                .unwrap_or(Duration::from_secs(60));
+                                            let sleep_dur = next_minute.signed_duration_since(now).to_std().unwrap_or(Duration::from_secs(60));
                                             tokio::time::sleep(sleep_dur).await;
 
                                             let mode = blink_config.time_based_blink();
@@ -1402,12 +1399,10 @@ impl MainWindow {
             }) = Some(addr);
 
             let state_fields = {
-                let states = device_states
-                    .lock()
-                    .unwrap_or_else(|p| {
-                        warn!("mutex poisoned - recovering");
-                        p.into_inner()
-                    });
+                let states = device_states.lock().unwrap_or_else(|p| {
+                    warn!("mutex poisoned - recovering");
+                    p.into_inner()
+                });
                 states.get(&addr).map(|s| (s.connected, s.temperature, s.humidity, s.battery_level))
             };
             match state_fields {
