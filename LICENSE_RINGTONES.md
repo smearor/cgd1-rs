@@ -54,15 +54,17 @@ sources with different licenses:
 | `54696d65.pcm` | TimeNotLost   | Time not Lost.ogg      | 2018, Mauricio Duarte | CC-BY-4.0        |
 | `576f6f64.pcm` | WoodenDrive   | Wooden Drive.ogg       | 2018, Amber Forest    | CC-BY-3.0        |
 
-### Monkey Island (8-bit)
+### NonCommercial Tracks (CC-BY-NC-SA-4.0)
 
 | PCM file       | Signature    | Source                              | Copyright holder        | License         |
 |----------------|--------------|-------------------------------------|-------------------------|-----------------|
 | `4d6f6e6b.pcm` | MonkeyIsland | monkey-island-8bit (chiptune remix) | Kalle Jonsson (Dubmood) | CC-BY-NC-SA-4.0 |
+| `958f8a83.pcm` | Elysium      | ELYSIUM.MOD (ModArchive ID 40475)   | Jester                  | CC-BY-NC-SA-4.0 |
 
-- **Source**: Dubmood chiptune remix, distributed via netlabels (e.g. Data8bit)
+- **Monkey Island Source**: Dubmood chiptune remix, distributed via netlabels (e.g. Data8bit)
+- **Elysium Source**: https://modarchive.org/index.php?request=view_by_moduleid&query=40475
 - **License**: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
-- **NonCommercial**: This track may not be used for commercial purposes.
+- **NonCommercial**: These tracks may not be used for commercial purposes.
 
 The full upstream lomiri-sounds copyright file is included alongside the PCM
 files as `cgd1-rs-controller/assets/ringtones/COPYRIGHT`.
