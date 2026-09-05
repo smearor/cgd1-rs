@@ -301,7 +301,10 @@ impl MainWindow {
             .tooltip_text("-- %")
             .css_classes(["battery-icon"])
             .build();
-        let bluetooth_icon = Image::builder().icon_name("nf-fa-bluetooth-symbolic").css_classes(["battery-icon", "bluetooth-off"]).build();
+        let bluetooth_icon = Image::builder()
+            .icon_name("nf-fa-bluetooth-symbolic")
+            .css_classes(["battery-icon", "bluetooth-off"])
+            .build();
 
         let self_ = Self {
             window,
