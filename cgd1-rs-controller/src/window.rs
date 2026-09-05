@@ -8,6 +8,8 @@ use cgd1_rs::FileTokenStore;
 use cgd1_rs::KnownDeviceStore;
 use cgd1_rs::MacAddress;
 use cgd1_rs::TokenStore;
+use chrono::Local;
+use chrono::Timelike;
 use glib::ControlFlow;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -923,6 +925,7 @@ impl MainWindow {
                                     temperature: None,
                                     humidity: None,
                                     battery_level: None,
+                                    time_based_blink_handle: None,
                                 });
                                 if let Some(t) = temp {
                                     state.temperature = Some(t);
@@ -1012,6 +1015,7 @@ impl MainWindow {
                 let (event_tx, event_rx) = std::sync::mpsc::channel::<ClockEvent>();
                 let scan_battery_cache = scan_battery_cache_for_connect.clone();
                 let config_store = config_store_for_connect.clone();
+                let device_states_for_blink = device_states.clone();
                 runtime.spawn(async move {
                     let token_result = token_store.load_or_generate(&addr);
                     let is_new_token = token_result.is_new();
@@ -1064,6 +1068,54 @@ impl MainWindow {
                                             tokio::time::sleep(Duration::from_millis(2000)).await;
                                         }
                                     });
+                                }
+
+                                // Time-based blink: periodically blink at the configured frequency.
+                                // Runs as a separate task for the lifetime of the connection.
+                                // The config is re-read each iteration so UI changes take effect immediately.
+                                // The handle is stored in device_states so it can be aborted on disconnect.
+                                {
+                                    let blink_device = device.clone();
+                                    let blink_config = config_store.clone();
+                                    let blink_handle = tokio::spawn(async move {
+                                        let mut last_blink_minute: Option<u32> = None;
+                                        loop {
+                                            // Sleep until the next minute boundary.
+                                            let now = Local::now();
+                                            let next_minute = (now + chrono::Duration::minutes(1))
+                                                .with_second(0)
+                                                .and_then(|t| t.with_nanosecond(0))
+                                                .unwrap_or(now + chrono::Duration::minutes(1));
+                                            let sleep_dur = next_minute
+                                                .signed_duration_since(now)
+                                                .to_std()
+                                                .unwrap_or(Duration::from_secs(60));
+                                            tokio::time::sleep(sleep_dur).await;
+
+                                            let mode = blink_config.time_based_blink();
+                                            if mode == crate::config::TimeBasedBlink::Off {
+                                                last_blink_minute = None;
+                                                continue;
+                                            }
+
+                                            let minute = Local::now().minute();
+                                            if mode.should_blink(minute) && last_blink_minute != Some(minute) {
+                                                last_blink_minute = Some(minute);
+                                                debug!(%addr, mode = ?mode, minute, "time-based blink triggered");
+                                                if let Err(e) = blink_device.set_brightness(Brightness::new(80).unwrap_or(Brightness::MAX)).await {
+                                                    warn!(%addr, error = %e, "time-based blink: failed to set brightness");
+                                                }
+                                            }
+                                        }
+                                    });
+                                    device_states_for_blink
+                                        .lock()
+                                        .unwrap_or_else(|p| {
+                                            warn!("config mutex poisoned - recovering");
+                                            p.into_inner()
+                                        })
+                                        .entry(addr)
+                                        .and_modify(|s| s.time_based_blink_handle = Some(blink_handle));
                                 }
                                 debug!(%addr, "starting event forwarding loop");
                                 let mut rx_events = device.subscribe();
@@ -1287,7 +1339,12 @@ impl MainWindow {
                         p.into_inner()
                     })
                     .get_mut(&addr)
-                    .map(|s| s.connected = false);
+                    .map(|s| {
+                        s.connected = false;
+                        if let Some(handle) = s.time_based_blink_handle.take() {
+                            handle.abort();
+                        }
+                    });
                 let manager = manager.clone();
                 runtime.spawn(async move {
                     let _ = manager.disconnect(&addr).await;
@@ -1344,30 +1401,31 @@ impl MainWindow {
                 p.into_inner()
             }) = Some(addr);
 
-            let state = device_states
-                .lock()
-                .unwrap_or_else(|p| {
-                    warn!("mutex poisoned - recovering");
-                    p.into_inner()
-                })
-                .get(&addr)
-                .cloned();
-            match state {
-                Some(state) => {
-                    if !connect_switch.is_active() {
+            let state_fields = {
+                let states = device_states
+                    .lock()
+                    .unwrap_or_else(|p| {
+                        warn!("mutex poisoned - recovering");
+                        p.into_inner()
+                    });
+                states.get(&addr).map(|s| (s.connected, s.temperature, s.humidity, s.battery_level))
+            };
+            match state_fields {
+                Some((connected, temperature, humidity, battery_level)) => {
+                    if connected && !connect_switch.is_active() {
                         connect_switch.set_active(true);
                     }
-                    if let Some(t) = state.temperature {
+                    if let Some(t) = temperature {
                         temp_display.set_display_text(&format!("{:.1}°C", t.value()));
                     } else {
                         temp_display.set_display_text("--.-°C");
                     }
-                    if let Some(h) = state.humidity {
+                    if let Some(h) = humidity {
                         humidity_display.set_display_text(&format!("{:.0}%", h.value()));
                     } else {
                         humidity_display.set_display_text("--.-%");
                     }
-                    if let Some(b) = state.battery_level {
+                    if let Some(b) = battery_level {
                         set_battery_icon(&battery_icon, Some(b.value()));
                     } else {
                         set_battery_icon(&battery_icon, None);
