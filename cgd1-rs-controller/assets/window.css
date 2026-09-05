@@ -7,9 +7,6 @@
 .clock-bottom {
     background-color: #1a1a2e;
 }
-.clock-battery-bar {
-    min-height: 6px;
-}
 .clock-bluetooth-label {
     color: #5588ff;
     font-size: 24px;
@@ -17,6 +14,37 @@
 .clock-battery-label {
     color: #00ff41;
     font-size: 14px;
+}
+.sensor-icon {
+    color: #00ff41;
+    -gtk-icon-size: 48px;
+}
+.battery-icon {
+    color: #00ff41;
+    -gtk-icon-size: 36px;
+}
+.bluetooth-blinking {
+    animation: bluetooth-blink 1s ease-in-out infinite;
+}
+@keyframes bluetooth-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
+.summary-label {
+    color: #00ff41;
+    font-family: 'DSEG7 Classic', 'Courier New', monospace;
+    font-size: 28px;
+}
+.summary-icon {
+    color: #00ff41;
+    -gtk-icon-size: 28px;
+}
+.time-entry {
+    font-family: 'DSEG7 Classic', 'Courier New', monospace;
+    font-size: 16px;
+}
+.time-entry.error {
+    color: #ff4444;
 }
 .clock-section {
     padding: 8px;
@@ -45,4 +73,42 @@
 }
 .dropdown-dot.connected {
     background: #00ff41;
+}
+
+.toggle-bar > button {
+    hexpand: true;
+}
+
+/* --- Settings dialog --- */
+.settings-frame {
+    border-radius: 8px;
+    padding: 4px;
+}
+.frame-icon {
+    -gtk-icon-size: 16px;
+    color: #5588ff;
+}
+.frame-title {
+    font-weight: bold;
+    font-size: 14px;
+}
+.settings-label {
+    color: #aaa;
+    font-size: 13px;
+}
+.segmented {
+    border-radius: 6px;
+    overflow: hidden;
+}
+.segmented-btn {
+    border-radius: 0;
+    margin: 0;
+}
+.segmented-btn:first-child {
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+.segmented-btn:last-child {
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
 }
