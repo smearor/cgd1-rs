@@ -6,6 +6,8 @@ use chrono::Local;
 use chrono::NaiveTime;
 use chrono::TimeZone;
 
+use crate::i18n::get;
+
 /// Computed next alarm time with a human-readable label.
 pub struct NextAlarm {
     /// The date-time when the alarm will fire.
@@ -104,17 +106,18 @@ fn format_label(when: DateTime<Local>, slot: &AlarmSlot) -> String {
 }
 
 /// Short weekday name for display.
-fn weekday_short(wd: chrono::Weekday) -> &'static str {
+fn weekday_short(wd: chrono::Weekday) -> String {
     use chrono::Weekday::*;
-    match wd {
-        Mon => "Mon",
-        Tue => "Tue",
-        Wed => "Wed",
-        Thu => "Thu",
-        Fri => "Fri",
-        Sat => "Sat",
-        Sun => "Sun",
-    }
+    let key = match wd {
+        Mon => "weekday-mon",
+        Tue => "weekday-tue",
+        Wed => "weekday-wed",
+        Thu => "weekday-thu",
+        Fri => "weekday-fri",
+        Sat => "weekday-sat",
+        Sun => "weekday-sun",
+    };
+    get(key)
 }
 
 /// Convert a `Weekday` to a 0-based number (Mon=0 ... Sun=6), matching `DayMask` bit layout.

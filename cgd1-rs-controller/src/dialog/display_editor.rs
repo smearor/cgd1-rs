@@ -25,6 +25,7 @@ use super::common::settings_frame;
 use super::common::settings_row;
 use crate::config::ConfigStore;
 use crate::config::TimeBasedBlink;
+use crate::fl;
 
 /// Display editor widget for brightness, night brightness, screen timeout, and night mode.
 #[allow(dead_code)]
@@ -85,7 +86,7 @@ impl DisplayEditorWidget {
         let content = Box::builder().orientation(Orientation::Vertical).spacing(8).build();
 
         // --- Display frame ---
-        let display_frame = settings_frame("nf-cod-screen-full-symbolic", "Display");
+        let display_frame = settings_frame("nf-cod-screen-full-symbolic", &fl!("frame-display"));
         let display_box = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(4)
@@ -95,7 +96,7 @@ impl DisplayEditorWidget {
             .margin_end(12)
             .build();
 
-        let brightness_row = settings_row("Brightness");
+        let brightness_row = settings_row(&fl!("label-brightness"));
         let brightness_scale = Scale::with_range(Orientation::Horizontal, 0.0, 15.0, 1.0);
         brightness_scale.set_value(8.0);
         brightness_scale.set_digits(0);
@@ -108,7 +109,7 @@ impl DisplayEditorWidget {
         brightness_row.append(&brightness_scale);
         display_box.append(&brightness_row);
 
-        let screen_duration_row = settings_row("Screen Timeout");
+        let screen_duration_row = settings_row(&fl!("label-screen-timeout"));
         let screen_duration_inner = Box::builder().orientation(Orientation::Horizontal).spacing(4).build();
         let screen_duration_spin = SpinButton::with_range(0.0, 255.0, 1.0);
         screen_duration_spin.set_value(10.0);
@@ -118,8 +119,8 @@ impl DisplayEditorWidget {
         screen_duration_row.append(&screen_duration_inner);
         display_box.append(&screen_duration_row);
 
-        let blink_row = settings_row("Blink on Connect");
-        let blink_switch = Switch::builder().tooltip_text("Triple-blink visual feedback when connecting").build();
+        let blink_row = settings_row(&fl!("label-blink-on-connect"));
+        let blink_switch = Switch::builder().tooltip_text(&fl!("tooltip-blink-on-connect")).build();
         blink_switch.set_active(config_store.blink_on_connect());
         let blink_config = config_store.clone();
         blink_switch.connect_state_set(move |_, state| {
@@ -130,7 +131,7 @@ impl DisplayEditorWidget {
         blink_row.append(&Box::builder().hexpand(true).build());
         display_box.append(&blink_row);
 
-        let time_blink_row = settings_row("Time-Based Blink");
+        let time_blink_row = settings_row(&fl!("label-time-based-blink"));
         let time_blink_scale = Scale::with_range(Orientation::Horizontal, 0.0, 4.0, 1.0);
         time_blink_scale.set_value(config_store.time_based_blink().index() as f64);
         time_blink_scale.set_digits(0);
@@ -138,7 +139,7 @@ impl DisplayEditorWidget {
         time_blink_scale.set_hexpand(true);
         time_blink_scale.set_draw_value(false);
         for variant in TimeBasedBlink::ALL {
-            time_blink_scale.add_mark(variant.index() as f64, gtk4::PositionType::Bottom, Some(variant.label()));
+            time_blink_scale.add_mark(variant.index() as f64, gtk4::PositionType::Bottom, Some(&variant.label()));
         }
         let time_blink_config = config_store.clone();
         time_blink_scale.connect_value_changed(move |scale| {
@@ -153,7 +154,7 @@ impl DisplayEditorWidget {
         content.append(&display_frame);
 
         // --- Night Mode frame ---
-        let night_frame = settings_frame("nf-oct-moon-symbolic", "Night Mode");
+        let night_frame = settings_frame("nf-oct-moon-symbolic", &fl!("frame-night-mode"));
         let night_box = Box::builder()
             .orientation(Orientation::Vertical)
             .spacing(4)
@@ -163,14 +164,14 @@ impl DisplayEditorWidget {
             .margin_end(12)
             .build();
 
-        let night_mode_row = settings_row("Night Mode");
+        let night_mode_row = settings_row(&fl!("label-night-mode"));
         let night_mode_switch = Switch::builder().build();
         night_mode_switch.set_active(true);
         night_mode_row.append(&night_mode_switch);
         night_mode_row.append(&Box::builder().hexpand(true).build());
         night_box.append(&night_mode_row);
 
-        let night_brightness_row = settings_row("Night Brightness");
+        let night_brightness_row = settings_row(&fl!("label-night-brightness"));
         let night_brightness_scale = Scale::with_range(Orientation::Horizontal, 0.0, 15.0, 1.0);
         night_brightness_scale.set_value(3.0);
         night_brightness_scale.set_digits(0);
@@ -191,7 +192,7 @@ impl DisplayEditorWidget {
             .margin_bottom(4)
             .build();
         let night_start_label = Label::builder()
-            .label("Night Start")
+            .label(&fl!("label-night-start"))
             .xalign(1.0f32)
             .width_chars(18)
             .css_classes(["settings-label"])
@@ -199,7 +200,7 @@ impl DisplayEditorWidget {
         let night_start_entry = TimeEntry::new();
         night_start_entry.set_time(22, 0);
         let night_end_label = Label::builder()
-            .label("Night End")
+            .label(&fl!("label-night-end"))
             .xalign(1.0f32)
             .width_chars(18)
             .css_classes(["settings-label"])
@@ -245,13 +246,13 @@ impl DisplayEditorWidget {
         let button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(gtk4::Align::Fill).build();
         let refresh_button = Button::builder()
             .icon_name("nf-cod-sync-symbolic")
-            .label("Read")
-            .tooltip_text("Read display settings from device")
+            .label(&fl!("button-read"))
+            .tooltip_text(&fl!("tooltip-read-display"))
             .build();
         let apply_button = Button::builder()
             .icon_name("nf-cod-check-symbolic")
-            .label("Write")
-            .tooltip_text("Write display settings to device")
+            .label(&fl!("button-write"))
+            .tooltip_text(&fl!("tooltip-write-display"))
             .css_classes(["suggested-action"])
             .build();
         button_box.append(&status_label);
@@ -278,10 +279,10 @@ impl DisplayEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
-                status_label.set_label("Reading settings...");
+                status_label.set_label(&fl!("status-reading-settings"));
                 let manager = manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<DeviceSettings, String>>();
                 runtime.spawn(async move {
@@ -310,17 +311,17 @@ impl DisplayEditorWidget {
                                 screen_duration_spin.set_value(settings.screen_light_duration().seconds() as f64);
                                 night_start_entry.set_time(settings.night_start().hour(), settings.night_start().minute());
                                 night_end_entry.set_time(settings.night_end().hour(), settings.night_end().minute());
-                                status_label.set_label("Display settings loaded");
+                                status_label.set_label(&fl!("status-display-settings-loaded"));
                             }
                             Err(e) => {
-                                status_label.set_label(&format!("Read failed: {e}"));
+                                status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                             }
                         }
                         glib::ControlFlow::Break
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        status_label.set_label("Read task failed");
+                        status_label.set_label(&fl!("status-read-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -346,21 +347,21 @@ impl DisplayEditorWidget {
                     p.into_inner()
                 });
                 let Some(addr) = addr else {
-                    status_label.set_label("No device connected");
+                    status_label.set_label(&fl!("status-no-device-connected"));
                     return;
                 };
 
                 let brightness = match Brightness::new((brightness_scale.value() as u8) * 10) {
                     Ok(b) => b,
                     Err(e) => {
-                        status_label.set_label(&format!("Invalid brightness: {e}"));
+                        status_label.set_label(&fl!("status-invalid-brightness", error = e.to_string()));
                         return;
                     }
                 };
                 let night_brightness = match Brightness::new((night_brightness_scale.value() as u8) * 10) {
                     Ok(b) => b,
                     Err(e) => {
-                        status_label.set_label(&format!("Invalid night brightness: {e}"));
+                        status_label.set_label(&fl!("status-invalid-night-brightness", error = e.to_string()));
                         return;
                     }
                 };
@@ -369,12 +370,12 @@ impl DisplayEditorWidget {
                     Some((h, m)) => match ClockTime::new(h, m) {
                         Ok(t) => t,
                         Err(e) => {
-                            status_label.set_label(&format!("Invalid night start: {e}"));
+                            status_label.set_label(&fl!("status-invalid-night-start", error = e.to_string()));
                             return;
                         }
                     },
                     None => {
-                        status_label.set_label("Invalid night start time");
+                        status_label.set_label(&fl!("status-invalid-night-start-time"));
                         return;
                     }
                 };
@@ -382,24 +383,24 @@ impl DisplayEditorWidget {
                     Some((h, m)) => match ClockTime::new(h, m) {
                         Ok(t) => t,
                         Err(e) => {
-                            status_label.set_label(&format!("Invalid night end: {e}"));
+                            status_label.set_label(&fl!("status-invalid-night-end", error = e.to_string()));
                             return;
                         }
                     },
                     None => {
-                        status_label.set_label("Invalid night end time");
+                        status_label.set_label(&fl!("status-invalid-night-end-time"));
                         return;
                     }
                 };
                 let screen_light_duration = match ScreenLightDuration::new(screen_duration_spin.value() as u8) {
                     Ok(d) => d,
                     Err(e) => {
-                        status_label.set_label(&format!("Invalid screen duration: {e}"));
+                        status_label.set_label(&fl!("status-invalid-screen-duration", error = e.to_string()));
                         return;
                     }
                 };
 
-                status_label.set_label("Writing settings...");
+                status_label.set_label(&fl!("status-writing-settings"));
                 let manager = manager.clone();
                 let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
                 runtime.spawn(async move {
@@ -431,14 +432,14 @@ impl DisplayEditorWidget {
                 glib::source::idle_add_local(move || match rx.borrow_mut().try_recv() {
                     Ok(result) => {
                         match result {
-                            Ok(()) => status_label.set_label("Display settings written"),
-                            Err(e) => status_label.set_label(&format!("Write failed: {e}")),
+                            Ok(()) => status_label.set_label(&fl!("status-display-settings-written")),
+                            Err(e) => status_label.set_label(&fl!("status-write-failed", error = e.to_string())),
                         }
                         glib::ControlFlow::Break
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        status_label.set_label("Write task failed");
+                        status_label.set_label(&fl!("status-write-task-failed"));
                         glib::ControlFlow::Break
                     }
                 });
@@ -469,10 +470,10 @@ impl DisplayEditorWidget {
             p.into_inner()
         });
         let Some(addr) = addr else {
-            self.status_label.set_label("No device connected");
+            self.status_label.set_label(&fl!("status-no-device-connected"));
             return;
         };
-        self.status_label.set_label("Reading settings...");
+        self.status_label.set_label(&fl!("status-reading-settings"));
         let manager = self.manager.clone();
         let (tx, rx) = std::sync::mpsc::channel::<Result<DeviceSettings, String>>();
         self.runtime.spawn(async move {
@@ -501,17 +502,17 @@ impl DisplayEditorWidget {
                         screen_duration_spin.set_value(settings.screen_light_duration().seconds() as f64);
                         night_start_entry.set_time(settings.night_start().hour(), settings.night_start().minute());
                         night_end_entry.set_time(settings.night_end().hour(), settings.night_end().minute());
-                        status_label.set_label("Display settings loaded");
+                        status_label.set_label(&fl!("status-display-settings-loaded"));
                     }
                     Err(e) => {
-                        status_label.set_label(&format!("Read failed: {e}"));
+                        status_label.set_label(&fl!("status-read-failed", error = e.to_string()));
                     }
                 }
                 glib::ControlFlow::Break
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
-                status_label.set_label("Read task failed");
+                status_label.set_label(&fl!("status-read-task-failed"));
                 glib::ControlFlow::Break
             }
         });

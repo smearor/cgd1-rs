@@ -16,6 +16,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 
 use crate::device_runtime_state::DeviceRuntimeState;
+use crate::fl;
 
 /// Reusable sensor overview widget - can be embedded in the main window or a dialog.
 #[allow(dead_code)]
@@ -44,7 +45,7 @@ impl SensorOverviewWidget {
         container.append(&column_view);
 
         let button_box = Box::builder().orientation(Orientation::Horizontal).spacing(8).halign(Align::End).build();
-        let refresh_button = Button::builder().label("Refresh").build();
+        let refresh_button = Button::builder().label(&fl!("button-refresh")).build();
         button_box.append(&refresh_button);
         container.append(&button_box);
 
@@ -85,10 +86,10 @@ fn build_column_view() -> (gio::ListStore, ColumnView) {
     column_view.set_hexpand(true);
     column_view.set_vexpand(true);
 
-    let addr_col = build_text_column("MAC Address", |item| item.address());
-    let temp_col = build_text_column("Temp", |item| item.temperature());
-    let humidity_col = build_text_column("Humidity", |item| item.humidity());
-    let battery_col = build_text_column("Battery", |item| item.battery());
+    let addr_col = build_text_column(&fl!("column-mac-address"), |item| item.address());
+    let temp_col = build_text_column(&fl!("column-temp"), |item| item.temperature());
+    let humidity_col = build_text_column(&fl!("column-humidity"), |item| item.humidity());
+    let battery_col = build_text_column(&fl!("column-battery"), |item| item.battery());
 
     column_view.append_column(&addr_col);
     column_view.append_column(&temp_col);

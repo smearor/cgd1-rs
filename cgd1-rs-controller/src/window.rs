@@ -32,6 +32,7 @@ use crate::dialog::DisplayEditorWidget;
 use crate::dialog::RegionEditorWidget;
 use crate::dialog::SensorOverviewWidget;
 use crate::display::SevenSegmentDisplay;
+use crate::fl;
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
@@ -135,18 +136,18 @@ impl MainWindow {
         gtk4::style_context_add_provider_for_display(&display, &provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
 
         let window = Window::builder()
-            .title("Alarm Clock CGD1")
+            .title(&fl!("app-title"))
             .default_width(480)
             .default_height(600)
             .application(app)
             .build();
 
-        let device_dropdown = DropDown::new(Some(StringList::new(&["No devices"])), None::<&gtk4::Expression>);
-        let scan_button = Button::builder().icon_name("view-refresh-symbolic").tooltip_text("Scan for devices").build();
+        let device_dropdown = DropDown::new(Some(StringList::new(&[&fl!("dropdown-no-devices")])), None::<&gtk4::Expression>);
+        let scan_button = Button::builder().icon_name("view-refresh-symbolic").tooltip_text(&fl!("tooltip-scan")).build();
 
-        let connect_switch = Switch::builder().tooltip_text("Connect / Disconnect").build();
+        let connect_switch = Switch::builder().tooltip_text(&fl!("tooltip-connect")).build();
 
-        let status_label = Label::builder().label("Disconnected").css_classes(["dim-label"]).build();
+        let status_label = Label::builder().label(&fl!("status-disconnected")).css_classes(["dim-label"]).build();
 
         let header = create_header_bar(&scan_button, &device_dropdown, &connect_switch);
         window.set_titlebar(Some(&header));
@@ -176,7 +177,7 @@ impl MainWindow {
             .build();
         let summary_battery_icon = Image::builder()
             .icon_name(battery_icon_name(None))
-            .tooltip_text("-- %")
+            .tooltip_text(&crate::i18n::get("battery-tooltip-unknown"))
             .css_classes(["summary-icon"])
             .hexpand(true)
             .halign(Align::Center)
@@ -227,19 +228,34 @@ impl MainWindow {
         summary_bar.append(&summary_bt);
 
         // Alarm toggle button
-        let alarm_toggle = ToggleButton::builder().label("Alarms").tooltip_text("Show / hide alarm editor").build();
+        let alarm_toggle = ToggleButton::builder()
+            .label(&fl!("toggle-alarms"))
+            .tooltip_text(&fl!("tooltip-toggle-alarms"))
+            .build();
 
         // Display editor toggle button
-        let display_toggle = ToggleButton::builder().label("Display").tooltip_text("Show / hide display editor").build();
+        let display_toggle = ToggleButton::builder()
+            .label(&fl!("toggle-display"))
+            .tooltip_text(&fl!("tooltip-toggle-display"))
+            .build();
 
         // Region editor toggle button
-        let region_toggle = ToggleButton::builder().label("Region").tooltip_text("Show / hide region editor").build();
+        let region_toggle = ToggleButton::builder()
+            .label(&fl!("toggle-region"))
+            .tooltip_text(&fl!("tooltip-toggle-region"))
+            .build();
 
         // Sensor overview toggle button
-        let sensor_toggle = ToggleButton::builder().label("Sensors").tooltip_text("Show / hide sensor overview").build();
+        let sensor_toggle = ToggleButton::builder()
+            .label(&fl!("toggle-sensors"))
+            .tooltip_text(&fl!("tooltip-toggle-sensors"))
+            .build();
 
         // Audio editor toggle button
-        let audio_toggle = ToggleButton::builder().label("Audio").tooltip_text("Show / hide audio editor").build();
+        let audio_toggle = ToggleButton::builder()
+            .label(&fl!("toggle-audio"))
+            .tooltip_text(&fl!("tooltip-toggle-audio"))
+            .build();
 
         // Alarm editor revealer (collapsed by default)
         let alarm_revealer = gtk4::Revealer::builder()
@@ -332,7 +348,7 @@ impl MainWindow {
 
         let battery_icon = Image::builder()
             .icon_name(battery_icon_name(None))
-            .tooltip_text("-- %")
+            .tooltip_text(&crate::i18n::get("battery-tooltip-unknown"))
             .css_classes(["battery-icon"])
             .build();
         let bluetooth_icon = Image::builder()
@@ -830,7 +846,7 @@ impl MainWindow {
 
         scan_btn_for_connect.connect_clicked(move |_| {
             (*scan_btn).set_sensitive(false);
-            status.set_label("Scanning...");
+            status.set_label(&fl!("status-scanning"));
             debug!("controller: scan triggered");
             let manager = manager.clone();
             let _runtime_keepalive = runtime_arc.clone();
@@ -931,9 +947,9 @@ impl MainWindow {
                             let model = StringList::new(&strs);
                             dropdown.set_model(Some(&model));
                             if found.is_empty() {
-                                status.set_label("No devices found");
+                                status.set_label(&fl!("status-no-devices-found"));
                             } else {
-                                status.set_label(&format!("Found {} device(s)", found.len()));
+                                status.set_label(&fl!("status-devices-found", count = (found.len() as i64)));
                                 if !connect_switch.is_active() {
                                     if let Some(idx) = {
                                         let known = known_devices.lock().unwrap_or_else(|p| {
@@ -1007,7 +1023,7 @@ impl MainWindow {
                             }
                         }
                         Err(e) => {
-                            status.set_label(&format!("Scan failed: {e}"));
+                            status.set_label(&fl!("status-scan-failed", error = e.to_string()));
                         }
                     }
                     (*scan_btn).set_sensitive(true);
@@ -1016,7 +1032,7 @@ impl MainWindow {
                 Err(TryRecvError::Empty) => ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
                     (*scan_btn).set_sensitive(true);
-                    status.set_label("Scan task failed");
+                    status.set_label(&fl!("status-scan-task-failed"));
                     ControlFlow::Break
                 }
             });
@@ -1055,8 +1071,8 @@ impl MainWindow {
                 .and_then(|item| item.downcast::<gtk4::StringObject>().ok())
                 .map(|obj| obj.string().to_string())
                 .unwrap_or_default();
-            if addr_text.is_empty() || addr_text == "No devices" {
-                status.set_label("No device selected");
+            if addr_text.is_empty() || addr_text == fl!("dropdown-no-devices") {
+                status.set_label(&fl!("status-no-device-selected"));
                 debug!("controller: connect clicked but no device selected");
                 return;
             }
@@ -1064,13 +1080,13 @@ impl MainWindow {
                 Ok(a) => a,
                 Err(e) => {
                     warn!(text = %addr_text, error = %e, "controller: failed to parse address from dropdown");
-                    status.set_label(&format!("Invalid address: {e}"));
+                    status.set_label(&fl!("status-scan-failed", error = e.to_string()));
                     return;
                 }
             };
             debug!(address = %addr, active = sw.is_active(), "controller: switch toggled");
             if sw.is_active() {
-                status.set_label("Connecting...");
+                status.set_label(&fl!("status-connecting"));
                 bluetooth_icon.remove_css_class("bluetooth-off");
                 bluetooth_icon.add_css_class("bluetooth-blinking");
                 let manager = manager.clone();
@@ -1097,7 +1113,7 @@ impl MainWindow {
                         .await;
                     match &result {
                         Ok(_) => {
-                            let _ = tx.send(Ok(format!("Connected to {addr}")));
+                            let _ = tx.send(Ok(fl!("status-connected", addr = addr.to_string())));
 
                             // Use cached advertising battery if available.
                             // The CGD1 GATT battery characteristic (0x2A19)
@@ -1221,7 +1237,7 @@ impl MainWindow {
                         }
                         Err(e) => {
                             let msg = if is_new_token {
-                                format!("{e}. Device may need factory reset to accept a new token.")
+                                fl!("status-connect-failed-new-token", error = e.to_string())
                             } else {
                                 e.to_string()
                             };
@@ -1319,7 +1335,7 @@ impl MainWindow {
                             }
                             Err(e) => {
                                 warn!(%addr_for_connect, error = %e, "controller: connect failed");
-                                status.set_label(&format!("Connect failed: {e}"));
+                                status.set_label(&fl!("status-connect-failed", error = e.to_string()));
                                 bluetooth_icon_for_connect.remove_css_class("bluetooth-blinking");
                                 bluetooth_icon_for_connect.add_css_class("bluetooth-off");
                                 sw.set_active(false);
@@ -1330,7 +1346,7 @@ impl MainWindow {
                     Err(TryRecvError::Empty) => ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
                         warn!(%addr_for_connect, "controller: connect task channel disconnected");
-                        status.set_label("Connect task failed");
+                        status.set_label(&fl!("status-connect-task-failed"));
                         bluetooth_icon_for_connect.remove_css_class("bluetooth-blinking");
                         bluetooth_icon_for_connect.add_css_class("bluetooth-off");
                         sw.set_active(false);
@@ -1408,7 +1424,7 @@ impl MainWindow {
                                     }
                                 }
                                 if is_selected {
-                                    let msg = format!("Alarm {} triggered", slot.value());
+                                    let msg = fl!("status-alarm-triggered", slot = (slot.value() as i64));
                                     info!(%addr_for_connect, slot = slot.value(), "alarm triggered on device");
                                     status_for_events.set_label(&msg);
                                     full_display_for_events.add_css_class("alarm-flash");
@@ -1433,7 +1449,7 @@ impl MainWindow {
                                 }
                                 if is_selected {
                                     warn!("controller: selected device disconnected event received");
-                                    status_for_events.set_label("Reconnecting...");
+                                    status_for_events.set_label(&fl!("status-reconnecting"));
                                     bluetooth_icon_for_events.remove_css_class("bluetooth-off");
                                     bluetooth_icon_for_events.add_css_class("bluetooth-blinking");
                                 }
@@ -1454,7 +1470,7 @@ impl MainWindow {
                                 }
                                 if is_selected {
                                     info!("controller: selected device reconnected");
-                                    status_for_events.set_label("Device reconnected");
+                                    status_for_events.set_label(&fl!("status-device-reconnected"));
                                     bluetooth_icon_for_events.remove_css_class("bluetooth-blinking");
                                     bluetooth_icon_for_events.remove_css_class("bluetooth-off");
                                 }
@@ -1543,7 +1559,7 @@ impl MainWindow {
                 set_battery_icon(&battery_icon, None);
                 bluetooth_icon.remove_css_class("bluetooth-blinking");
                 bluetooth_icon.add_css_class("bluetooth-off");
-                status.set_label("Disconnected");
+                status.set_label(&fl!("status-disconnected"));
                 // Refresh dropdown to update connection dot
                 if let Some(model) = dropdown.model() {
                     dropdown.set_model(Some(&model));
@@ -1569,7 +1585,7 @@ impl MainWindow {
                 .and_then(|item| item.downcast::<gtk4::StringObject>().ok())
                 .map(|obj| obj.string().to_string())
                 .unwrap_or_default();
-            if addr_text.is_empty() || addr_text == "No devices" {
+            if addr_text.is_empty() || addr_text == fl!("dropdown-no-devices") {
                 return;
             }
             let addr = match cgd1_rs::MacAddress::parse(&addr_text) {
@@ -1624,14 +1640,14 @@ impl MainWindow {
                         .map(|na| na.label.clone())
                         .unwrap_or_default();
                     next_alarm_label.set_label(&label_text);
-                    status.set_label(&format!("Selected: {addr}"));
+                    status.set_label(&fl!("status-selected", addr = addr.to_string()));
                 }
                 None => {
                     temp_display.set_display_text("");
                     humidity_display.set_display_text("");
                     next_alarm_label.set_label("");
                     set_battery_icon(&battery_icon, None);
-                    status.set_label(&format!("Available: {addr}"));
+                    status.set_label(&fl!("status-available", addr = addr.to_string()));
                 }
             }
         });
@@ -1824,7 +1840,7 @@ impl MainWindow {
                         warn!(address = %stale_addr, "controller: no data from device for 120s, disconnecting");
                     }
                     let first_stale = stale_addrs[0];
-                    status.set_label("Device unresponsive, disconnecting...");
+                    status.set_label(&fl!("status-device-unresponsive"));
                     if connect_switch.is_active() {
                         connect_switch.set_active(false);
                     }
@@ -1874,7 +1890,7 @@ impl MainWindow {
                         if let Some(idx) = known.iter().position(|a| *a == first_stale) {
                             debug!(address = %first_stale, "controller: attempting reconnect to known device");
                             dropdown.set_selected(idx as u32);
-                            status.set_label("Reconnecting...");
+                            status.set_label(&fl!("status-reconnecting"));
                             if !connect_switch.is_active() {
                                 connect_switch.set_active(true);
                             }
@@ -1927,8 +1943,8 @@ fn create_header_bar(scan_button: &Button, device_dropdown: &DropDown, connect_s
     header.pack_start(&split_button);
 
     let menu = gio::Menu::new();
-    menu.append(Some("Reset Token"), Some("app.reset_token"));
-    menu.append(Some("Info"), Some("app.info"));
+    menu.append(Some(&fl!("menu-reset-token")), Some("app.reset_token"));
+    menu.append(Some(&fl!("menu-info")), Some("app.info"));
 
     let menu_button = gtk4::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&menu).build();
     header.pack_end(&menu_button);
@@ -1951,5 +1967,5 @@ fn battery_icon_name(level: Option<u8>) -> &'static str {
 /// Update a battery icon's icon name and tooltip text from a battery level.
 fn set_battery_icon(icon: &Image, level: Option<u8>) {
     icon.set_icon_name(Some(battery_icon_name(level)));
-    icon.set_tooltip_text(level.map(|l| format!("{} %", l)).as_deref());
+    icon.set_tooltip_text(level.map(|l| crate::i18n::get_int("battery-tooltip", "level", l as i64)).as_deref());
 }
