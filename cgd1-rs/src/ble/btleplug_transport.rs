@@ -98,7 +98,7 @@ impl BtleplugTransport {
     /// Forwards `ServiceDataAdvertisement` events to the advertisement channel
     /// for `next_advertisement` consumers. Handles `DeviceDisconnected` by
     /// cleaning up internal state and signalling `next_notification` via the
-    /// per-device watch channel — this is how silent BLE disconnects (e.g.
+    /// per-device watch channel - this is how silent BLE disconnects (e.g.
     /// after an alarm) are detected without relying on the notification stream
     /// itself.
     async fn event_monitor_task(transport: Arc<Self>, advertisement_tx: mpsc::UnboundedSender<AdvertisementData>) {

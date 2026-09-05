@@ -1,5 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::path::PathBuf;
@@ -270,10 +270,7 @@ impl AudioEditorWidget {
             .copied()
             .collect();
 
-        let mut custom_sigs: Vec<RingtoneSignature> = custom_ringtone_files
-            .keys()
-            .map(|bytes| RingtoneSignature::from_bytes(*bytes))
-            .collect();
+        let mut custom_sigs: Vec<RingtoneSignature> = custom_ringtone_files.keys().map(|bytes| RingtoneSignature::from_bytes(*bytes)).collect();
         custom_sigs.sort_by_key(|s| {
             custom_ringtone_files
                 .get(&s.bytes())
