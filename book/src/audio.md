@@ -17,26 +17,47 @@ The CGD1 supports uploading custom ringtones via a block-based BLE transfer prot
 ### Built-in Ringtones
 
 The original Qingping/ClearGrass PCM ringtones have been replaced with audio from
-[lomiri-sounds](https://gitlab.com/ubports/development/core/lomiri-sounds). The PCM
-conversions are distributed under **CC-BY-SA-3.0** (see
-[LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)).
+[lomiri-sounds](https://gitlab.com/ubports/development/core/lomiri-sounds) (CC-BY-SA-3.0)
+and a chiptune remix by Dubmood (CC-BY-NC-SA-4.0). See
+[LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)
+for full attribution and license details.
 
-| Signature  | Name               | lomiri-sounds source   | Copyright holder            | Original license | PCM length |
-|------------|--------------------|------------------------|-----------------------------|------------------|------------|
-| `fdc366a5` | Beep               | Alarm clock.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 95967      |
-| `0961bb77` | Digital Ringtone   | Mallet.ogg             | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 18155      |
-| `ba2c2c8c` | Digital Ringtone 2 | Sintonia.ogg           | 2018, Mauricio Duarte       | CC-BY-4.0        | 18462      |
-| `ea2d4c02` | Cuckoo             | Counterpoint.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 76522      |
-| `791bacb3` | Telephone Ringtone | Call me.ogg            | 2018, Anonymous             | CC0-1.0          | 95967      |
-| `1d019fd6` | Exotic Guitar      | Latin.ogg              | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 96000      |
-| `6e70b659` | Lively Piano       | UBports.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0        | 96000      |
-| `8f004886` | Story Piano        | Melody piano.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 86043      |
-| `26522519` | Forest Piano       | Mangore.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0        | 69819      |
+| Signature  | Name               | Source                 | Copyright holder            | License         | PCM length |
+|------------|--------------------|------------------------|-----------------------------|-----------------|------------|
+| `fdc366a5` | Beep               | Alarm clock.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 95967      |
+| `0961bb77` | Digital Ringtone   | Mallet.ogg             | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 18155      |
+| `ba2c2c8c` | Digital Ringtone 2 | Sintonia.ogg           | 2018, Mauricio Duarte       | CC-BY-4.0       | 18462      |
+| `ea2d4c02` | Cuckoo             | Counterpoint.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 76522      |
+| `791bacb3` | Telephone Ringtone | Call me.ogg            | 2018, Anonymous             | CC0-1.0         | 95967      |
+| `1d019fd6` | Exotic Guitar      | Latin.ogg              | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `6e70b659` | Lively Piano       | UBports.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0       | 96000      |
+| `8f004886` | Story Piano        | Melody piano.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 86043      |
+| `26522519` | Forest Piano       | Mangore.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0       | 69819      |
+| `4d6f6e6b` | Monkey Island      | monkey-island-8bit     | Kalle Jonsson (Dubmood)     | CC-BY-NC-SA-4.0 | 80000      |
+| `416c5379` | Alarm Synth        | Alarm synth.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `41724d62` | Array Mbira        | Array mbira.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 79033      |
+| `426c6973` | Bliss              | Bliss.ogg              | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 47181      |
+| `43656c73` | Celestial          | Celestial.ogg          | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `456e7472` | Entropy            | Entropy.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0       | 96000      |
+| `476c4d61` | Glass Marimba      | Glass marimba.ogg      | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `48616c6f` | Halo Pentatonic    | Halo Pentatonic.ogg    | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 87819      |
+| `4861726d` | Harmonics          | Harmonics.ogg          | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 64230      |
+| `48617270` | Harp Arp           | Harp arp.ogg           | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 50077      |
+| `4b6f746f` | Koto Chords        | Koto chords.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `53616b65` | Sakenointi         | sakenointi.ogg         | 2018, TMetso                | CC-BY-4.0       | 78454      |
+| `53616d73` | Sam's Song         | Sam's Song.ogg         | 2013, Sam Hulick            | CC-BY-SA-3.0    | 38147      |
+| `536f756c` | Soul               | Soul.ogg               | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `53706172` | Sparkle            | Sparkle.ogg            | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 71332      |
+| `53757072` | Supreme            | Supreme.ogg            | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 91793      |
+| `53757275` | Suru Arpeggio      | Suru arpeggio.ogg      | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `54696d65` | Time Not Lost      | Time not Lost.ogg      | 2018, Mauricio Duarte       | CC-BY-4.0       | 95944      |
+| `576f6f64` | Wooden Drive       | Wooden Drive.ogg       | 2018, Amber Forest          | CC-BY-3.0       | 56816      |
 
 **Sources:**
 
 - lomiri-sounds: https://gitlab.com/ubports/development/core/lomiri-sounds
 - Upstream copyright file: https://gitlab.com/ubports/development/core/lomiri-sounds/-/blob/main/debian/copyright?ref_type=heads
+- Dubmood (Monkey Island): chiptune remix, CC-BY-NC-SA-4.0
 - Full attribution and license details: [LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)
 
 ### Custom Slots
