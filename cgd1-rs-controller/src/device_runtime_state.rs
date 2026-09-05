@@ -1,8 +1,8 @@
-use std::time::Instant;
-use tokio::task::JoinHandle;
 use cgd1_rs::BatteryLevel;
 use cgd1_rs::Humidity;
 use cgd1_rs::Temperature;
+use std::time::Instant;
+use tokio::task::JoinHandle;
 
 /// Per-device runtime state tracked by the controller.
 ///
