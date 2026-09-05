@@ -617,6 +617,7 @@ impl ClockDevice {
         if response.len() < 2 {
             return Err(ClockError::Parse("settings response too short".into()));
         }
+        debug!(response = %format_hex(&response), "read_settings: raw response");
         DeviceSettings::decode(&response[2..])
     }
 
@@ -628,6 +629,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = settings.encode();
+        debug!(payload = %format_hex(&payload), "write_settings: sending SetSettings payload");
         let ack = self.send_and_wait(Command::SetSettings, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
@@ -734,6 +736,26 @@ impl ClockDevice {
 
         let _guard = self.command_mutex.lock().await;
 
+        // Step 0: Pad audio to a multiple of 512 bytes per BLE protocol §11.5.
+        // First padding byte is 0x00 (end-of-audio marker), rest are 0xFF.
+        // This ensures the total packet count is a multiple of 4 (512 / 128),
+        // so every block completes with an ACK from the device.
+        const AUDIO_BLOCK_SIZE: usize = 512;
+        let padded_len = audio.len().next_multiple_of(AUDIO_BLOCK_SIZE);
+        let padded_audio: Vec<u8>;
+        let upload_data: &[u8] = if padded_len == audio.len() {
+            audio
+        } else {
+            padded_audio = {
+                let mut buf = Vec::with_capacity(padded_len);
+                buf.extend_from_slice(audio);
+                buf.push(0x00);
+                buf.resize(padded_len, 0xFF);
+                buf
+            };
+            &padded_audio
+        };
+
         // Step 1: MTU Exchange - audio packets are 130 bytes, default MTU is 23
         let negotiated_mtu = self.transport.request_mtu(&self.address, 247).await?;
         if (negotiated_mtu as usize) < 132 {
@@ -742,7 +764,7 @@ impl ClockDevice {
         debug!(negotiated_mtu, "MTU exchange successful");
 
         // Step 2: Audio Init
-        let total_size = audio.len() as u32;
+        let total_size = upload_data.len() as u32;
         let mut init_frame = Vec::with_capacity(9);
         init_frame.push(0x08); // Length
         init_frame.push(0x10); // Command: Audio Init
@@ -762,10 +784,11 @@ impl ClockDevice {
         debug!(slot = init_ack.payload, total_size, "audio upload initialized");
 
         // Step 3: Send data packets in blocks of 4
-        let total_packets = audio.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
+        let total_packets = upload_data.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
+        debug!(original_len = audio.len(), padded_len = upload_data.len(), total_packets, "audio upload: padded to block boundary");
         let mut packet_index = 0usize;
 
-        for chunk in audio.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
+        for chunk in upload_data.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
             // Pad to 128 bytes with 0xFF
             let mut payload = [0xFFu8; AUDIO_PACKET_PAYLOAD_SIZE];
             payload[..chunk.len()].copy_from_slice(chunk);
@@ -775,9 +798,10 @@ impl ClockDevice {
             frame.push(0x08); // Command: Audio Data Packet
             frame.extend_from_slice(&payload);
 
-            let is_block_end = (packet_index + 1).is_multiple_of(AUDIO_PACKETS_PER_BLOCK) || (packet_index + 1) == total_packets;
+            let is_block_boundary = (packet_index + 1).is_multiple_of(AUDIO_PACKETS_PER_BLOCK);
+            let is_last_packet = (packet_index + 1) == total_packets;
 
-            if is_block_end {
+            if is_block_boundary {
                 let receiver = self.prepare_ack(Command::AudioData).await;
                 self.transport.write(&self.address, CharacteristicUuid::DataWrite, &frame).await?;
                 let ack = self.wait_ack(receiver, AUDIO_ACK_TIMEOUT_SECS).await?;
@@ -787,6 +811,9 @@ impl ClockDevice {
                         status: ack.status,
                     });
                 }
+            } else if is_last_packet {
+                self.transport.write(&self.address, CharacteristicUuid::DataWrite, &frame).await?;
+                debug!(packet_index, total_packets, "audio upload: final packet sent without ACK (incomplete block)");
             } else {
                 self.transport.write(&self.address, CharacteristicUuid::DataWrite, &frame).await?;
             }
@@ -1314,27 +1341,37 @@ mod tests {
         let device = ClockDevice::new(mock.clone(), addr);
         device.spawn_notification_task();
 
-        // 128 bytes = 1 packet (1 block, ACK after last packet)
+        // 128 bytes padded to 512 (4 packets, 1 full block)
         let audio = vec![0xAAu8; 128];
         let signature = [0x01, 0x02, 0x03, 0x04];
 
         device.upload_ringtone(&audio, signature).await.unwrap();
 
         let writes = mock.drain_writes().await;
+        // 1 init + 4 data packets = 5 writes
+        assert_eq!(writes.len(), 5);
         // Write 0: Audio Init frame
         assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
         assert_eq!(writes[0].1[0], 0x08); // length
         assert_eq!(writes[0].1[1], 0x10); // command
-        assert_eq!(writes[0].1[2], 128); // size lo
-        assert_eq!(writes[0].1[3], 0); // size mid
-        assert_eq!(writes[0].1[4], 0); // size hi
+        assert_eq!(writes[0].1[2], 0x00); // size lo (512 = 0x00 0x02)
+        assert_eq!(writes[0].1[3], 0x02); // size mid
+        assert_eq!(writes[0].1[4], 0x00); // size hi
         assert_eq!(&writes[0].1[5..9], &signature);
 
-        // Write 1: Audio Data Packet
+        // Write 1: first 128 bytes of audio (all 0xAA)
         assert_eq!(writes[1].0, CharacteristicUuid::DataWrite);
-        assert_eq!(writes[1].1[0], 0x81); // length
-        assert_eq!(writes[1].1[1], 0x08); // command
-        assert_eq!(&writes[1].1[2..], &[0xAA; 128]); // payload
+        assert_eq!(writes[1].1[0], 0x81);
+        assert_eq!(writes[1].1[1], 0x08);
+        assert_eq!(&writes[1].1[2..], &[0xAA; 128]);
+
+        // Write 2: 0x00 marker + 0xFF padding
+        assert_eq!(writes[2].1[2], 0x00);
+        assert_eq!(writes[2].1[3], 0xFF);
+
+        // Writes 3-4: all 0xFF padding
+        assert_eq!(&writes[3].1[2..], &[0xFF; 128]);
+        assert_eq!(&writes[4].1[2..], &[0xFF; 128]);
     }
 
     #[tokio::test]
@@ -1368,22 +1405,29 @@ mod tests {
         let device = ClockDevice::new(mock.clone(), addr);
         device.spawn_notification_task();
 
-        // 130 bytes = 2 packets: 128 + 2 (padded to 128 with 0xFF)
+        // 130 bytes padded to 512 (4 packets, 1 full block)
         let audio = vec![0x11u8; 130];
         let signature = [0x00; 4];
 
         device.upload_ringtone(&audio, signature).await.unwrap();
 
         let writes = mock.drain_writes().await;
-        // 1 init + 2 data packets = 3 writes
-        assert_eq!(writes.len(), 3);
-        // Second data packet: first 2 bytes are 0x11, rest 0xFF
+        // 1 init + 4 data packets = 5 writes
+        assert_eq!(writes.len(), 5);
+        // Init size = 512
+        assert_eq!(writes[0].1[2], 0x00);
+        assert_eq!(writes[0].1[3], 0x02);
+        // Second data packet: bytes 128-129 are 0x11, byte 130 is 0x00, rest 0xFF
         assert_eq!(writes[2].1[0], 0x81);
         assert_eq!(writes[2].1[1], 0x08);
         assert_eq!(writes[2].1[2], 0x11);
         assert_eq!(writes[2].1[3], 0x11);
-        assert_eq!(writes[2].1[4], 0xFF);
+        assert_eq!(writes[2].1[4], 0x00);
+        assert_eq!(writes[2].1[5], 0xFF);
         assert_eq!(writes[2].1[129], 0xFF);
+        // Remaining packets: all 0xFF
+        assert_eq!(&writes[3].1[2..], &[0xFF; 128]);
+        assert_eq!(&writes[4].1[2..], &[0xFF; 128]);
     }
 
     #[tokio::test]
