@@ -52,6 +52,7 @@ for full attribution and license details.
 | `53757275` | Suru Arpeggio      | Suru arpeggio.ogg      | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
 | `54696d65` | Time Not Lost      | Time not Lost.ogg      | 2018, Mauricio Duarte       | CC-BY-4.0       | 95944      |
 | `576f6f64` | Wooden Drive       | Wooden Drive.ogg       | 2018, Amber Forest          | CC-BY-3.0       | 56816      |
+| `958f8a83` | Elysium            | ELYSIUM.MOD            | Jester                      | CC-BY-NC-SA-4.0 | 96000      |
 
 **Sources:**
 

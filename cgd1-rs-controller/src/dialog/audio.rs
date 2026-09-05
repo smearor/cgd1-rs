@@ -39,6 +39,7 @@ fn builtin_ringtone_pcm(sig: RingtoneSignature) -> Option<&'static [u8]> {
         RingtoneSignature::SuruArpeggio => Some(include_bytes!("../../assets/ringtones/53757275.pcm")),
         RingtoneSignature::TimeNotLost => Some(include_bytes!("../../assets/ringtones/54696d65.pcm")),
         RingtoneSignature::WoodenDrive => Some(include_bytes!("../../assets/ringtones/576f6f64.pcm")),
+        RingtoneSignature::Elysium => Some(include_bytes!("../../assets/ringtones/958f8a83.pcm")),
         _ => None,
     }
 }
@@ -111,6 +112,7 @@ const RINGTONE_SIGNATURES: &[RingtoneSignature] = &[
     RingtoneSignature::SuruArpeggio,
     RingtoneSignature::TimeNotLost,
     RingtoneSignature::WoodenDrive,
+    RingtoneSignature::Elysium,
     RingtoneSignature::CustomSlotA,
     RingtoneSignature::CustomSlotB,
     RingtoneSignature::Unused,

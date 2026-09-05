@@ -61,6 +61,7 @@ pub struct RingtoneSignatureParseError {
 /// | `53 75 72 75` | [`SuruArpeggio`]       |
 /// | `54 69 6d 65` | [`TimeNotLost`]        |
 /// | `57 6f 6f 64` | [`WoodenDrive`]        |
+/// | `95 8f 8a 83` | [`Elysium`]            |
 ///
 /// # Custom ringtones
 ///
@@ -108,6 +109,7 @@ pub struct RingtoneSignatureParseError {
 /// [`SuruArpeggio`]: RingtoneSignature::SuruArpeggio
 /// [`TimeNotLost`]: RingtoneSignature::TimeNotLost
 /// [`WoodenDrive`]: RingtoneSignature::WoodenDrive
+/// [`Elysium`]: RingtoneSignature::Elysium
 /// [`CustomSlotA`]: RingtoneSignature::CustomSlotA
 /// [`CustomSlotB`]: RingtoneSignature::CustomSlotB
 /// [`Unused`]: RingtoneSignature::Unused
@@ -170,6 +172,8 @@ pub enum RingtoneSignature {
     TimeNotLost,
     /// Wooden Drive (`57 6f 6f 64`).
     WoodenDrive,
+    /// Elysium (`95 8f 8a 83`).
+    Elysium,
     /// Custom ringtone slot A (`de ad de ad`).
     CustomSlotA,
     /// Custom ringtone slot B (`be ef be ef`).
@@ -214,6 +218,7 @@ impl RingtoneSignature {
             [0x53, 0x75, 0x72, 0x75] => Self::SuruArpeggio,
             [0x54, 0x69, 0x6D, 0x65] => Self::TimeNotLost,
             [0x57, 0x6F, 0x6F, 0x64] => Self::WoodenDrive,
+            [0x95, 0x8F, 0x8A, 0x83] => Self::Elysium,
             [0xDE, 0xAD, 0xDE, 0xAD] => Self::CustomSlotA,
             [0xBE, 0xEF, 0xBE, 0xEF] => Self::CustomSlotB,
             [0xFF, 0xFF, 0xFF, 0xFF] => Self::Unused,
@@ -252,6 +257,7 @@ impl RingtoneSignature {
             Self::SuruArpeggio => [0x53, 0x75, 0x72, 0x75],
             Self::TimeNotLost => [0x54, 0x69, 0x6D, 0x65],
             Self::WoodenDrive => [0x57, 0x6F, 0x6F, 0x64],
+            Self::Elysium => [0x95, 0x8F, 0x8A, 0x83],
             Self::CustomSlotA => [0xDE, 0xAD, 0xDE, 0xAD],
             Self::CustomSlotB => [0xBE, 0xEF, 0xBE, 0xEF],
             Self::Unused => [0xFF, 0xFF, 0xFF, 0xFF],
@@ -295,6 +301,7 @@ impl RingtoneSignature {
             Self::SuruArpeggio => "Suru Arpeggio",
             Self::TimeNotLost => "Time Not Lost",
             Self::WoodenDrive => "Wooden Drive",
+            Self::Elysium => "Elysium",
             Self::CustomSlotA => "CustomSlotA",
             Self::CustomSlotB => "CustomSlotB",
             Self::Unused => "Unused",
@@ -374,6 +381,7 @@ impl FromStr for RingtoneSignature {
             "SuruArpeggio" => return Ok(Self::SuruArpeggio),
             "TimeNotLost" => return Ok(Self::TimeNotLost),
             "WoodenDrive" => return Ok(Self::WoodenDrive),
+            "Elysium" => return Ok(Self::Elysium),
             "CustomSlotA" => return Ok(Self::CustomSlotA),
             "CustomSlotB" => return Ok(Self::CustomSlotB),
             "Unused" => return Ok(Self::Unused),
@@ -431,6 +439,7 @@ mod tests {
         assert_eq!(RingtoneSignature::from_bytes([0x53, 0x75, 0x72, 0x75]), RingtoneSignature::SuruArpeggio);
         assert_eq!(RingtoneSignature::from_bytes([0x54, 0x69, 0x6D, 0x65]), RingtoneSignature::TimeNotLost);
         assert_eq!(RingtoneSignature::from_bytes([0x57, 0x6F, 0x6F, 0x64]), RingtoneSignature::WoodenDrive);
+        assert_eq!(RingtoneSignature::from_bytes([0x95, 0x8F, 0x8A, 0x83]), RingtoneSignature::Elysium);
         assert_eq!(RingtoneSignature::from_bytes([0xDE, 0xAD, 0xDE, 0xAD]), RingtoneSignature::CustomSlotA);
         assert_eq!(RingtoneSignature::from_bytes([0xBE, 0xEF, 0xBE, 0xEF]), RingtoneSignature::CustomSlotB);
         assert_eq!(RingtoneSignature::from_bytes([0xFF, 0xFF, 0xFF, 0xFF]), RingtoneSignature::Unused);
@@ -509,6 +518,7 @@ mod tests {
         assert_eq!(RingtoneSignature::from_str("SuruArpeggio").unwrap(), RingtoneSignature::SuruArpeggio);
         assert_eq!(RingtoneSignature::from_str("TimeNotLost").unwrap(), RingtoneSignature::TimeNotLost);
         assert_eq!(RingtoneSignature::from_str("WoodenDrive").unwrap(), RingtoneSignature::WoodenDrive);
+        assert_eq!(RingtoneSignature::from_str("Elysium").unwrap(), RingtoneSignature::Elysium);
         assert_eq!(RingtoneSignature::from_str("CustomSlotA").unwrap(), RingtoneSignature::CustomSlotA);
         assert_eq!(RingtoneSignature::from_str("CustomSlotB").unwrap(), RingtoneSignature::CustomSlotB);
         assert_eq!(RingtoneSignature::from_str("Unused").unwrap(), RingtoneSignature::Unused);
