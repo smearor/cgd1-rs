@@ -857,20 +857,32 @@ async fn notification_task(
                 let value = notif.value;
                 debug!(%address, characteristic = %characteristic, len = value.len(), data = %format_hex(&value), "notification received");
                 if characteristic == sensor_characteristic {
-                    match SensorNotification::parse(&value) {
-                        Ok(sensor) => {
-                            debug!(%address, temp = %sensor.temperature.value(), hum = %sensor.humidity.value(), battery = ?sensor.battery.map(|b| b.value()), "sending SensorUpdate event");
-                            let _ = event_sender.send(ClockEvent::SensorUpdate {
-                                temperature: sensor.temperature,
-                                humidity: sensor.humidity,
-                            });
-                            if let Some(level) = sensor.battery {
-                                debug!(%address, level = level.value(), "sensor notification includes battery, sending BatteryLevel event");
-                                let _ = event_sender.send(ClockEvent::BatteryLevel { level });
-                            }
+                    // Alarm-triggered notifications use header byte 0x01 followed by
+                    // the alarm slot index and a status byte. Sensor notifications
+                    // use header byte 0x00 with temperature/humidity payload.
+                    if value.len() >= 3 && value[0] == 0x01 {
+                        if let Ok(slot) = AlarmSlotIndex::new(value[1]) {
+                            info!(%address, slot = slot.value(), "alarm triggered on device");
+                            let _ = event_sender.send(ClockEvent::AlarmTriggered { slot });
+                        } else {
+                            warn!(%address, data = %format_hex(&value), "alarm notification with invalid slot index");
                         }
-                        Err(e) => {
-                            warn!(%address, error = %e, data = %format_hex(&value), "failed to parse sensor notification");
+                    } else {
+                        match SensorNotification::parse(&value) {
+                            Ok(sensor) => {
+                                debug!(%address, temp = %sensor.temperature.value(), hum = %sensor.humidity.value(), battery = ?sensor.battery.map(|b| b.value()), "sending SensorUpdate event");
+                                let _ = event_sender.send(ClockEvent::SensorUpdate {
+                                    temperature: sensor.temperature,
+                                    humidity: sensor.humidity,
+                                });
+                                if let Some(level) = sensor.battery {
+                                    debug!(%address, level = level.value(), "sensor notification includes battery, sending BatteryLevel event");
+                                    let _ = event_sender.send(ClockEvent::BatteryLevel { level });
+                                }
+                            }
+                            Err(e) => {
+                                warn!(%address, error = %e, data = %format_hex(&value), "failed to parse sensor notification");
+                            }
                         }
                     }
                 } else if let Some(ack) = Ack::parse(&value) {

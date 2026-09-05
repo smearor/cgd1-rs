@@ -667,6 +667,8 @@ impl BleTransport for VirtualClockTransport {
     }
 
     async fn connect(&self, address: &MacAddress) -> Result<()> {
+        // Simulate connection delay for testing UI loading states.
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         // Create the device on-the-fly if it doesn't exist yet.
         {
             let mut devices = self.devices.lock().await;

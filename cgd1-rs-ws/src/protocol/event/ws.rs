@@ -16,6 +16,8 @@ pub enum EventType {
     Ack,
     /// Passive BLE advertisement received.
     Advertisement,
+    /// Alarm triggered on the device.
+    AlarmTriggered,
 }
 
 /// Event pushed to subscribed WebSocket clients.
