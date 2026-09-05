@@ -4,29 +4,40 @@ The CGD1 supports uploading custom ringtones via a block-based BLE transfer prot
 
 ## Audio Format
 
-| Property | Value |
-|---|---|
-| Format | 8-bit unsigned PCM |
-| Sample rate | 8000 Hz |
-| Channels | Mono |
-| Max size | ~98 KB (~12 seconds) |
-| Padding | Multiple of 512 bytes (`00` end marker + `FF` fill) |
+| Property    | Value                                               |
+|-------------|-----------------------------------------------------|
+| Format      | 8-bit unsigned PCM                                  |
+| Sample rate | 8000 Hz                                             |
+| Channels    | Mono                                                |
+| Max size    | ~98 KB (~12 seconds)                                |
+| Padding     | Multiple of 512 bytes (`00` end marker + `FF` fill) |
 
 ## Ringtone Signatures
 
 ### Built-in Ringtones
 
-| Signature | Name |
-|---|---|
-| `fdc366a5` | Beep |
-| `0961bb77` | Digital Ringtone |
-| `ba2c2c8c` | Digital Ringtone 2 |
-| `ea2d4c02` | Cuckoo |
-| `791bacb3` | Telephone Ringtone |
-| `1d019fd6` | Exotic Guitar |
-| `6e70b659` | Lively Piano |
-| `8f004886` | Story Piano |
-| `26522519` | Forest Piano |
+The original Qingping/ClearGrass PCM ringtones have been replaced with audio from
+[lomiri-sounds](https://gitlab.com/ubports/development/core/lomiri-sounds). The PCM
+conversions are distributed under **CC-BY-SA-3.0** (see
+[LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)).
+
+| Signature  | Name               | lomiri-sounds source   | Copyright holder            | Original license | PCM length |
+|------------|--------------------|------------------------|-----------------------------|------------------|------------|
+| `fdc366a5` | Beep               | Alarm clock.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 95967      |
+| `0961bb77` | Digital Ringtone   | Mallet.ogg             | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 18155      |
+| `ba2c2c8c` | Digital Ringtone 2 | Sintonia.ogg           | 2018, Mauricio Duarte       | CC-BY-4.0        | 18462      |
+| `ea2d4c02` | Cuckoo             | Counterpoint.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 76522      |
+| `791bacb3` | Telephone Ringtone | Call me.ogg            | 2018, Anonymous             | CC0-1.0          | 95967      |
+| `1d019fd6` | Exotic Guitar      | Latin.ogg              | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 96000      |
+| `6e70b659` | Lively Piano       | UBports.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0        | 96000      |
+| `8f004886` | Story Piano        | Melody piano.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0     | 86043      |
+| `26522519` | Forest Piano       | Mangore.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0        | 69819      |
+
+**Sources:**
+
+- lomiri-sounds: https://gitlab.com/ubports/development/core/lomiri-sounds
+- Upstream copyright file: https://gitlab.com/ubports/development/core/lomiri-sounds/-/blob/main/debian/copyright?ref_type=heads
+- Full attribution and license details: [LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)
 
 ### Custom Slots
 
