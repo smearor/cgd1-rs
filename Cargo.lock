@@ -1672,6 +1672,7 @@ dependencies = [
 [[package]]
 name = "nerd-fonts-gtk"
 version = "0.1.0"
+source = "git+https://github.com/smearor/nerd-fonts-gtk.git#ede6a64321a40353b617ecc13a687464ac5004e2"
 dependencies = [
  "gio",
  "glib-build-tools",
