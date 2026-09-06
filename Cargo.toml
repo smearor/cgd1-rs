@@ -32,7 +32,7 @@ i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester
 i18n-embed-fl = "0.10"
 pango = { version = "0.22", features = ["v1_56"] }
 miette = { version = "7", features = ["fancy"] }
-nerd-fonts-gtk = { path = "../nerd-fonts-gtk" }
+nerd-fonts-gtk = { version = "0.1.0", git = "https://github.com/smearor/nerd-fonts-gtk.git" }
 rand = "0.10"
 rustyline = "18"
 rust-embed = "8"
