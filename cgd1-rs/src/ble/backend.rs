@@ -70,7 +70,7 @@ impl Backend {
         match self {
             Self::Btleplug => {
                 let transport = BtleplugTransport::new().await?;
-                Ok(Arc::new(transport))
+                Ok(transport)
             }
             Self::Virtual => Ok(Arc::new(VirtualClockTransport::new())),
         }
@@ -115,6 +115,7 @@ mod tests {
     #[tokio::test]
     async fn create_transport_virtual() {
         let transport = Backend::Virtual.create_transport().await.unwrap();
-        assert!(!transport.is_connected());
+        let addr = crate::MacAddress::parse("AA:BB:CC:DD:E0:01").unwrap();
+        assert!(!transport.is_connected(&addr));
     }
 }

@@ -51,7 +51,7 @@ The `AdvertisementData` struct is parsed from the raw service-data payload:
 
 | Field | Type | Scaling |
 |---|---|---|
-| MAC | 6 bytes (reversed) | — |
+| MAC | 6 bytes (reversed) | - |
 | Temperature | Int16 BE | / 10 (°C) |
 | Humidity | UInt16 BE | / 10 (%) |
 | Battery | UInt8 | & 0x7F (mask bit 7) |
@@ -67,13 +67,30 @@ sequenceDiagram
     participant Transport as BleTransport
     participant CGD1 as CGD1 Device
 
-    App->>Manager: connect(mac)
+    App->>Manager: connect_authenticate_and_sync(mac, token)
     Manager->>Transport: connect(address)
     Transport->>CGD1: BLE connection
     CGD1-->>Transport: Connected
-    Transport-->>Manager: Ok
-    Manager-->>App: ClockDevice
+    Manager->>Transport: subscribe(Auth/Data/Sensor Notify)
+    Manager->>Manager: spawn notification task
+    Manager->>Manager: set_token_store(token_store)
+    Manager->>CGD1: authenticate(token)
+    CGD1-->>Manager: Auth ACKs
+    Manager->>CGD1: sync_timezone()
+    CGD1-->>Manager: Settings response
+    Manager->>CGD1: sync_time_now()
+    CGD1-->>Manager: TimeSync ACK
+    Manager-->>App: ClockDevice (ready)
 ```
+
+The full `connect_authenticate_and_sync` flow performs:
+
+1. **BLE connect** - `transport.connect(address)`
+2. **Subscribe** to Auth Notify, Data Notify, and Sensor Notify characteristics
+3. **Spawn notification task** - Background task for processing BLE notifications
+4. **Authenticate** - Two-step token handshake (Auth Init + Auth Confirm)
+5. **Sync timezone** - Read device settings, compute local UTC offset, write correct timezone
+6. **Sync time** - Send current Unix timestamp; token is persisted only after this succeeds
 
 ### Connecting with the Library
 
@@ -109,7 +126,22 @@ device_b.read_alarms().await?;
 manager.disconnect(&mac).await?;
 ```
 
-This tears down the BLE connection and stops the notification task for that device.
+This aborts the notification task (via `JoinHandle::abort()`) and tears down the BLE connection. Aborting the notification task is critical - without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.
+
+### Automatic Reconnection
+
+When the BLE connection drops (e.g., device goes out of range, battery dies, or alarm triggers a disconnect), the notification task automatically attempts reconnection with exponential backoff:
+
+1. **Disconnect detected** - The notification stream ends or a `CentralEvent::DeviceDisconnected` is received
+2. **Transport cleanup** - `transport.disconnect()` clears the connection state to avoid `AlreadyConnected` errors on retry
+3. **Reconnect attempts** - Up to 10 attempts with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped)
+4. **BLE connect + subscribe** - `reconnect_and_restore` reconnects and re-subscribes to all notify characteristics
+5. **Re-authentication** - A separate task re-authenticates using the stored token (spawned concurrently so the notification loop can process ACKs)
+6. **State recovery** - On success, `ClockEvent::Reconnected` is emitted
+
+The `connect()` call has a 10-second timeout to prevent hanging when the device is unavailable (e.g., during an alarm). The device typically becomes discoverable again ~15-20 seconds after an alarm-triggered disconnect.
+
+> **Note**: While the alarm is sounding, the CGD1 is not discoverable. Dismissing the alarm quickly allows faster reconnection.
 
 ### Virtual Backend (Testing)
 

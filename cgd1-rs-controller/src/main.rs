@@ -1,6 +1,10 @@
 mod app;
+mod config;
+mod device_runtime_state;
 mod dialog;
 mod display;
+mod i18n;
+mod next_alarm;
 mod window;
 
 use cgd1_rs::Backend;
@@ -29,6 +33,8 @@ fn main() {
         _ => tracing_subscriber::EnvFilter::new("trace"),
     };
     tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    i18n::init();
 
     let app = app::ClockControllerApp::new(cli.backend);
     app.run();

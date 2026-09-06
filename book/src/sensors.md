@@ -8,7 +8,10 @@ The CGD1 provides temperature, humidity, and battery data through three independ
 |---|---|---|---|
 | Passive | Temperature, humidity, battery | BLE advertisements (`FDCD`) | No |
 | Connected | Temperature, humidity (real-time) | Sensor Notify (`00000100-...`) | Yes |
-| Connected | Battery | GATT Battery Service (`0x180f` / `0x2a19`) | Yes |
+| Connected | Battery (cached from advertising) | `KnownDeviceStore` battery cache | No (cached) |
+| On-demand | Battery (unreliable) | GATT Battery Service (`0x180f` / `0x2a19`) | Yes |
+
+> **Warning**: The GATT Battery Service characteristic (`0x2A19`) consistently returns 99% on the CGD1 and is **not reliable**. The controller and recommended connect flow use advertising-based battery data exclusively. The `read_battery()` method remains available for CLI/WS diagnostic use but is not used in the connect flow.
 
 ## Passive Sensor Stream (Advertising)
 
@@ -51,7 +54,7 @@ After connecting, the device sends real-time sensor data via the Sensor Notify c
 
 ### Event Dispatch
 
-The notification task parses sensor notifications and broadcasts `ClockEvent::SensorUpdate`:
+The notification task parses sensor notifications and broadcasts `ClockEvent::SensorUpdate`. Battery is **not** included in sensor notifications (the CGD1 sends only 5 bytes without battery data):
 
 ```rust
 pub enum ClockEvent {
@@ -64,15 +67,50 @@ pub enum ClockEvent {
 }
 ```
 
-## Battery (Connected)
+`ClockEvent::BatteryLevel` is sent from the controller's connect handler using the advertising battery cache, not from sensor notifications.
 
-Battery level is read from the standard GATT Battery Service:
+## Battery (Advertising Cache)
 
-- **Service UUID**: `0x180f`
-- **Characteristic UUID**: `0x2a19`
-- **Format**: 1 byte (percentage 0–100)
+The CGD1 only advertises battery data when **not connected** and the button is held for 3 seconds. The battery level is encoded in advertising TLV type `0x02` as a single byte (masked with `0x7F`).
 
-The library reads this characteristic and, when notifications are supported, subscribes for real-time battery updates. Battery changes are dispatched as `ClockEvent::BatteryLevel`.
+### KnownDeviceStore Battery Cache
+
+The `KnownDeviceStore` persists battery levels from advertising scans in a separate `battery_cache.json` file, keyed by MAC address:
+
+```json
+{"58:2d:34:82:cc:81": 31}
+```
+
+- **`save_battery(address, level)`** - Called by the controller's scan callback when advertising battery data is received.
+- **`load_battery()`** - Called on startup to populate the in-memory `scan_battery_cache`.
+
+### Connect Flow Integration
+
+The controller's connect handler reads the cached battery value from `scan_battery_cache` after a successful `connect_authenticate_and_sync` and sends `ClockEvent::BatteryLevel` to update the UI:
+
+```rust
+if let Some(level) = scan_battery_cache.lock().unwrap().get(&addr).copied() {
+    let _ = event_tx.send(ClockEvent::BatteryLevel {
+        level: BatteryLevel::new(level),
+    });
+}
+```
+
+### Device Behavior Notes
+
+- The device **stops advertising** when connected, so battery data is only available passively.
+- Advertising battery values can **fluctuate** between packets (e.g., 4%, 22%, 31% in the same scan window).
+- Sensor notifications (5 bytes) do **not** contain battery data.
+- Device settings responses do **not** contain battery data.
+
+## Battery (GATT - Diagnostic Only)
+
+The `read_battery()` method reads the standard GATT Battery Service characteristic (`0x2A19`). This is available for CLI and WebSocket diagnostic use but is **not used in the controller connect flow** because it consistently returns 99% on the CGD1.
+
+```rust
+// Diagnostic use only - unreliable on CGD1
+let battery = device.read_battery().await?;
+```
 
 ## CLI Usage
 

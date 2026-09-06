@@ -1,5 +1,6 @@
 use crate::AdvertisementData;
 use crate::command::AckStatus;
+use crate::command::AlarmSlotIndex;
 use crate::command::CommandId;
 use crate::types::BatteryLevel;
 use crate::types::Humidity;
@@ -30,6 +31,11 @@ pub enum ClockEvent {
         command: CommandId,
         /// Status of the acknowledged command.
         status: AckStatus,
+    },
+    /// Alarm triggered on the device.
+    AlarmTriggered {
+        /// Index of the alarm slot that fired (0-15).
+        slot: AlarmSlotIndex,
     },
     /// Device disconnected.
     Disconnected,

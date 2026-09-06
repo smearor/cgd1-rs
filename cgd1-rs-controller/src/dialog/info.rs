@@ -1,3 +1,4 @@
+use crate::fl;
 use gtk4::Align;
 use gtk4::Box;
 use gtk4::Button;
@@ -21,7 +22,7 @@ impl InfoDialog {
     /// Create and show the info dialog.
     pub fn new(parent: &Window) -> Self {
         let window = gtk4::Window::builder()
-            .title("Info — Alarm Clock CGD1")
+            .title(&fl!("info-dialog-title"))
             .transient_for(parent)
             .modal(true)
             .default_width(360)
@@ -39,7 +40,7 @@ impl InfoDialog {
             .build();
 
         let title = Label::builder()
-            .label("Alarm Clock CGD1")
+            .label(&fl!("info-app-name"))
             .css_classes(["title-1"])
             .halign(Align::Center)
             .build();
@@ -53,14 +54,14 @@ impl InfoDialog {
         }
 
         let link_button = gtk4::LinkButton::builder()
-            .label("github.com/smearor/cgd1-rs")
+            .label(&fl!("info-github-link"))
             .uri("https://github.com/smearor/cgd1-rs")
             .halign(Align::Center)
             .build();
         main_box.append(&link_button);
 
         let license_label = Label::builder()
-            .label("Licensed under the MIT License\n\nCopyright (c) 2024 smearor\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.")
+            .label(&fl!("info-license-text"))
             .wrap(true)
             .halign(Align::Center)
             .valign(Align::Start)
@@ -68,7 +69,7 @@ impl InfoDialog {
             .build();
         main_box.append(&license_label);
 
-        let close_button = Button::builder().label("Close").halign(Align::Center).build();
+        let close_button = Button::builder().label(&fl!("info-close")).halign(Align::Center).build();
         let win = window.clone();
         close_button.connect_clicked(move |_| {
             win.close();

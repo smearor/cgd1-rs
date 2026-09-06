@@ -5,6 +5,7 @@ mod response;
 
 pub use command::WsCommand;
 pub use event::AckPayload;
+pub use event::AlarmTriggeredPayload;
 pub use event::BatteryLevelPayload;
 pub use event::EmptyPayload;
 pub use event::EventType;

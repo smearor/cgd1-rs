@@ -4,29 +4,62 @@ The CGD1 supports uploading custom ringtones via a block-based BLE transfer prot
 
 ## Audio Format
 
-| Property | Value |
-|---|---|
-| Format | 8-bit unsigned PCM |
-| Sample rate | 8000 Hz |
-| Channels | Mono |
-| Max size | ~98 KB (~12 seconds) |
-| Padding | Multiple of 512 bytes (`00` end marker + `FF` fill) |
+| Property    | Value                                               |
+|-------------|-----------------------------------------------------|
+| Format      | 8-bit unsigned PCM                                  |
+| Sample rate | 8000 Hz                                             |
+| Channels    | Mono                                                |
+| Max size    | ~98 KB (~12 seconds)                                |
+| Padding     | Multiple of 512 bytes (`00` end marker + `FF` fill) |
 
 ## Ringtone Signatures
 
 ### Built-in Ringtones
 
-| Signature | Name |
-|---|---|
-| `fdc366a5` | Beep |
-| `0961bb77` | Digital Ringtone |
-| `ba2c2c8c` | Digital Ringtone 2 |
-| `ea2d4c02` | Cuckoo |
-| `791bacb3` | Telephone Ringtone |
-| `1d019fd6` | Exotic Guitar |
-| `6e70b659` | Lively Piano |
-| `8f004886` | Story Piano |
-| `26522519` | Forest Piano |
+The original Qingping/ClearGrass PCM ringtones have been replaced with audio from
+[lomiri-sounds](https://gitlab.com/ubports/development/core/lomiri-sounds) (CC-BY-SA-3.0)
+and a chiptune remix by Dubmood (CC-BY-NC-SA-4.0). See
+[LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)
+for full attribution and license details.
+
+| Signature  | Name               | Source                 | Copyright holder            | License         | PCM length |
+|------------|--------------------|------------------------|-----------------------------|-----------------|------------|
+| `fdc366a5` | Beep               | Alarm clock.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 95967      |
+| `0961bb77` | Digital Ringtone   | Mallet.ogg             | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 18155      |
+| `ba2c2c8c` | Digital Ringtone 2 | Sintonia.ogg           | 2018, Mauricio Duarte       | CC-BY-4.0       | 18462      |
+| `ea2d4c02` | Cuckoo             | Counterpoint.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 76522      |
+| `791bacb3` | Telephone Ringtone | Call me.ogg            | 2018, Anonymous             | CC0-1.0         | 95967      |
+| `1d019fd6` | Exotic Guitar      | Latin.ogg              | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `6e70b659` | Lively Piano       | UBports.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0       | 96000      |
+| `8f004886` | Story Piano        | Melody piano.ogg       | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 86043      |
+| `26522519` | Forest Piano       | Mangore.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0       | 69819      |
+| `4d6f6e6b` | Monkey Island      | monkey-island-8bit     | Kalle Jonsson (Dubmood)     | CC-BY-NC-SA-4.0 | 80000      |
+| `416c5379` | Alarm Synth        | Alarm synth.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `41724d62` | Array Mbira        | Array mbira.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 79033      |
+| `426c6973` | Bliss              | Bliss.ogg              | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 47181      |
+| `43656c73` | Celestial          | Celestial.ogg          | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `456e7472` | Entropy            | Entropy.ogg            | 2018, Mauricio Duarte       | CC-BY-4.0       | 96000      |
+| `476c4d61` | Glass Marimba      | Glass marimba.ogg      | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `48616c6f` | Halo Pentatonic    | Halo Pentatonic.ogg    | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 87819      |
+| `4861726d` | Harmonics          | Harmonics.ogg          | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 64230      |
+| `48617270` | Harp Arp           | Harp arp.ogg           | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 50077      |
+| `4b6f746f` | Koto Chords        | Koto chords.ogg        | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `53616b65` | Sakenointi         | sakenointi.ogg         | 2018, TMetso                | CC-BY-4.0       | 78454      |
+| `53616d73` | Sam's Song         | Sam's Song.ogg         | 2013, Sam Hulick            | CC-BY-SA-3.0    | 38147      |
+| `536f756c` | Soul               | Soul.ogg               | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `53706172` | Sparkle            | Sparkle.ogg            | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 71332      |
+| `53757072` | Supreme            | Supreme.ogg            | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 91793      |
+| `53757275` | Suru Arpeggio      | Suru arpeggio.ogg      | 2013, Canonical Ltd.        | CC-BY-SA-3.0    | 96000      |
+| `54696d65` | Time Not Lost      | Time not Lost.ogg      | 2018, Mauricio Duarte       | CC-BY-4.0       | 95944      |
+| `576f6f64` | Wooden Drive       | Wooden Drive.ogg       | 2018, Amber Forest          | CC-BY-3.0       | 56816      |
+| `958f8a83` | Elysium            | ELYSIUM.MOD            | Jester                      | CC-BY-NC-SA-4.0 | 96000      |
+
+**Sources:**
+
+- lomiri-sounds: https://gitlab.com/ubports/development/core/lomiri-sounds
+- Upstream copyright file: https://gitlab.com/ubports/development/core/lomiri-sounds/-/blob/main/debian/copyright?ref_type=heads
+- Dubmood (Monkey Island): chiptune remix, CC-BY-NC-SA-4.0
+- Full attribution and license details: [LICENSE_RINGTONES.md](https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md)
 
 ### Custom Slots
 
@@ -38,6 +71,58 @@ Two alternating slot signatures are used for custom uploads:
 | `beefbeef` | Custom Slot B | `RingtoneSignature::CustomSlotB` |
 
 > Always alternate between slots when uploading new custom audio. The device may reject uploads if the target signature matches the currently active ringtone.
+
+### Custom Ringtones from `~/.config/cgd1-rs/ringtones/`
+
+The GTK controller automatically discovers user-provided ringtone files placed in
+the XDG config directory:
+
+```
+~/.config/cgd1-rs/ringtones/*.pcm
+```
+
+Each `.pcm` file appears as a separate entry in the Audio Editor's ringtone
+dropdown, using the filename (without extension) as the display name. WAV files
+with a `.pcm` extension are also accepted — the controller automatically
+extracts the raw PCM data from the `data` chunk if the file starts with
+`RIFF....WAVE`.
+
+#### How It Works
+
+1. **Signature derivation**: The controller computes a deterministic 4-byte
+   signature by hashing the filename. The hash avoids collisions with all
+   known built-in and slot signatures by incrementing a salt until a
+   non-colliding value is found. The resulting signature is stored as a
+   `RingtoneSignature::Custom([u8; 4])`.
+
+2. **Upload on Apply**: When the user selects a custom ringtone and clicks
+   "Apply", the controller reads the PCM file from disk, uploads the audio
+   to the device under the derived signature, and writes that signature to
+   the device settings to activate it.
+
+3. **Read-back**: When reading settings from the device, if the device
+   reports a `Custom` signature that matches a known custom ringtone file,
+   the dropdown automatically selects that entry. If the file no longer
+   exists, the raw hex signature is displayed instead.
+
+#### Adding a Custom Ringtone
+
+```bash
+# Create the directory if it doesn't exist
+mkdir -p ~/.config/cgd1-rs/ringtones
+
+# Copy your PCM file (8-bit unsigned, 8 kHz, mono, max. 98 KB)
+cp my_ringtone.pcm ~/.config/cgd1-rs/ringtones/my_ringtone.pcm
+```
+
+Restart the controller (or re-open the Audio Editor panel) for the new
+ringtone to appear in the dropdown.
+
+> **Note**: Custom ringtones from the config directory use
+> `RingtoneSignature::Custom` with a derived hash signature, not the
+> fixed `CustomSlotA`/`CustomSlotB` slots. The two fixed slots remain
+> available for manual uploads via the "Custom Upload" section of the
+> Audio Editor.
 
 ## Upload Protocol
 
@@ -72,7 +157,7 @@ sequenceDiagram
     Note over CGD1: Device stores audio under signature
 ```
 
-### Step 0 — Prepare the Payload
+### Step 0 - Prepare the Payload
 
 1. Decode/resample the source file to 8-bit unsigned PCM, 8000 Hz, mono
 2. Pad to a multiple of 512 bytes: first padding byte is `00` (end-of-audio marker), remaining are `FF`
@@ -80,7 +165,7 @@ sequenceDiagram
 
 The `validate_audio` function checks these constraints and returns an error if they are violated.
 
-### Step 1 — MTU Exchange
+### Step 1 - MTU Exchange
 
 Before uploading, an MTU exchange is performed to ensure the 130-byte packets (128 bytes audio + 2-byte header) fit within a single BLE packet:
 
@@ -91,7 +176,7 @@ if mtu < 130 {
 }
 ```
 
-### Step 2 — Audio Init
+### Step 2 - Audio Init
 
 Send `08 10 [Size 3B LE] [Signature 4B]` to Data Write.
 
@@ -100,7 +185,7 @@ Send `08 10 [Size 3B LE] [Signature 4B]` to Data Write.
 
 Wait for ACK: `04 ff 10 [Status] [Payload]` (status `00` = success)
 
-### Step 3 — Send Audio Data
+### Step 3 - Send Audio Data
 
 - **Packet format**: `81 08 [Audio 128B]` (130 bytes on the wire)
 - A trailing packet shorter than 128 bytes is padded with `FF`
@@ -108,7 +193,7 @@ Wait for ACK: `04 ff 10 [Status] [Payload]` (status `00` = success)
 - After every 4th packet (or the last packet), wait for block ACK: `04 ff 08 [Status] [Payload]`
 - Each packet is written with write-with-response
 
-### Step 4 — Completion
+### Step 4 - Completion
 
 After the last block ACK, the device stores the audio under the given signature. Select it as the active ringtone by writing the same signature in the settings payload (bytes 16–19).
 
@@ -120,10 +205,10 @@ After the last block ACK, the device stores the audio under the given signature.
 cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
 ```
 
-| Argument | Description |
-|---|---|
-| `address` | Device MAC address |
-| `file` | Path to 8-bit PCM audio file (8 kHz, mono) |
+| Argument      | Description                                                                   |
+|---------------|-------------------------------------------------------------------------------|
+| `address`     | Device MAC address                                                            |
+| `file`        | Path to 8-bit PCM audio file (8 kHz, mono)                                    |
 | `--signature` | Ringtone name (`CustomSlotA`, `CustomSlotB`) or 4-byte hex (e.g., `deadbeef`) |
 
 After uploading, select the ringtone by writing its signature to the device settings:

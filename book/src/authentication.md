@@ -47,7 +47,9 @@ Tokens are stored in a file-based store, keyed by MAC address. The default direc
 
 ### Persistence Rule
 
-> A newly generated token is only persisted after a privileged command (e.g., `sync_time`) succeeds. An Auth Confirm ACK alone does not prove the token was accepted — the device may send an ACK even with a bad token.
+> A newly generated token is only persisted after a privileged command (e.g., `sync_time`) succeeds. An Auth Confirm ACK alone does not prove the token was accepted - the device may send an ACK even with a bad token.
+
+If `sync_time` times out after successful Auth ACKs, the device has a previously stored token that doesn't match. A factory reset is required - see [Troubleshooting: Factory Reset](./troubleshooting.md#factory-reset).
 
 The `sync-time` CLI command uses `connect_with_store`, which persists the token only after `sync_time_now()` succeeds:
 
@@ -89,6 +91,7 @@ device.set_token_store(store.clone() as Arc<dyn TokenStore>);
 device.authenticate(&token_result).await?;
 
 // Token is confirmed only after a privileged command succeeds
+device.sync_timezone().await?; // optional but recommended
 device.sync_time_now().await?;
 
 if token_result.is_new() {

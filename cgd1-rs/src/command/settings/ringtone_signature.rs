@@ -42,13 +42,33 @@ pub struct RingtoneSignatureParseError {
 /// | `6e 70 b6 59` | [`LivelyPiano`]        |
 /// | `8f 00 48 86` | [`StoryPiano`]         |
 /// | `26 52 25 19` | [`ForestPiano`]        |
+/// | `4d 6f 6e 6b` | [`MonkeyIsland`]       |
+/// | `41 6c 53 79` | [`AlarmSynth`]         |
+/// | `41 72 4d 62` | [`ArrayMbira`]         |
+/// | `42 6c 69 73` | [`Bliss`]              |
+/// | `43 65 6c 73` | [`Celestial`]          |
+/// | `45 6e 74 72` | [`Entropy`]            |
+/// | `47 6c 4d 61` | [`GlassMarimba`]       |
+/// | `48 61 6c 6f` | [`HaloPentatonic`]     |
+/// | `48 61 72 6d` | [`Harmonics`]          |
+/// | `48 61 72 70` | [`HarpArp`]            |
+/// | `4b 6f 74 6f` | [`KotoChords`]         |
+/// | `53 61 6b 65` | [`Sakenointi`]         |
+/// | `53 61 6d 73` | [`SamsSong`]           |
+/// | `53 6f 75 6c` | [`Soul`]               |
+/// | `53 70 61 72` | [`Sparkle`]            |
+/// | `53 75 70 72` | [`Supreme`]            |
+/// | `53 75 72 75` | [`SuruArpeggio`]       |
+/// | `54 69 6d 65` | [`TimeNotLost`]        |
+/// | `57 6f 6f 64` | [`WoodenDrive`]        |
+/// | `95 8f 8a 83` | [`Elysium`]            |
 ///
 /// # Custom ringtones
 ///
 /// Two alternating slot signatures are available for user-uploaded audio:
 ///
-/// - [`CustomSlotA`] — `de ad de ad`
-/// - [`CustomSlotB`] — `be ef be ef`
+/// - [`CustomSlotA`] - `de ad de ad`
+/// - [`CustomSlotB`] - `be ef be ef`
 ///
 /// Always alternate between slots when uploading new custom audio. The device
 /// may reject uploads if the target signature matches the currently active
@@ -70,6 +90,26 @@ pub struct RingtoneSignatureParseError {
 /// [`LivelyPiano`]: RingtoneSignature::LivelyPiano
 /// [`StoryPiano`]: RingtoneSignature::StoryPiano
 /// [`ForestPiano`]: RingtoneSignature::ForestPiano
+/// [`MonkeyIsland`]: RingtoneSignature::MonkeyIsland
+/// [`AlarmSynth`]: RingtoneSignature::AlarmSynth
+/// [`ArrayMbira`]: RingtoneSignature::ArrayMbira
+/// [`Bliss`]: RingtoneSignature::Bliss
+/// [`Celestial`]: RingtoneSignature::Celestial
+/// [`Entropy`]: RingtoneSignature::Entropy
+/// [`GlassMarimba`]: RingtoneSignature::GlassMarimba
+/// [`HaloPentatonic`]: RingtoneSignature::HaloPentatonic
+/// [`Harmonics`]: RingtoneSignature::Harmonics
+/// [`HarpArp`]: RingtoneSignature::HarpArp
+/// [`KotoChords`]: RingtoneSignature::KotoChords
+/// [`Sakenointi`]: RingtoneSignature::Sakenointi
+/// [`SamsSong`]: RingtoneSignature::SamsSong
+/// [`Soul`]: RingtoneSignature::Soul
+/// [`Sparkle`]: RingtoneSignature::Sparkle
+/// [`Supreme`]: RingtoneSignature::Supreme
+/// [`SuruArpeggio`]: RingtoneSignature::SuruArpeggio
+/// [`TimeNotLost`]: RingtoneSignature::TimeNotLost
+/// [`WoodenDrive`]: RingtoneSignature::WoodenDrive
+/// [`Elysium`]: RingtoneSignature::Elysium
 /// [`CustomSlotA`]: RingtoneSignature::CustomSlotA
 /// [`CustomSlotB`]: RingtoneSignature::CustomSlotB
 /// [`Unused`]: RingtoneSignature::Unused
@@ -94,6 +134,46 @@ pub enum RingtoneSignature {
     StoryPiano,
     /// Forest Piano (`26 52 25 19`).
     ForestPiano,
+    /// Monkey Island 8-bit (`4d 6f 6e 6b`).
+    MonkeyIsland,
+    /// Alarm Synth (`41 6c 53 79`).
+    AlarmSynth,
+    /// Array Mbira (`41 72 4d 62`).
+    ArrayMbira,
+    /// Bliss (`42 6c 69 73`).
+    Bliss,
+    /// Celestial (`43 65 6c 73`).
+    Celestial,
+    /// Entropy (`45 6e 74 72`).
+    Entropy,
+    /// Glass Marimba (`47 6c 4d 61`).
+    GlassMarimba,
+    /// Halo Pentatonic (`48 61 6c 6f`).
+    HaloPentatonic,
+    /// Harmonics (`48 61 72 6d`).
+    Harmonics,
+    /// Harp Arp (`48 61 72 70`).
+    HarpArp,
+    /// Koto Chords (`4b 6f 74 6f`).
+    KotoChords,
+    /// Sakenointi (`53 61 6b 65`).
+    Sakenointi,
+    /// Sam's Song (`53 61 6d 73`).
+    SamsSong,
+    /// Soul (`53 6f 75 6c`).
+    Soul,
+    /// Sparkle (`53 70 61 72`).
+    Sparkle,
+    /// Supreme (`53 75 70 72`).
+    Supreme,
+    /// Suru Arpeggio (`53 75 72 75`).
+    SuruArpeggio,
+    /// Time Not Lost (`54 69 6d 65`).
+    TimeNotLost,
+    /// Wooden Drive (`57 6f 6f 64`).
+    WoodenDrive,
+    /// Elysium (`95 8f 8a 83`).
+    Elysium,
     /// Custom ringtone slot A (`de ad de ad`).
     CustomSlotA,
     /// Custom ringtone slot B (`be ef be ef`).
@@ -119,6 +199,26 @@ impl RingtoneSignature {
             [0x6E, 0x70, 0xB6, 0x59] => Self::LivelyPiano,
             [0x8F, 0x00, 0x48, 0x86] => Self::StoryPiano,
             [0x26, 0x52, 0x25, 0x19] => Self::ForestPiano,
+            [0x4D, 0x6F, 0x6E, 0x6B] => Self::MonkeyIsland,
+            [0x41, 0x6C, 0x53, 0x79] => Self::AlarmSynth,
+            [0x41, 0x72, 0x4D, 0x62] => Self::ArrayMbira,
+            [0x42, 0x6C, 0x69, 0x73] => Self::Bliss,
+            [0x43, 0x65, 0x6C, 0x73] => Self::Celestial,
+            [0x45, 0x6E, 0x74, 0x72] => Self::Entropy,
+            [0x47, 0x6C, 0x4D, 0x61] => Self::GlassMarimba,
+            [0x48, 0x61, 0x6C, 0x6F] => Self::HaloPentatonic,
+            [0x48, 0x61, 0x72, 0x6D] => Self::Harmonics,
+            [0x48, 0x61, 0x72, 0x70] => Self::HarpArp,
+            [0x4B, 0x6F, 0x74, 0x6F] => Self::KotoChords,
+            [0x53, 0x61, 0x6B, 0x65] => Self::Sakenointi,
+            [0x53, 0x61, 0x6D, 0x73] => Self::SamsSong,
+            [0x53, 0x6F, 0x75, 0x6C] => Self::Soul,
+            [0x53, 0x70, 0x61, 0x72] => Self::Sparkle,
+            [0x53, 0x75, 0x70, 0x72] => Self::Supreme,
+            [0x53, 0x75, 0x72, 0x75] => Self::SuruArpeggio,
+            [0x54, 0x69, 0x6D, 0x65] => Self::TimeNotLost,
+            [0x57, 0x6F, 0x6F, 0x64] => Self::WoodenDrive,
+            [0x95, 0x8F, 0x8A, 0x83] => Self::Elysium,
             [0xDE, 0xAD, 0xDE, 0xAD] => Self::CustomSlotA,
             [0xBE, 0xEF, 0xBE, 0xEF] => Self::CustomSlotB,
             [0xFF, 0xFF, 0xFF, 0xFF] => Self::Unused,
@@ -138,6 +238,26 @@ impl RingtoneSignature {
             Self::LivelyPiano => [0x6E, 0x70, 0xB6, 0x59],
             Self::StoryPiano => [0x8F, 0x00, 0x48, 0x86],
             Self::ForestPiano => [0x26, 0x52, 0x25, 0x19],
+            Self::MonkeyIsland => [0x4D, 0x6F, 0x6E, 0x6B],
+            Self::AlarmSynth => [0x41, 0x6C, 0x53, 0x79],
+            Self::ArrayMbira => [0x41, 0x72, 0x4D, 0x62],
+            Self::Bliss => [0x42, 0x6C, 0x69, 0x73],
+            Self::Celestial => [0x43, 0x65, 0x6C, 0x73],
+            Self::Entropy => [0x45, 0x6E, 0x74, 0x72],
+            Self::GlassMarimba => [0x47, 0x6C, 0x4D, 0x61],
+            Self::HaloPentatonic => [0x48, 0x61, 0x6C, 0x6F],
+            Self::Harmonics => [0x48, 0x61, 0x72, 0x6D],
+            Self::HarpArp => [0x48, 0x61, 0x72, 0x70],
+            Self::KotoChords => [0x4B, 0x6F, 0x74, 0x6F],
+            Self::Sakenointi => [0x53, 0x61, 0x6B, 0x65],
+            Self::SamsSong => [0x53, 0x61, 0x6D, 0x73],
+            Self::Soul => [0x53, 0x6F, 0x75, 0x6C],
+            Self::Sparkle => [0x53, 0x70, 0x61, 0x72],
+            Self::Supreme => [0x53, 0x75, 0x70, 0x72],
+            Self::SuruArpeggio => [0x53, 0x75, 0x72, 0x75],
+            Self::TimeNotLost => [0x54, 0x69, 0x6D, 0x65],
+            Self::WoodenDrive => [0x57, 0x6F, 0x6F, 0x64],
+            Self::Elysium => [0x95, 0x8F, 0x8A, 0x83],
             Self::CustomSlotA => [0xDE, 0xAD, 0xDE, 0xAD],
             Self::CustomSlotB => [0xBE, 0xEF, 0xBE, 0xEF],
             Self::Unused => [0xFF, 0xFF, 0xFF, 0xFF],
@@ -162,6 +282,26 @@ impl RingtoneSignature {
             Self::LivelyPiano => "LivelyPiano",
             Self::StoryPiano => "StoryPiano",
             Self::ForestPiano => "ForestPiano",
+            Self::MonkeyIsland => "Monkey Island (8-bit)",
+            Self::AlarmSynth => "Alarm Synth",
+            Self::ArrayMbira => "Array Mbira",
+            Self::Bliss => "Bliss",
+            Self::Celestial => "Celestial",
+            Self::Entropy => "Entropy",
+            Self::GlassMarimba => "Glass Marimba",
+            Self::HaloPentatonic => "Halo Pentatonic",
+            Self::Harmonics => "Harmonics",
+            Self::HarpArp => "Harp Arp",
+            Self::KotoChords => "Koto Chords",
+            Self::Sakenointi => "Sakenointi",
+            Self::SamsSong => "Sam's Song",
+            Self::Soul => "Soul",
+            Self::Sparkle => "Sparkle",
+            Self::Supreme => "Supreme",
+            Self::SuruArpeggio => "Suru Arpeggio",
+            Self::TimeNotLost => "Time Not Lost",
+            Self::WoodenDrive => "Wooden Drive",
+            Self::Elysium => "Elysium",
             Self::CustomSlotA => "CustomSlotA",
             Self::CustomSlotB => "CustomSlotB",
             Self::Unused => "Unused",
@@ -222,6 +362,26 @@ impl FromStr for RingtoneSignature {
             "LivelyPiano" => return Ok(Self::LivelyPiano),
             "StoryPiano" => return Ok(Self::StoryPiano),
             "ForestPiano" => return Ok(Self::ForestPiano),
+            "MonkeyIsland" => return Ok(Self::MonkeyIsland),
+            "AlarmSynth" => return Ok(Self::AlarmSynth),
+            "ArrayMbira" => return Ok(Self::ArrayMbira),
+            "Bliss" => return Ok(Self::Bliss),
+            "Celestial" => return Ok(Self::Celestial),
+            "Entropy" => return Ok(Self::Entropy),
+            "GlassMarimba" => return Ok(Self::GlassMarimba),
+            "HaloPentatonic" => return Ok(Self::HaloPentatonic),
+            "Harmonics" => return Ok(Self::Harmonics),
+            "HarpArp" => return Ok(Self::HarpArp),
+            "KotoChords" => return Ok(Self::KotoChords),
+            "Sakenointi" => return Ok(Self::Sakenointi),
+            "SamsSong" => return Ok(Self::SamsSong),
+            "Soul" => return Ok(Self::Soul),
+            "Sparkle" => return Ok(Self::Sparkle),
+            "Supreme" => return Ok(Self::Supreme),
+            "SuruArpeggio" => return Ok(Self::SuruArpeggio),
+            "TimeNotLost" => return Ok(Self::TimeNotLost),
+            "WoodenDrive" => return Ok(Self::WoodenDrive),
+            "Elysium" => return Ok(Self::Elysium),
             "CustomSlotA" => return Ok(Self::CustomSlotA),
             "CustomSlotB" => return Ok(Self::CustomSlotB),
             "Unused" => return Ok(Self::Unused),
@@ -260,6 +420,26 @@ mod tests {
         assert_eq!(RingtoneSignature::from_bytes([0x6E, 0x70, 0xB6, 0x59]), RingtoneSignature::LivelyPiano);
         assert_eq!(RingtoneSignature::from_bytes([0x8F, 0x00, 0x48, 0x86]), RingtoneSignature::StoryPiano);
         assert_eq!(RingtoneSignature::from_bytes([0x26, 0x52, 0x25, 0x19]), RingtoneSignature::ForestPiano);
+        assert_eq!(RingtoneSignature::from_bytes([0x4D, 0x6F, 0x6E, 0x6B]), RingtoneSignature::MonkeyIsland);
+        assert_eq!(RingtoneSignature::from_bytes([0x41, 0x6C, 0x53, 0x79]), RingtoneSignature::AlarmSynth);
+        assert_eq!(RingtoneSignature::from_bytes([0x41, 0x72, 0x4D, 0x62]), RingtoneSignature::ArrayMbira);
+        assert_eq!(RingtoneSignature::from_bytes([0x42, 0x6C, 0x69, 0x73]), RingtoneSignature::Bliss);
+        assert_eq!(RingtoneSignature::from_bytes([0x43, 0x65, 0x6C, 0x73]), RingtoneSignature::Celestial);
+        assert_eq!(RingtoneSignature::from_bytes([0x45, 0x6E, 0x74, 0x72]), RingtoneSignature::Entropy);
+        assert_eq!(RingtoneSignature::from_bytes([0x47, 0x6C, 0x4D, 0x61]), RingtoneSignature::GlassMarimba);
+        assert_eq!(RingtoneSignature::from_bytes([0x48, 0x61, 0x6C, 0x6F]), RingtoneSignature::HaloPentatonic);
+        assert_eq!(RingtoneSignature::from_bytes([0x48, 0x61, 0x72, 0x6D]), RingtoneSignature::Harmonics);
+        assert_eq!(RingtoneSignature::from_bytes([0x48, 0x61, 0x72, 0x70]), RingtoneSignature::HarpArp);
+        assert_eq!(RingtoneSignature::from_bytes([0x4B, 0x6F, 0x74, 0x6F]), RingtoneSignature::KotoChords);
+        assert_eq!(RingtoneSignature::from_bytes([0x53, 0x61, 0x6B, 0x65]), RingtoneSignature::Sakenointi);
+        assert_eq!(RingtoneSignature::from_bytes([0x53, 0x61, 0x6D, 0x73]), RingtoneSignature::SamsSong);
+        assert_eq!(RingtoneSignature::from_bytes([0x53, 0x6F, 0x75, 0x6C]), RingtoneSignature::Soul);
+        assert_eq!(RingtoneSignature::from_bytes([0x53, 0x70, 0x61, 0x72]), RingtoneSignature::Sparkle);
+        assert_eq!(RingtoneSignature::from_bytes([0x53, 0x75, 0x70, 0x72]), RingtoneSignature::Supreme);
+        assert_eq!(RingtoneSignature::from_bytes([0x53, 0x75, 0x72, 0x75]), RingtoneSignature::SuruArpeggio);
+        assert_eq!(RingtoneSignature::from_bytes([0x54, 0x69, 0x6D, 0x65]), RingtoneSignature::TimeNotLost);
+        assert_eq!(RingtoneSignature::from_bytes([0x57, 0x6F, 0x6F, 0x64]), RingtoneSignature::WoodenDrive);
+        assert_eq!(RingtoneSignature::from_bytes([0x95, 0x8F, 0x8A, 0x83]), RingtoneSignature::Elysium);
         assert_eq!(RingtoneSignature::from_bytes([0xDE, 0xAD, 0xDE, 0xAD]), RingtoneSignature::CustomSlotA);
         assert_eq!(RingtoneSignature::from_bytes([0xBE, 0xEF, 0xBE, 0xEF]), RingtoneSignature::CustomSlotB);
         assert_eq!(RingtoneSignature::from_bytes([0xFF, 0xFF, 0xFF, 0xFF]), RingtoneSignature::Unused);
@@ -319,6 +499,26 @@ mod tests {
         assert_eq!(RingtoneSignature::from_str("LivelyPiano").unwrap(), RingtoneSignature::LivelyPiano);
         assert_eq!(RingtoneSignature::from_str("StoryPiano").unwrap(), RingtoneSignature::StoryPiano);
         assert_eq!(RingtoneSignature::from_str("ForestPiano").unwrap(), RingtoneSignature::ForestPiano);
+        assert_eq!(RingtoneSignature::from_str("MonkeyIsland").unwrap(), RingtoneSignature::MonkeyIsland);
+        assert_eq!(RingtoneSignature::from_str("AlarmSynth").unwrap(), RingtoneSignature::AlarmSynth);
+        assert_eq!(RingtoneSignature::from_str("ArrayMbira").unwrap(), RingtoneSignature::ArrayMbira);
+        assert_eq!(RingtoneSignature::from_str("Bliss").unwrap(), RingtoneSignature::Bliss);
+        assert_eq!(RingtoneSignature::from_str("Celestial").unwrap(), RingtoneSignature::Celestial);
+        assert_eq!(RingtoneSignature::from_str("Entropy").unwrap(), RingtoneSignature::Entropy);
+        assert_eq!(RingtoneSignature::from_str("GlassMarimba").unwrap(), RingtoneSignature::GlassMarimba);
+        assert_eq!(RingtoneSignature::from_str("HaloPentatonic").unwrap(), RingtoneSignature::HaloPentatonic);
+        assert_eq!(RingtoneSignature::from_str("Harmonics").unwrap(), RingtoneSignature::Harmonics);
+        assert_eq!(RingtoneSignature::from_str("HarpArp").unwrap(), RingtoneSignature::HarpArp);
+        assert_eq!(RingtoneSignature::from_str("KotoChords").unwrap(), RingtoneSignature::KotoChords);
+        assert_eq!(RingtoneSignature::from_str("Sakenointi").unwrap(), RingtoneSignature::Sakenointi);
+        assert_eq!(RingtoneSignature::from_str("SamsSong").unwrap(), RingtoneSignature::SamsSong);
+        assert_eq!(RingtoneSignature::from_str("Soul").unwrap(), RingtoneSignature::Soul);
+        assert_eq!(RingtoneSignature::from_str("Sparkle").unwrap(), RingtoneSignature::Sparkle);
+        assert_eq!(RingtoneSignature::from_str("Supreme").unwrap(), RingtoneSignature::Supreme);
+        assert_eq!(RingtoneSignature::from_str("SuruArpeggio").unwrap(), RingtoneSignature::SuruArpeggio);
+        assert_eq!(RingtoneSignature::from_str("TimeNotLost").unwrap(), RingtoneSignature::TimeNotLost);
+        assert_eq!(RingtoneSignature::from_str("WoodenDrive").unwrap(), RingtoneSignature::WoodenDrive);
+        assert_eq!(RingtoneSignature::from_str("Elysium").unwrap(), RingtoneSignature::Elysium);
         assert_eq!(RingtoneSignature::from_str("CustomSlotA").unwrap(), RingtoneSignature::CustomSlotA);
         assert_eq!(RingtoneSignature::from_str("CustomSlotB").unwrap(), RingtoneSignature::CustomSlotB);
         assert_eq!(RingtoneSignature::from_str("Unused").unwrap(), RingtoneSignature::Unused);

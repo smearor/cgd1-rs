@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tracing::debug;
 use tracing::info;
@@ -19,6 +20,7 @@ use tracing::warn;
 use crate::BleTransport;
 use crate::CharacteristicUuid;
 use crate::SensorNotification;
+use crate::ble::format_hex;
 use crate::command::Ack;
 use crate::command::AckStatus;
 use crate::command::AlarmEntry;
@@ -28,6 +30,7 @@ use crate::command::Brightness;
 use crate::command::Command;
 use crate::command::CommandId;
 use crate::command::DeviceSettings;
+use crate::command::Timezone;
 use crate::command::Volume;
 use crate::error::AuthFailedError;
 use crate::error::ClockError;
@@ -131,12 +134,14 @@ pub struct ClockDevice {
     pending_data_response: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
     /// Optional token store for persisting auth tokens after successful privileged commands.
     token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
+    /// Handle to the spawned notification task, so it can be aborted on disconnect.
+    notification_task_handle: Arc<std::sync::Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl ClockDevice {
     /// Create a new device handle with the given transport and address.
     ///
-    /// This does not connect or subscribe — use [`ClockManager::connect`]
+    /// This does not connect or subscribe - use [`ClockManager::connect`]
     /// for the full connection lifecycle.
     pub fn new(transport: Arc<dyn BleTransport>, address: MacAddress) -> Self {
         let (event_sender, _) = broadcast::channel(64);
@@ -150,6 +155,7 @@ impl ClockDevice {
             pending: Arc::new(Mutex::new(HashMap::new())),
             pending_data_response: Arc::new(Mutex::new(None)),
             token_store: Arc::new(Mutex::new(None)),
+            notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -193,7 +199,7 @@ impl ClockDevice {
         let pending_data_response = self.pending_data_response.clone();
         let token_store = self.token_store.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             notification_task(
                 transport,
                 event_sender,
@@ -207,6 +213,12 @@ impl ClockDevice {
             )
             .await
         });
+
+        let mut task_handle = self.notification_task_handle.lock().unwrap_or_else(|p| {
+            warn!("notification_task_handle mutex poisoned - recovering");
+            p.into_inner()
+        });
+        *task_handle = Some(handle);
     }
 
     /// Register a pending ACK request for a command.
@@ -226,8 +238,14 @@ impl ClockDevice {
     async fn wait_ack(&self, receiver: oneshot::Receiver<Result<Ack>>, timeout_secs: u64) -> Result<Ack> {
         match timeout(Duration::from_secs(timeout_secs), receiver).await {
             Ok(Ok(ack)) => ack,
-            Ok(Err(_)) => Err(TransportError::RequestCanceled.into()),
-            Err(_) => Err(ClockError::Timeout),
+            Ok(Err(_)) => {
+                warn!(address = %self.address, "wait_ack: request canceled");
+                Err(TransportError::RequestCanceled.into())
+            }
+            Err(_) => {
+                warn!(address = %self.address, timeout_secs, "wait_ack: timeout waiting for ACK");
+                Err(ClockError::Timeout)
+            }
         }
     }
 
@@ -237,9 +255,35 @@ impl ClockDevice {
     /// a race where the notification task processes the ACK before the
     /// pending request is registered.
     async fn send_and_wait(&self, command: Command, payload: &[u8]) -> Result<Ack> {
+        let command_id = command.command_id();
+        debug!(command = ?command, command_byte = %format!("{:#04x}", command_id.value()), payload_len = payload.len(), "send_and_wait: preparing");
         let receiver = self.prepare_ack(command).await;
-        self.transport.write_frame(command, payload).await?;
-        self.wait_ack(receiver, RESPONSE_TIMEOUT_SECS).await
+        // Timeout covers both the BLE write (WithResponse can block) and the ACK wait.
+        let write_timeout = Duration::from_secs(RESPONSE_TIMEOUT_SECS);
+        match timeout(write_timeout, self.transport.write_frame(&self.address, command, payload)).await {
+            Ok(Ok(())) => {
+                debug!(command = ?command, "send_and_wait: frame sent, waiting for ACK");
+            }
+            Ok(Err(e)) => {
+                warn!(command = ?command, error = %e, "send_and_wait: write failed, disconnecting to trigger reconnect");
+                let _ = self.transport.disconnect(&self.address).await;
+                return Err(e);
+            }
+            Err(_) => {
+                warn!(command = ?command, timeout_secs = RESPONSE_TIMEOUT_SECS, "send_and_wait: timeout writing frame to device");
+                return Err(ClockError::Timeout);
+            }
+        }
+        match self.wait_ack(receiver, RESPONSE_TIMEOUT_SECS).await {
+            Ok(ack) => {
+                debug!(command = ?command, status = ?ack.status, "send_and_wait: ACK received");
+                Ok(ack)
+            }
+            Err(e) => {
+                warn!(command = ?command, error = %e, "send_and_wait: failed");
+                Err(e)
+            }
+        }
     }
 
     /// Authenticate with the device using a 16-byte token.
@@ -251,26 +295,39 @@ impl ClockDevice {
     /// 4. Wait for final ACK: `04 ff 02 00 00`.
     pub async fn authenticate(&self, token: &AuthToken) -> Result<()> {
         let _guard = self.command_mutex.lock().await;
+        debug!(address = %self.address, "authenticate: starting handshake");
 
         // Step 1: Auth Init
+        debug!(address = %self.address, "authenticate: sending AuthInit");
         let ack = self.send_and_wait(Command::AuthInit, token.payload()).await?;
         if let AckStatus::Failure(code) = ack.status {
+            warn!(address = %self.address, code = %format!("{code:#04x}"), "authenticate: AuthInit failed");
             return Err(ClockError::AuthFailed(AuthFailedError {
                 reason: format!("init status: {code:#04x}"),
                 is_new_token: false,
                 token_path: None,
             }));
         }
+        debug!(address = %self.address, "authenticate: AuthInit succeeded");
+
+        // Brief pause before AuthConfirm - some BLE devices need time to
+        // process the AuthInit before accepting the next write. Without
+        // this, the AuthConfirm write can hang indefinitely at the BLE
+        // level (WriteType::WithResponse never gets a response).
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Step 2: Auth Confirm
+        debug!(address = %self.address, "authenticate: sending AuthConfirm");
         let ack = self.send_and_wait(Command::AuthConfirm, token.payload()).await?;
         if let AckStatus::Failure(code) = ack.status {
+            warn!(address = %self.address, code = %format!("{code:#04x}"), "authenticate: AuthConfirm failed");
             return Err(ClockError::AuthFailed(AuthFailedError {
                 reason: format!("confirm status: {code:#04x}"),
                 is_new_token: false,
                 token_path: None,
             }));
         }
+        debug!(address = %self.address, "authenticate: AuthConfirm succeeded");
 
         // Store the token for automatic re-auth on reconnect.
         {
@@ -278,7 +335,32 @@ impl ClockDevice {
             *token_guard = Some(token.clone());
         }
         self.is_authenticated.store(true, Ordering::SeqCst);
+        info!(address = %self.address, "authenticate: handshake complete");
 
+        Ok(())
+    }
+
+    /// Synchronize the device timezone to match the local system timezone.
+    ///
+    /// Reads the current device settings, computes the local UTC offset
+    /// from the system clock, and writes the settings back if the timezone
+    /// differs. The device stores timezone in 6-minute units, so fractional
+    /// offsets (e.g. +5:30) may round slightly.
+    pub async fn sync_timezone(&self) -> Result<()> {
+        let local_offset_seconds = chrono::Local::now().offset().local_minus_utc();
+        let local_offset_minutes = (local_offset_seconds / 60) as i16;
+        let local_tz = Timezone::from_minutes(local_offset_minutes)?;
+
+        let current = self.read_settings().await?;
+        if current.timezone().minutes() == local_tz.minutes() {
+            debug!(address = %self.address, timezone = %local_tz, "sync_timezone: already correct");
+            return Ok(());
+        }
+
+        debug!(address = %self.address, current = %current.timezone(), target = %local_tz, "sync_timezone: updating");
+        let updated = current.with_timezone(local_tz)?;
+        self.write_settings(&updated).await?;
+        info!(address = %self.address, timezone = %local_tz, "sync_timezone: updated");
         Ok(())
     }
 
@@ -291,22 +373,26 @@ impl ClockDevice {
     /// token was rejected, the device will drop the connection here.
     pub async fn sync_time(&self, timestamp: u32) -> Result<()> {
         let _guard = self.command_mutex.lock().await;
+        debug!(address = %self.address, timestamp, "sync_time: sending");
 
         let payload = timestamp.to_le_bytes();
         let ack = self.send_and_wait(Command::TimeSync, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
+            warn!(address = %self.address, "sync_time: command rejected");
             return Err(ClockError::CommandRejected {
                 command: 0x09,
                 status: ack.status,
             });
         }
+        debug!(address = %self.address, "sync_time: ACK received, persisting token");
 
-        // Token is now confirmed — persist it if a token store is configured.
+        // Token is now confirmed - persist it if a token store is configured.
         let store = self.token_store.lock().await;
         if let Some(ref store) = *store {
             let token = self.auth_token.lock().await;
             if let Some(ref token) = *token {
                 store.save(&self.address, token)?;
+                debug!(address = %self.address, "sync_time: token persisted");
             }
         }
 
@@ -323,9 +409,33 @@ impl ClockDevice {
 
     /// Read the firmware version string from the device.
     ///
+    /// Tries the GATT Firmware Version characteristic (`00000004-...`) first,
+    /// which returns the version as a plain ASCII string without requiring
+    /// authentication. Falls back to the command-based approach (`01 0d` on
+    /// Auth Write) if the GATT characteristic is unavailable or returns
+    /// invalid data.
+    pub async fn read_firmware(&self) -> Result<String> {
+        match self.read_firmware_gatt().await {
+            Ok(version) if !version.is_empty() => Ok(version),
+            _ => self.read_firmware_command().await,
+        }
+    }
+
+    /// Read the firmware version via the GATT Firmware Version characteristic.
+    ///
+    /// This reads `00000004-0000-1000-8000-00805f9b34fb` directly, which
+    /// returns the version string as ASCII bytes without framing.
+    async fn read_firmware_gatt(&self) -> Result<String> {
+        let data = self.transport.read(&self.address, CharacteristicUuid::FirmwareVersion).await?;
+        let version = String::from_utf8_lossy(&data).to_string();
+        Ok(version)
+    }
+
+    /// Read the firmware version via the command-based protocol.
+    ///
     /// Sends: `01 0d` to Auth Write.
     /// Expects response on Auth Notify: `0b [Byte] [ASCII String]`.
-    pub async fn read_firmware(&self) -> Result<String> {
+    async fn read_firmware_command(&self) -> Result<String> {
         let _guard = self.command_mutex.lock().await;
 
         // Set up a pending mpsc channel for non-ACK data notifications.
@@ -335,7 +445,7 @@ impl ClockDevice {
             *pending = Some(sender);
         }
 
-        self.transport.write_frame(Command::ReadFirmware, &[]).await?;
+        self.transport.write_frame(&self.address, Command::ReadFirmware, &[]).await?;
 
         let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver.recv()).await {
             Ok(Some(data)) => data,
@@ -415,7 +525,7 @@ impl ClockDevice {
             *pending = Some(sender);
         }
 
-        self.transport.write_frame(Command::ReadAlarms, &[]).await?;
+        self.transport.write_frame(&self.address, Command::ReadAlarms, &[]).await?;
 
         // Collect all data packets within the timeout period.
         // The device sends 6 packets for 16 slots (3 per packet).
@@ -488,7 +598,7 @@ impl ClockDevice {
             *pending = Some(sender);
         }
 
-        self.transport.write_frame(Command::ReadSettings, &[]).await?;
+        self.transport.write_frame(&self.address, Command::ReadSettings, &[]).await?;
 
         let response = match timeout(Duration::from_secs(RESPONSE_TIMEOUT_SECS), receiver.recv()).await {
             Ok(Some(data)) => data,
@@ -508,6 +618,7 @@ impl ClockDevice {
         if response.len() < 2 {
             return Err(ClockError::Parse("settings response too short".into()));
         }
+        debug!(response = %format_hex(&response), "read_settings: raw response");
         DeviceSettings::decode(&response[2..])
     }
 
@@ -519,6 +630,7 @@ impl ClockDevice {
         let _guard = self.command_mutex.lock().await;
 
         let payload = settings.encode();
+        debug!(payload = %format_hex(&payload), "write_settings: sending SetSettings payload");
         let ack = self.send_and_wait(Command::SetSettings, &payload).await?;
         if let AckStatus::Failure(_) = ack.status {
             return Err(ClockError::CommandRejected {
@@ -572,8 +684,25 @@ impl ClockDevice {
     }
 
     /// Disconnect from the device.
+    ///
+    /// Aborts the notification task to prevent it from stealing notifications
+    /// from a subsequent connection to the same device.
     pub async fn disconnect(&self) -> Result<()> {
-        self.transport.disconnect().await?;
+        // Abort the notification task first to prevent it from racing
+        // with a new connection's notification task. The guard must be
+        // released before the await below to keep the async block Send.
+        {
+            let mut task_handle = self.notification_task_handle.lock().unwrap_or_else(|p| {
+                warn!("notification_task_handle mutex poisoned - recovering");
+                p.into_inner()
+            });
+            if let Some(handle) = task_handle.take() {
+                handle.abort();
+                debug!(address = %self.address, "notification task aborted on disconnect");
+            }
+        }
+
+        self.transport.disconnect(&self.address).await?;
         self.is_authenticated.store(false, Ordering::SeqCst);
         let _ = self.event_sender.send(ClockEvent::Disconnected);
         Ok(())
@@ -584,7 +713,7 @@ impl ClockDevice {
     /// Reads the Battery Level characteristic (`0x2A19`).
     /// Returns a percentage 0–100.
     pub async fn read_battery(&self) -> Result<BatteryLevel> {
-        let data = self.transport.read(CharacteristicUuid::BatteryLevel).await?;
+        let data = self.transport.read(&self.address, CharacteristicUuid::BatteryLevel).await?;
         if data.is_empty() {
             return Err(ClockError::Parse("battery response empty".to_string()));
         }
@@ -608,15 +737,35 @@ impl ClockDevice {
 
         let _guard = self.command_mutex.lock().await;
 
-        // Step 1: MTU Exchange — audio packets are 130 bytes, default MTU is 23
-        let negotiated_mtu = self.transport.request_mtu(247).await?;
+        // Step 0: Pad audio to a multiple of 512 bytes per BLE protocol §11.5.
+        // First padding byte is 0x00 (end-of-audio marker), rest are 0xFF.
+        // This ensures the total packet count is a multiple of 4 (512 / 128),
+        // so every block completes with an ACK from the device.
+        const AUDIO_BLOCK_SIZE: usize = 512;
+        let padded_len = audio.len().next_multiple_of(AUDIO_BLOCK_SIZE);
+        let padded_audio: Vec<u8>;
+        let upload_data: &[u8] = if padded_len == audio.len() {
+            audio
+        } else {
+            padded_audio = {
+                let mut buf = Vec::with_capacity(padded_len);
+                buf.extend_from_slice(audio);
+                buf.push(0x00);
+                buf.resize(padded_len, 0xFF);
+                buf
+            };
+            &padded_audio
+        };
+
+        // Step 1: MTU Exchange - audio packets are 130 bytes, default MTU is 23
+        let negotiated_mtu = self.transport.request_mtu(&self.address, 247).await?;
         if (negotiated_mtu as usize) < 132 {
             return Err(ClockError::InvalidSettings(format!("MTU too small for audio upload: {} (need >= 132)", negotiated_mtu)));
         }
         debug!(negotiated_mtu, "MTU exchange successful");
 
         // Step 2: Audio Init
-        let total_size = audio.len() as u32;
+        let total_size = upload_data.len() as u32;
         let mut init_frame = Vec::with_capacity(9);
         init_frame.push(0x08); // Length
         init_frame.push(0x10); // Command: Audio Init
@@ -624,7 +773,7 @@ impl ClockDevice {
         init_frame.extend_from_slice(&signature);
 
         let init_receiver = self.prepare_ack(Command::AudioInit).await;
-        self.transport.write(CharacteristicUuid::DataWrite, &init_frame).await?;
+        self.transport.write(&self.address, CharacteristicUuid::DataWrite, &init_frame).await?;
 
         let init_ack = self.wait_ack(init_receiver, AUDIO_ACK_TIMEOUT_SECS).await?;
         if let AckStatus::Failure(_) = init_ack.status {
@@ -636,10 +785,16 @@ impl ClockDevice {
         debug!(slot = init_ack.payload, total_size, "audio upload initialized");
 
         // Step 3: Send data packets in blocks of 4
-        let total_packets = audio.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
+        let total_packets = upload_data.len().div_ceil(AUDIO_PACKET_PAYLOAD_SIZE);
+        debug!(
+            original_len = audio.len(),
+            padded_len = upload_data.len(),
+            total_packets,
+            "audio upload: padded to block boundary"
+        );
         let mut packet_index = 0usize;
 
-        for chunk in audio.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
+        for chunk in upload_data.chunks(AUDIO_PACKET_PAYLOAD_SIZE) {
             // Pad to 128 bytes with 0xFF
             let mut payload = [0xFFu8; AUDIO_PACKET_PAYLOAD_SIZE];
             payload[..chunk.len()].copy_from_slice(chunk);
@@ -649,11 +804,12 @@ impl ClockDevice {
             frame.push(0x08); // Command: Audio Data Packet
             frame.extend_from_slice(&payload);
 
-            let is_block_end = (packet_index + 1).is_multiple_of(AUDIO_PACKETS_PER_BLOCK) || (packet_index + 1) == total_packets;
+            let is_block_boundary = (packet_index + 1).is_multiple_of(AUDIO_PACKETS_PER_BLOCK);
+            let is_last_packet = (packet_index + 1) == total_packets;
 
-            if is_block_end {
+            if is_block_boundary {
                 let receiver = self.prepare_ack(Command::AudioData).await;
-                self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+                self.transport.write(&self.address, CharacteristicUuid::DataWrite, &frame).await?;
                 let ack = self.wait_ack(receiver, AUDIO_ACK_TIMEOUT_SECS).await?;
                 if let AckStatus::Failure(_) = ack.status {
                     return Err(ClockError::CommandRejected {
@@ -661,8 +817,11 @@ impl ClockDevice {
                         status: ack.status,
                     });
                 }
+            } else if is_last_packet {
+                self.transport.write(&self.address, CharacteristicUuid::DataWrite, &frame).await?;
+                debug!(packet_index, total_packets, "audio upload: final packet sent without ACK (incomplete block)");
             } else {
-                self.transport.write(CharacteristicUuid::DataWrite, &frame).await?;
+                self.transport.write(&self.address, CharacteristicUuid::DataWrite, &frame).await?;
             }
 
             packet_index += 1;
@@ -694,26 +853,46 @@ async fn notification_task(
     pending_data_response: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
     token_store: Arc<Mutex<Option<Arc<dyn TokenStore>>>>,
 ) {
-    let sensor_uuid = CharacteristicUuid::SensorNotify.uuid();
-    let battery_uuid = CharacteristicUuid::BatteryLevel.uuid();
+    let sensor_characteristic = CharacteristicUuid::SensorNotify;
 
+    debug!(%address, "notification task started");
     loop {
-        match transport.next_notification().await {
-            Some((uuid, value)) => {
-                if uuid == sensor_uuid {
-                    if let Ok(sensor) = SensorNotification::parse(&value) {
-                        let _ = event_sender.send(ClockEvent::SensorUpdate {
-                            temperature: sensor.temperature,
-                            humidity: sensor.humidity,
-                        });
-                    }
-                } else if uuid == battery_uuid {
-                    if let Some(&level) = value.first() {
-                        let _ = event_sender.send(ClockEvent::BatteryLevel {
-                            level: BatteryLevel::new(level),
-                        });
+        match transport.next_notification(&address).await {
+            Some(notif) => {
+                let characteristic = notif.characteristic;
+                let value = notif.value;
+                debug!(%address, characteristic = %characteristic, len = value.len(), data = %format_hex(&value), "notification received");
+                if characteristic == sensor_characteristic {
+                    // Alarm-triggered notifications use header byte 0x01 followed by
+                    // the alarm slot index and a status byte. Sensor notifications
+                    // use header byte 0x00 with temperature/humidity payload.
+                    if value.len() >= 3 && value[0] == 0x01 {
+                        if let Ok(slot) = AlarmSlotIndex::new(value[1]) {
+                            info!(%address, slot = slot.value(), "alarm triggered on device");
+                            let _ = event_sender.send(ClockEvent::AlarmTriggered { slot });
+                        } else {
+                            warn!(%address, data = %format_hex(&value), "alarm notification with invalid slot index");
+                        }
+                    } else {
+                        match SensorNotification::parse(&value) {
+                            Ok(sensor) => {
+                                debug!(%address, temp = %sensor.temperature.value(), hum = %sensor.humidity.value(), battery = ?sensor.battery.map(|b| b.value()), "sending SensorUpdate event");
+                                let _ = event_sender.send(ClockEvent::SensorUpdate {
+                                    temperature: sensor.temperature,
+                                    humidity: sensor.humidity,
+                                });
+                                if let Some(level) = sensor.battery {
+                                    debug!(%address, level = level.value(), "sensor notification includes battery, sending BatteryLevel event");
+                                    let _ = event_sender.send(ClockEvent::BatteryLevel { level });
+                                }
+                            }
+                            Err(e) => {
+                                warn!(%address, error = %e, data = %format_hex(&value), "failed to parse sensor notification");
+                            }
+                        }
                     }
                 } else if let Some(ack) = Ack::parse(&value) {
+                    debug!(command = ?ack.command, status = ?ack.status, "notification: ACK");
                     let _ = event_sender.send(ClockEvent::Ack {
                         command: ack.command,
                         status: ack.status,
@@ -723,7 +902,8 @@ async fn notification_task(
                         let _ = sender.send(Ok(ack));
                     }
                 } else {
-                    // Non-ACK data notification — forward to pending data response channel.
+                    // Non-ACK data notification - forward to pending data response channel.
+                    debug!(characteristic = %characteristic, len = value.len(), "notification: data response");
                     let sender = {
                         let pending = pending_data_response.lock().await;
                         pending.clone()
@@ -732,7 +912,7 @@ async fn notification_task(
                         let _ = sender.send(value).await;
                     } else {
                         debug!(
-                            uuid = %uuid,
+                            characteristic = %characteristic,
                             len = value.len(),
                             "unhandled notification, ignoring"
                         );
@@ -744,6 +924,13 @@ async fn notification_task(
                 let _ = event_sender.send(ClockEvent::Disconnected);
                 is_authenticated.store(false, Ordering::SeqCst);
 
+                // Clean up transport state so reconnect can succeed.
+                // Without this, the connected flag stays true and
+                // transport.connect() rejects with AlreadyConnected.
+                if let Err(e) = transport.disconnect(&address).await {
+                    warn!("transport cleanup before reconnect failed: {e:?}");
+                }
+
                 let device = ClockDevice {
                     transport: transport.clone(),
                     address,
@@ -754,15 +941,48 @@ async fn notification_task(
                     pending: pending.clone(),
                     pending_data_response: pending_data_response.clone(),
                     token_store: token_store.clone(),
+                    notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
                 };
 
-                match reconnect_and_restore(&device, 6).await {
+                match reconnect_and_restore(&device, 10).await {
                     Ok(()) => {
-                        info!("reconnect successful, resuming notification task");
+                        info!(%address, "BLE reconnect successful, spawning auth task");
+
+                        // Spawn authentication in a separate task so the
+                        // notification loop can resume and process ACKs.
+                        // If auth fails, disconnect to trigger another reconnect.
+                        let auth_device = ClockDevice {
+                            transport: transport.clone(),
+                            address,
+                            event_sender: event_sender.clone(),
+                            command_mutex: command_mutex.clone(),
+                            auth_token: auth_token.clone(),
+                            is_authenticated: is_authenticated.clone(),
+                            pending: pending.clone(),
+                            pending_data_response: pending_data_response.clone(),
+                            token_store: token_store.clone(),
+                            notification_task_handle: Arc::new(std::sync::Mutex::new(None)),
+                        };
+                        tokio::spawn(async move {
+                            let token = {
+                                let token_guard = auth_device.auth_token.lock().await;
+                                token_guard.clone()
+                            };
+                            if let Some(token) = token {
+                                if let Err(e) = auth_device.authenticate(&token).await {
+                                    warn!(%auth_device.address, "reconnect: re-authentication failed, disconnecting to trigger retry: {e:?}");
+                                    let _ = auth_device.transport.disconnect(&auth_device.address).await;
+                                    return;
+                                }
+                            }
+                            auth_device.is_authenticated.store(true, Ordering::SeqCst);
+                            let _ = auth_device.event_sender.send(ClockEvent::Reconnected);
+                            info!(%auth_device.address, "reconnect: state recovery complete");
+                        });
                         continue;
                     }
                     Err(e) => {
-                        warn!("reconnect failed after all attempts: {e:?}");
+                        warn!(%address, "reconnect failed after all attempts: {e:?}");
                         break;
                     }
                 }
@@ -771,13 +991,12 @@ async fn notification_task(
     }
 }
 
-/// Reconnect with exponential backoff and full state recovery.
+/// Reconnect with exponential backoff: BLE connect + GATT subscribe only.
 ///
 /// Delay sequence: 1s, 2s, 4s, 8s, 16s, 32s (capped).
 ///
-/// After a successful BLE connect, re-subscribes to all GATT notify
-/// characteristics and re-authenticates with the stored token. This
-/// ensures the device is fully operational before commands resume.
+/// Authentication is handled by the caller (spawned as a concurrent task)
+/// so the notification loop can resume and process ACKs.
 async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Result<()> {
     let mut delay = Duration::from_secs(1);
     let max_delay = Duration::from_secs(32);
@@ -797,33 +1016,21 @@ async fn reconnect_and_restore(device: &ClockDevice, max_attempts: u32) -> Resul
 
         let mut all_subscribed = true;
         for char_uuid in &characteristics {
-            if device.transport.subscribe(*char_uuid).await.is_err() {
+            if let Err(e) = device.transport.subscribe(&device.address, *char_uuid).await {
+                warn!(attempt, characteristic = %char_uuid, error = %e, "reconnect: subscribe failed");
                 all_subscribed = false;
             }
         }
 
         if !all_subscribed {
-            warn!("reconnect: GATT re-subscription failed, retrying");
+            warn!("reconnect: GATT re-subscription failed, disconnecting before retry");
+            let _ = device.transport.disconnect(&device.address).await;
             tokio::time::sleep(delay).await;
             delay = (delay * 2).min(max_delay);
             continue;
         }
 
-        // Step 3: Re-authenticate with stored token
-        let token = device.auth_token.lock().await;
-        if let Some(ref token) = *token
-            && device.authenticate(token).await.is_err()
-        {
-            warn!("reconnect: re-authentication failed, retrying");
-            tokio::time::sleep(delay).await;
-            delay = (delay * 2).min(max_delay);
-            continue;
-        }
-
-        // Step 4: Mark as authenticated and notify subscribers
-        device.is_authenticated.store(true, Ordering::SeqCst);
-        let _ = device.event_sender.send(ClockEvent::Reconnected);
-        info!("reconnect: state recovery complete");
+        info!("reconnect: BLE connect and subscribe successful");
         return Ok(());
     }
 
@@ -835,12 +1042,16 @@ mod tests {
     use super::*;
 
     use crate::AlarmSlotIndex;
+    use crate::BleNotification;
     use crate::ClockTime;
     use crate::DayMask;
+    use crate::Humidity;
     use crate::Language;
     use crate::MockBleTransport;
     use crate::RingtoneSignature;
     use crate::ScreenLightDuration;
+    use crate::SensorNotification;
+    use crate::Temperature;
     use crate::TemperatureUnit;
     use crate::TimeFormat;
     use crate::Timezone;
@@ -909,25 +1120,25 @@ mod tests {
         // Pre-push 6 data notify packets on Data Notify.
         // The auto-ACK for the ReadAlarms write will arrive first, then these data packets.
         // Each packet: [length] [0x06] [base_index] [entry1 5B] [entry2 5B] [entry3 5B]
-        let data_notify = CharacteristicUuid::DataNotify.uuid();
+        let data_notify = CharacteristicUuid::DataNotify;
 
         // Packet 0: slots 0-2, slot 0 has alarm at 07:30 weekdays
-        mock.push_notification(
+        mock.push_notification(BleNotification::new(
             data_notify,
             vec![
                 0x11, 0x06, 0x00, 0x01, 0x07, 0x1E, 0x3E, 0x01, // slot 0: enabled, 7:30, weekdays, snooze
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 1: empty
                 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // slot 2: empty
             ],
-        );
+        ));
         // Packets 1-5: all empty slots
         for base in [3u8, 6, 9, 12, 15] {
-            mock.push_notification(
+            mock.push_notification(BleNotification::new(
                 data_notify,
                 vec![
                     0x11, 0x06, base, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
                 ],
-            );
+            ));
         }
 
         let slots = device.read_alarms().await.unwrap();
@@ -997,7 +1208,6 @@ mod tests {
 
         // Push a settings response on Data Notify.
         // Format: [length=0x13] [cmd=0x02] [18 bytes payload]
-        let data_notify = CharacteristicUuid::DataNotify.uuid();
         let mut response = vec![0x13, 0x02];
         // Payload: 18 bytes
         response.extend_from_slice(&[
@@ -1017,7 +1227,7 @@ mod tests {
             0xFF, // reserved
             0xFF, 0xFF, 0xFF, 0xFF, // ringtone signature (unused)
         ]);
-        mock.push_notification(data_notify, response);
+        mock.push_notification(BleNotification::new(CharacteristicUuid::DataNotify, response));
 
         let settings = device.read_settings().await.unwrap();
         assert_eq!(settings.volume(), crate::Volume::new(3).unwrap());
@@ -1108,6 +1318,39 @@ mod tests {
         assert!(device.read_battery().await.is_err());
     }
 
+    #[tokio::test]
+    async fn sensor_notification_with_battery_emits_battery_event() {
+        let mock = Arc::new(MockBleTransport::new());
+        let addr = MacAddress::parse("AA:BB:CC:DD:EE:FF").unwrap();
+        let device = ClockDevice::new(mock.clone(), addr);
+        device.spawn_notification_task();
+
+        // Push a sensor notification with a 6th battery byte (85%).
+        let sensor = SensorNotification::with_battery(Temperature::new(23.45), Humidity::new(56.0), BatteryLevel::new(85));
+        mock.push_notification(BleNotification::new(CharacteristicUuid::SensorNotify, sensor.encode()));
+
+        let mut rx = device.subscribe();
+
+        // First event: SensorUpdate.
+        let event1 = rx.recv().await.unwrap();
+        match event1 {
+            ClockEvent::SensorUpdate { temperature, humidity } => {
+                assert_eq!(temperature.value(), 23.45);
+                assert_eq!(humidity.value(), 56.0);
+            }
+            other => panic!("expected SensorUpdate, got {other:?}"),
+        }
+
+        // Second event: BatteryLevel from the sensor notification.
+        let event2 = rx.recv().await.unwrap();
+        match event2 {
+            ClockEvent::BatteryLevel { level } => {
+                assert_eq!(level.value(), 85);
+            }
+            other => panic!("expected BatteryLevel, got {other:?}"),
+        }
+    }
+
     #[test]
     fn validate_audio_empty_rejected() {
         assert!(validate_audio(&[]).is_err());
@@ -1137,27 +1380,37 @@ mod tests {
         let device = ClockDevice::new(mock.clone(), addr);
         device.spawn_notification_task();
 
-        // 128 bytes = 1 packet (1 block, ACK after last packet)
+        // 128 bytes padded to 512 (4 packets, 1 full block)
         let audio = vec![0xAAu8; 128];
         let signature = [0x01, 0x02, 0x03, 0x04];
 
         device.upload_ringtone(&audio, signature).await.unwrap();
 
         let writes = mock.drain_writes().await;
+        // 1 init + 4 data packets = 5 writes
+        assert_eq!(writes.len(), 5);
         // Write 0: Audio Init frame
         assert_eq!(writes[0].0, CharacteristicUuid::DataWrite);
         assert_eq!(writes[0].1[0], 0x08); // length
         assert_eq!(writes[0].1[1], 0x10); // command
-        assert_eq!(writes[0].1[2], 128); // size lo
-        assert_eq!(writes[0].1[3], 0); // size mid
-        assert_eq!(writes[0].1[4], 0); // size hi
+        assert_eq!(writes[0].1[2], 0x00); // size lo (512 = 0x00 0x02)
+        assert_eq!(writes[0].1[3], 0x02); // size mid
+        assert_eq!(writes[0].1[4], 0x00); // size hi
         assert_eq!(&writes[0].1[5..9], &signature);
 
-        // Write 1: Audio Data Packet
+        // Write 1: first 128 bytes of audio (all 0xAA)
         assert_eq!(writes[1].0, CharacteristicUuid::DataWrite);
-        assert_eq!(writes[1].1[0], 0x81); // length
-        assert_eq!(writes[1].1[1], 0x08); // command
-        assert_eq!(&writes[1].1[2..], &[0xAA; 128]); // payload
+        assert_eq!(writes[1].1[0], 0x81);
+        assert_eq!(writes[1].1[1], 0x08);
+        assert_eq!(&writes[1].1[2..], &[0xAA; 128]);
+
+        // Write 2: 0x00 marker + 0xFF padding
+        assert_eq!(writes[2].1[2], 0x00);
+        assert_eq!(writes[2].1[3], 0xFF);
+
+        // Writes 3-4: all 0xFF padding
+        assert_eq!(&writes[3].1[2..], &[0xFF; 128]);
+        assert_eq!(&writes[4].1[2..], &[0xFF; 128]);
     }
 
     #[tokio::test]
@@ -1191,22 +1444,29 @@ mod tests {
         let device = ClockDevice::new(mock.clone(), addr);
         device.spawn_notification_task();
 
-        // 130 bytes = 2 packets: 128 + 2 (padded to 128 with 0xFF)
+        // 130 bytes padded to 512 (4 packets, 1 full block)
         let audio = vec![0x11u8; 130];
         let signature = [0x00; 4];
 
         device.upload_ringtone(&audio, signature).await.unwrap();
 
         let writes = mock.drain_writes().await;
-        // 1 init + 2 data packets = 3 writes
-        assert_eq!(writes.len(), 3);
-        // Second data packet: first 2 bytes are 0x11, rest 0xFF
+        // 1 init + 4 data packets = 5 writes
+        assert_eq!(writes.len(), 5);
+        // Init size = 512
+        assert_eq!(writes[0].1[2], 0x00);
+        assert_eq!(writes[0].1[3], 0x02);
+        // Second data packet: bytes 128-129 are 0x11, byte 130 is 0x00, rest 0xFF
         assert_eq!(writes[2].1[0], 0x81);
         assert_eq!(writes[2].1[1], 0x08);
         assert_eq!(writes[2].1[2], 0x11);
         assert_eq!(writes[2].1[3], 0x11);
-        assert_eq!(writes[2].1[4], 0xFF);
+        assert_eq!(writes[2].1[4], 0x00);
+        assert_eq!(writes[2].1[5], 0xFF);
         assert_eq!(writes[2].1[129], 0xFF);
+        // Remaining packets: all 0xFF
+        assert_eq!(&writes[3].1[2..], &[0xFF; 128]);
+        assert_eq!(&writes[4].1[2..], &[0xFF; 128]);
     }
 
     #[tokio::test]

@@ -160,6 +160,11 @@ impl DeviceSettings {
         self.ringtone_signature
     }
 
+    /// Return a copy with the specified ringtone signature.
+    pub fn with_ringtone_signature(self, ringtone_signature: RingtoneSignature) -> Self {
+        Self { ringtone_signature, ..self }
+    }
+
     /// Return a copy with the specified volume.
     pub fn with_volume(self, volume: Volume) -> Result<Self> {
         Ok(Self { volume, ..self })

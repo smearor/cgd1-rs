@@ -3,10 +3,10 @@
 Hardware overview for the Qingping Bluetooth Alarm Clock (Model CGD1).
 
 Sources:
-- [Qingping Shop — Product Page](https://shop.qingping.co/products/qingping-bluetooth-alarm-clock)
-- [Qingping — Overview](https://www.qingping.co/bluetooth-alarm-clock/overview)
-- [Qingping — Specifications](https://qingping.co/bluetooth-alarm-clock/specifications)
-- [Theengs Decoder — CGD1](https://decoder.theengs.io/devices/CGD1.html)
+- [Qingping Shop - Product Page](https://shop.qingping.co/products/qingping-bluetooth-alarm-clock)
+- [Qingping - Overview](https://www.qingping.co/bluetooth-alarm-clock/overview)
+- [Qingping - Specifications](https://qingping.co/bluetooth-alarm-clock/specifications)
+- [Theengs Decoder - CGD1](https://decoder.theengs.io/devices/CGD1.html)
 - [User Manual](https://manualspro.net/622733-qingping-bluetooth-alarm-clock-user-manual)
 
 ## General
@@ -61,7 +61,7 @@ The device uses a **Sensirion** sensor for temperature and humidity measurement.
 
 | Mode | Data | Source |
 |---|---|---|
-| Passive (advertising) | Temperature, humidity, battery | BLE advertisements with `FDCD` service-data UUID — no connection required |
+| Passive (advertising) | Temperature, humidity, battery | BLE advertisements with `FDCD` service-data UUID - no connection required |
 | Connected | Temperature, humidity (real-time) | Notify characteristic `00000100-...` |
 | Connected | Battery | Standard GATT battery service (`0x180f` / `0x2a19`) |
 
@@ -78,7 +78,7 @@ Decoded properties (hex string offsets):
 | Temperature | 20 | 4 hex (2 bytes) | Int16 LE, signed | / 10 |
 | Humidity | 24 | 4 hex (2 bytes) | UInt16 LE, unsigned | / 10 |
 | Battery | 32 | 2 hex (1 byte) | UInt8 | & 0x7F (mask bit 7) |
-| MAC | 4 | 12 hex (6 bytes) | Reversed | — |
+| MAC | 4 | 12 hex (6 bytes) | Reversed | - |
 
 > **Note**: The clOwOck protocol specification documents a scaling of / 100.0 for the connected sensor stream. The Theengs decoder uses / 10 for the passive advertisement stream. This discrepancy may be firmware-dependent. See [BLE.md §7](BLE.md#7-real-time-sensor-stream-connected) and [BLE.md §8](BLE.md#8-passive-sensor-stream-advertising) for details.
 
