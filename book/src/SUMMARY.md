@@ -12,6 +12,7 @@
 - [Audio Upload](./audio.md)
 - [CLI Tool](./cli.md)
 - [Controller](./controller.md)
+- [Internationalization](./i18n.md)
 - [WebSocket Server](./websocket.md)
 - [Platform Notes](./platform-notes.md)
 - [Examples](./examples.md)

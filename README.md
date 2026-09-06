@@ -22,6 +22,7 @@ A Rust library and toolkit for the Qingping CGD1 Bluetooth alarm clock. It provi
 - **Audio Upload** - Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol
 - **Firmware Query** - Read the device firmware version string
 - **Reconnection** - Automatic reconnection with exponential backoff and full state recovery
+- **Internationalization** - Full UI translation via Fluent (`.ftl`), auto-detects system language with English fallback
 
 ## Crates
 
