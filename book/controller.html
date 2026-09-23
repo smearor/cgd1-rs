@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-432b6975.js";
+            window.path_to_searchindex_js = "searchindex-edbdc84b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-97e4057d.js"></script>
+        <script src="toc-9af7901f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -213,17 +213,17 @@ cargo build --release -p cgd1-rs-controller
 <h3 id="mainwindow"><a class="header" href="#mainwindow">MainWindow</a></h3>
 <p>The main window features a sidebar for device management and a tabbed content area. Each connected device gets its own tab showing:</p>
 <ul>
-<li><strong>Clock display</strong> — Seven-segment style time display using a custom font</li>
-<li><strong>Sensor cards</strong> — Temperature, humidity, and battery</li>
-<li><strong>Device info</strong> — Firmware version, MAC address</li>
+<li><strong>Clock display</strong> - Seven-segment style time display using a custom font</li>
+<li><strong>Sensor cards</strong> - Temperature, humidity, and battery</li>
+<li><strong>Device info</strong> - Firmware version, MAC address</li>
 </ul>
 <h3 id="dialog-system"><a class="header" href="#dialog-system">Dialog System</a></h3>
 <p>Instead of separate widget files, the controller uses a modular <code>dialog/</code> directory:</p>
 <ul>
-<li><strong><code>dialog/alarms.rs</code></strong> — Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle</li>
-<li><strong><code>dialog/audio.rs</code></strong> — Ringtone upload dialog with file picker and signature selection</li>
-<li><strong><code>dialog/info.rs</code></strong> — Device information dialog (firmware, battery, MAC)</li>
-<li><strong><code>dialog/settings.rs</code></strong> — Settings panel with sliders, spin buttons, and combo boxes for all device settings</li>
+<li><strong><code>dialog/alarms.rs</code></strong> - Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle</li>
+<li><strong><code>dialog/audio.rs</code></strong> - Ringtone upload dialog with file picker and signature selection</li>
+<li><strong><code>dialog/info.rs</code></strong> - Device information dialog (firmware, battery, MAC)</li>
+<li><strong><code>dialog/settings.rs</code></strong> - Settings panel with sliders, spin buttons, and combo boxes for all device settings</li>
 </ul>
 <h3 id="display-module"><a class="header" href="#display-module">Display Module</a></h3>
 <p>The <code>display/</code> directory contains a custom seven-segment clock widget (<code>seven_segment.rs</code>) that renders the time using a DSEG7 font. The font files are bundled as assets:</p>
@@ -264,9 +264,48 @@ cargo build --release -p cgd1-rs-controller
 <span class="boring">}</span></code></pre>
 <h2 id="features"><a class="header" href="#features">Features</a></h2>
 <h3 id="device-scanning"><a class="header" href="#device-scanning">Device Scanning</a></h3>
-<p>The scan dialog shows nearby devices with their advertisement data (temperature, humidity, battery). Clicking a device initiates connection and authentication.</p>
+<p>The scan dialog shows nearby devices with their advertisement data (temperature, humidity, battery). Clicking a device initiates connection and authentication. The scan callback also persists battery data from advertising to <code>KnownDeviceStore</code> and updates the <code>scan_battery_cache</code>.</p>
+<h3 id="known-device-store"><a class="header" href="#known-device-store">Known Device Store</a></h3>
+<p>The controller maintains a <code>KnownDeviceStore</code> that persists:</p>
+<ul>
+<li><strong>Known device MAC addresses</strong> (<code>known_devices.json</code>) - Used to populate the device dropdown on startup and attempt automatic reconnection.</li>
+<li><strong>Battery levels</strong> (<code>battery_cache.json</code>) - Map of MAC address to battery percentage, updated during scans and loaded on startup.</li>
+</ul>
+<p>Both files are stored in the platform data directory (e.g., <code>~/.local/share/cgd1-rs/</code>).</p>
 <h3 id="sensor-monitoring"><a class="header" href="#sensor-monitoring">Sensor Monitoring</a></h3>
-<p>Real-time temperature and humidity are displayed via sensor cards that update from the <code>ClockEvent</code> stream. Battery level is shown with a percentage label.</p>
+<p>Real-time temperature and humidity are displayed via sensor cards that update from the <code>ClockEvent</code> stream. Battery level is shown with a percentage label and progress bar.</p>
+<h3 id="battery-display"><a class="header" href="#battery-display">Battery Display</a></h3>
+<p>The controller does <strong>not</strong> read battery from GATT (the CGD1’s Battery Service characteristic returns an unreliable 99%). Instead, battery data is sourced from BLE advertising scans:</p>
+<ol>
+<li><strong>On startup</strong>, <code>KnownDeviceStore::load_battery()</code> populates the in-memory <code>scan_battery_cache</code> from <code>battery_cache.json</code>.</li>
+<li><strong>During scans</strong>, the scan callback extracts battery from advertising TLV type <code>0x02</code>, updates <code>scan_battery_cache</code>, and persists via <code>KnownDeviceStore::save_battery()</code>.</li>
+<li><strong>On connect</strong>, the connect handler reads the cached battery value and sends <code>ClockEvent::BatteryLevel</code> to update the UI.</li>
+</ol>
+<p>The device only advertises battery data when <strong>not connected</strong> and the button is held for 3 seconds. Periodic scans (every 60 seconds when disconnected) keep the cache fresh.</p>
+<h3 id="bluetooth-icon-states"><a class="header" href="#bluetooth-icon-states">Bluetooth Icon States</a></h3>
+<p>The Bluetooth icon in the top-right corner reflects the connection state:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>CSS Class</th><th>Visual</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td>Disconnected</td><td><code>bluetooth-off</code></td><td>Dim gray, 40% opacity</td><td>Initial state, after manual disconnect, after connect failure</td></tr>
+<tr><td>Connecting / Reconnecting</td><td><code>bluetooth-blinking</code></td><td>Blinking animation (1s cycle)</td><td>During initial connect, during automatic reconnect</td></tr>
+<tr><td>Connected</td><td><em>(none)</em></td><td>Full color, solid</td><td>After successful connect or reconnect</td></tr>
+</tbody>
+</table>
+</div>
+<p>The icon transitions through these states as follows:</p>
+<ul>
+<li><strong>Initial</strong> → <code>bluetooth-off</code></li>
+<li><strong>Connect switch toggled on</strong> → <code>bluetooth-blinking</code></li>
+<li><strong>Connect succeeds</strong> → solid (remove <code>bluetooth-blinking</code> and <code>bluetooth-off</code>)</li>
+<li><strong>Connect fails</strong> → <code>bluetooth-off</code></li>
+<li><strong>Manual disconnect</strong> → <code>bluetooth-off</code></li>
+<li><strong><code>ClockEvent::Disconnected</code> (auto)</strong> → <code>bluetooth-blinking</code> (reconnect in progress)</li>
+<li><strong><code>ClockEvent::Reconnected</code></strong> → solid (remove <code>bluetooth-blinking</code> and <code>bluetooth-off</code>)</li>
+</ul>
 <h3 id="alarm-editing"><a class="header" href="#alarm-editing">Alarm Editing</a></h3>
 <p>The alarm editor dialog shows all 16 slots in a list. Each row displays:</p>
 <ul>
@@ -280,15 +319,15 @@ cargo build --release -p cgd1-rs-controller
 <h3 id="settings-panel"><a class="header" href="#settings-panel">Settings Panel</a></h3>
 <p>The settings dialog provides graphical controls for all device settings:</p>
 <ul>
-<li><strong>Volume</strong> — Slider (1–5)</li>
-<li><strong>Brightness</strong> — Slider (0–100, step 10)</li>
-<li><strong>Night brightness</strong> — Slider (0–100, step 10)</li>
-<li><strong>Night mode window</strong> — Hour/minute spin buttons for start and end</li>
-<li><strong>Timezone</strong> — Spin button (-720 to +840 minutes)</li>
-<li><strong>Time format</strong> — Combo box (12h / 24h)</li>
-<li><strong>Temperature unit</strong> — Combo box (°C / °F)</li>
-<li><strong>Language</strong> — Combo box (English, Chinese, German, Japanese)</li>
-<li><strong>Ringtone</strong> — Combo box with built-in and custom ringtones</li>
+<li><strong>Volume</strong> - Slider (1–5)</li>
+<li><strong>Brightness</strong> - Slider (0–100, step 10)</li>
+<li><strong>Night brightness</strong> - Slider (0–100, step 10)</li>
+<li><strong>Night mode window</strong> - Hour/minute spin buttons for start and end</li>
+<li><strong>Timezone</strong> - Spin button (-720 to +840 minutes)</li>
+<li><strong>Time format</strong> - Combo box (12h / 24h)</li>
+<li><strong>Temperature unit</strong> - Combo box (°C / °F)</li>
+<li><strong>Language</strong> - Combo box (English, Chinese, German, Japanese)</li>
+<li><strong>Ringtone</strong> - Combo box with built-in and custom ringtones</li>
 </ul>
 <p>Changes are applied immediately to the device.</p>
 <h3 id="ringtone-upload"><a class="header" href="#ringtone-upload">Ringtone Upload</a></h3>
@@ -320,7 +359,7 @@ cargo build --release -p cgd1-rs-controller
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="websocket.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="i18n.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -334,7 +373,7 @@ cargo build --release -p cgd1-rs-controller
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="websocket.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="i18n.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

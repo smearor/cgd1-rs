@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-432b6975.js";
+            window.path_to_searchindex_js = "searchindex-edbdc84b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-97e4057d.js"></script>
+        <script src="toc-9af7901f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -221,7 +221,7 @@ for device in &amp;devices {
 <tr><th>Field</th><th>Type</th><th>Scaling</th></tr>
 </thead>
 <tbody>
-<tr><td>MAC</td><td>6 bytes (reversed)</td><td>—</td></tr>
+<tr><td>MAC</td><td>6 bytes (reversed)</td><td>-</td></tr>
 <tr><td>Temperature</td><td>Int16 BE</td><td>/ 10 (°C)</td></tr>
 <tr><td>Humidity</td><td>UInt16 BE</td><td>/ 10 (%)</td></tr>
 <tr><td>Battery</td><td>UInt8</td><td>&amp; 0x7F (mask bit 7)</td></tr>
@@ -236,14 +236,31 @@ for device in &amp;devices {
     participant Transport as BleTransport
     participant CGD1 as CGD1 Device
 
-    App-&gt;&gt;Manager: connect(mac)
+    App-&gt;&gt;Manager: connect_authenticate_and_sync(mac, token)
     Manager-&gt;&gt;Transport: connect(address)
     Transport-&gt;&gt;CGD1: BLE connection
     CGD1--&gt;&gt;Transport: Connected
-    Transport--&gt;&gt;Manager: Ok
-    Manager--&gt;&gt;App: ClockDevice
+    Manager-&gt;&gt;Transport: subscribe(Auth/Data/Sensor Notify)
+    Manager-&gt;&gt;Manager: spawn notification task
+    Manager-&gt;&gt;Manager: set_token_store(token_store)
+    Manager-&gt;&gt;CGD1: authenticate(token)
+    CGD1--&gt;&gt;Manager: Auth ACKs
+    Manager-&gt;&gt;CGD1: sync_timezone()
+    CGD1--&gt;&gt;Manager: Settings response
+    Manager-&gt;&gt;CGD1: sync_time_now()
+    CGD1--&gt;&gt;Manager: TimeSync ACK
+    Manager--&gt;&gt;App: ClockDevice (ready)
 </pre>
 
+<p>The full <code>connect_authenticate_and_sync</code> flow performs:</p>
+<ol>
+<li><strong>BLE connect</strong> - <code>transport.connect(address)</code></li>
+<li><strong>Subscribe</strong> to Auth Notify, Data Notify, and Sensor Notify characteristics</li>
+<li><strong>Spawn notification task</strong> - Background task for processing BLE notifications</li>
+<li><strong>Authenticate</strong> - Two-step token handshake (Auth Init + Auth Confirm)</li>
+<li><strong>Sync timezone</strong> - Read device settings, compute local UTC offset, write correct timezone</li>
+<li><strong>Sync time</strong> - Send current Unix timestamp; token is persisted only after this succeeds</li>
+</ol>
 <h3 id="connecting-with-the-library"><a class="header" href="#connecting-with-the-library">Connecting with the Library</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -273,7 +290,21 @@ device_b.read_alarms().await?;
 </span><span class="boring">fn main() {
 </span>manager.disconnect(&amp;mac).await?;
 <span class="boring">}</span></code></pre>
-<p>This tears down the BLE connection and stops the notification task for that device.</p>
+<p>This aborts the notification task (via <code>JoinHandle::abort()</code>) and tears down the BLE connection. Aborting the notification task is critical - without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.</p>
+<h3 id="automatic-reconnection"><a class="header" href="#automatic-reconnection">Automatic Reconnection</a></h3>
+<p>When the BLE connection drops (e.g., device goes out of range, battery dies, or alarm triggers a disconnect), the notification task automatically attempts reconnection with exponential backoff:</p>
+<ol>
+<li><strong>Disconnect detected</strong> - The notification stream ends or a <code>CentralEvent::DeviceDisconnected</code> is received</li>
+<li><strong>Transport cleanup</strong> - <code>transport.disconnect()</code> clears the connection state to avoid <code>AlreadyConnected</code> errors on retry</li>
+<li><strong>Reconnect attempts</strong> - Up to 10 attempts with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped)</li>
+<li><strong>BLE connect + subscribe</strong> - <code>reconnect_and_restore</code> reconnects and re-subscribes to all notify characteristics</li>
+<li><strong>Re-authentication</strong> - A separate task re-authenticates using the stored token (spawned concurrently so the notification loop can process ACKs)</li>
+<li><strong>State recovery</strong> - On success, <code>ClockEvent::Reconnected</code> is emitted</li>
+</ol>
+<p>The <code>connect()</code> call has a 10-second timeout to prevent hanging when the device is unavailable (e.g., during an alarm). The device typically becomes discoverable again ~15-20 seconds after an alarm-triggered disconnect.</p>
+<blockquote>
+<p><strong>Note</strong>: While the alarm is sounding, the CGD1 is not discoverable. Dismissing the alarm quickly allows faster reconnection.</p>
+</blockquote>
 <h3 id="virtual-backend-testing"><a class="header" href="#virtual-backend-testing">Virtual Backend (Testing)</a></h3>
 <p>For testing without hardware, use the <code>virtual</code> backend:</p>
 <pre><code class="language-bash">cgd1 --backend virtual scan

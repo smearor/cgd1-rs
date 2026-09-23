@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-432b6975.js";
+            window.path_to_searchindex_js = "searchindex-edbdc84b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-97e4057d.js"></script>
+        <script src="toc-9af7901f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -188,10 +188,14 @@
 <tbody>
 <tr><td>Passive</td><td>Temperature, humidity, battery</td><td>BLE advertisements (<code>FDCD</code>)</td><td>No</td></tr>
 <tr><td>Connected</td><td>Temperature, humidity (real-time)</td><td>Sensor Notify (<code>00000100-...</code>)</td><td>Yes</td></tr>
-<tr><td>Connected</td><td>Battery</td><td>GATT Battery Service (<code>0x180f</code> / <code>0x2a19</code>)</td><td>Yes</td></tr>
+<tr><td>Connected</td><td>Battery (cached from advertising)</td><td><code>KnownDeviceStore</code> battery cache</td><td>No (cached)</td></tr>
+<tr><td>On-demand</td><td>Battery (unreliable)</td><td>GATT Battery Service (<code>0x180f</code> / <code>0x2a19</code>)</td><td>Yes</td></tr>
 </tbody>
 </table>
 </div>
+<blockquote>
+<p><strong>Warning</strong>: The GATT Battery Service characteristic (<code>0x2A19</code>) consistently returns 99% on the CGD1 and is <strong>not reliable</strong>. The controller and recommended connect flow use advertising-based battery data exclusively. The <code>read_battery()</code> method remains available for CLI/WS diagnostic use but is not used in the connect flow.</p>
+</blockquote>
 <h2 id="passive-sensor-stream-advertising"><a class="header" href="#passive-sensor-stream-advertising">Passive Sensor Stream (Advertising)</a></h2>
 <p>The device broadcasts sensor data in BLE advertisement packets via Service Data under UUID <code>0xFDCD</code>.</p>
 <h3 id="format"><a class="header" href="#format">Format</a></h3>
@@ -232,7 +236,7 @@
 </table>
 </div>
 <h3 id="event-dispatch"><a class="header" href="#event-dispatch">Event Dispatch</a></h3>
-<p>The notification task parses sensor notifications and broadcasts <code>ClockEvent::SensorUpdate</code>:</p>
+<p>The notification task parses sensor notifications and broadcasts <code>ClockEvent::SensorUpdate</code>. Battery is <strong>not</strong> included in sensor notifications (the CGD1 sends only 5 bytes without battery data):</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub enum ClockEvent {
@@ -244,14 +248,41 @@
     Advertisement(AdvertisementData),
 }
 <span class="boring">}</span></code></pre>
-<h2 id="battery-connected"><a class="header" href="#battery-connected">Battery (Connected)</a></h2>
-<p>Battery level is read from the standard GATT Battery Service:</p>
+<p><code>ClockEvent::BatteryLevel</code> is sent from the controller’s connect handler using the advertising battery cache, not from sensor notifications.</p>
+<h2 id="battery-advertising-cache"><a class="header" href="#battery-advertising-cache">Battery (Advertising Cache)</a></h2>
+<p>The CGD1 only advertises battery data when <strong>not connected</strong> and the button is held for 3 seconds. The battery level is encoded in advertising TLV type <code>0x02</code> as a single byte (masked with <code>0x7F</code>).</p>
+<h3 id="knowndevicestore-battery-cache"><a class="header" href="#knowndevicestore-battery-cache">KnownDeviceStore Battery Cache</a></h3>
+<p>The <code>KnownDeviceStore</code> persists battery levels from advertising scans in a separate <code>battery_cache.json</code> file, keyed by MAC address:</p>
+<pre><code class="language-json">{"58:2d:34:82:cc:81": 31}
+</code></pre>
 <ul>
-<li><strong>Service UUID</strong>: <code>0x180f</code></li>
-<li><strong>Characteristic UUID</strong>: <code>0x2a19</code></li>
-<li><strong>Format</strong>: 1 byte (percentage 0–100)</li>
+<li><strong><code>save_battery(address, level)</code></strong> - Called by the controller’s scan callback when advertising battery data is received.</li>
+<li><strong><code>load_battery()</code></strong> - Called on startup to populate the in-memory <code>scan_battery_cache</code>.</li>
 </ul>
-<p>The library reads this characteristic and, when notifications are supported, subscribes for real-time battery updates. Battery changes are dispatched as <code>ClockEvent::BatteryLevel</code>.</p>
+<h3 id="connect-flow-integration"><a class="header" href="#connect-flow-integration">Connect Flow Integration</a></h3>
+<p>The controller’s connect handler reads the cached battery value from <code>scan_battery_cache</code> after a successful <code>connect_authenticate_and_sync</code> and sends <code>ClockEvent::BatteryLevel</code> to update the UI:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>if let Some(level) = scan_battery_cache.lock().unwrap().get(&amp;addr).copied() {
+    let _ = event_tx.send(ClockEvent::BatteryLevel {
+        level: BatteryLevel::new(level),
+    });
+}
+<span class="boring">}</span></code></pre>
+<h3 id="device-behavior-notes"><a class="header" href="#device-behavior-notes">Device Behavior Notes</a></h3>
+<ul>
+<li>The device <strong>stops advertising</strong> when connected, so battery data is only available passively.</li>
+<li>Advertising battery values can <strong>fluctuate</strong> between packets (e.g., 4%, 22%, 31% in the same scan window).</li>
+<li>Sensor notifications (5 bytes) do <strong>not</strong> contain battery data.</li>
+<li>Device settings responses do <strong>not</strong> contain battery data.</li>
+</ul>
+<h2 id="battery-gatt---diagnostic-only"><a class="header" href="#battery-gatt---diagnostic-only">Battery (GATT - Diagnostic Only)</a></h2>
+<p>The <code>read_battery()</code> method reads the standard GATT Battery Service characteristic (<code>0x2A19</code>). This is available for CLI and WebSocket diagnostic use but is <strong>not used in the controller connect flow</strong> because it consistently returns 99% on the CGD1.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Diagnostic use only - unreliable on CGD1
+let battery = device.read_battery().await?;
+<span class="boring">}</span></code></pre>
 <h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
 <h3 id="monitor-sensors"><a class="header" href="#monitor-sensors">Monitor sensors</a></h3>
 <pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60

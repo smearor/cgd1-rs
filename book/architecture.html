@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-432b6975.js";
+            window.path_to_searchindex_js = "searchindex-edbdc84b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-97e4057d.js"></script>
+        <script src="toc-9af7901f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -222,28 +222,31 @@
     BleTransport &lt;|.. VirtualClockTransport
 </pre>
 
-<p><strong><code>BtleplugTransport</code></strong> — Real hardware backend using the <code>btleplug</code> crate. Works on Linux (BlueZ), macOS (CoreBluetooth), and Windows.</p>
-<p><strong><code>MockBleTransport</code></strong> — In-memory mock with channels for advertisements and notifications. Used in unit tests.</p>
-<p><strong><code>VirtualClockTransport</code></strong> — Full in-memory simulation of the CGD1 device. Responds to commands with appropriate ACKs, maintains alarm/settings state, and emits sensor notifications. Used in integration tests for CLI and WebSocket server.</p>
+<p><strong><code>BtleplugTransport</code></strong> - Real hardware backend using the <code>btleplug</code> crate. Works on Linux (BlueZ), macOS (CoreBluetooth), and Windows.</p>
+<p><strong><code>MockBleTransport</code></strong> - In-memory mock with channels for advertisements and notifications. Used in unit tests.</p>
+<p><strong><code>VirtualClockTransport</code></strong> - Full in-memory simulation of the CGD1 device. Responds to commands with appropriate ACKs, maintains alarm/settings state, and emits sensor notifications. Used in integration tests for CLI and WebSocket server.</p>
 <h3 id="device-lifecycle"><a class="header" href="#device-lifecycle">Device Lifecycle</a></h3>
 <pre class="mermaid">flowchart LR
     Scan["ClockScanner&lt;br/&gt;.scan_active()"] --&gt; Connect["ClockManager&lt;br/&gt;.connect(mac)"]
     Connect --&gt; Auth["ClockDevice&lt;br/&gt;.authenticate(token)"]
-    Auth --&gt; SyncTime["ClockDevice&lt;br/&gt;.sync_time_now()"]
+    Auth --&gt; SyncTZ["ClockDevice&lt;br/&gt;.sync_timezone()"]
+    SyncTZ --&gt; SyncTime["ClockDevice&lt;br/&gt;.sync_time_now()"]
     SyncTime --&gt; Ready["Ready for commands"]
     Ready --&gt; Operate["read_alarms&lt;br/&gt;set_alarm&lt;br/&gt;read_settings&lt;br/&gt;write_settings&lt;br/&gt;upload_ringtone&lt;br/&gt;..."]
     Ready --&gt; Monitor["subscribe() →&lt;br/&gt;ClockEvent stream"]
 </pre>
 
+<p>The <code>connect_authenticate_and_sync</code> method performs all steps in sequence. <code>sync_timezone</code> reads the device settings, computes the local system UTC offset via <code>chrono::Local</code>, and writes the correct timezone before <code>sync_time</code> to avoid time display offsets (the device defaults to UTC+8 after factory reset).</p>
 <h3 id="clockdevice"><a class="header" href="#clockdevice">ClockDevice</a></h3>
 <p><code>ClockDevice</code> is the primary handle for interacting with a connected CGD1. It owns:</p>
 <ul>
-<li><strong>Transport reference</strong> — For sending commands and reading data</li>
-<li><strong>Pending ACK map</strong> — <code>HashMap&lt;u8, VecDeque&lt;oneshot::Sender&gt;&gt;</code> for matching ACKs to pending requests by command byte</li>
-<li><strong>Pending data response channel</strong> — <code>mpsc::Sender</code> for multi-packet responses (e.g., alarm read, settings read)</li>
-<li><strong>Event broadcast sender</strong> — <code>broadcast::Sender&lt;ClockEvent&gt;</code> for sensor, battery, and connection events</li>
-<li><strong>Auth token</strong> — Stored after successful authentication</li>
-<li><strong>Notification task</strong> — Background <code>tokio::task</code> that processes BLE notifications</li>
+<li><strong>Transport reference</strong> - For sending commands and reading data</li>
+<li><strong>Pending ACK map</strong> - <code>HashMap&lt;u8, VecDeque&lt;oneshot::Sender&gt;&gt;</code> for matching ACKs to pending requests by command byte</li>
+<li><strong>Pending data response channel</strong> - <code>mpsc::Sender</code> for multi-packet responses (e.g., alarm read, settings read)</li>
+<li><strong>Event broadcast sender</strong> - <code>broadcast::Sender&lt;ClockEvent&gt;</code> for sensor, battery, and connection events</li>
+<li><strong>Auth token</strong> - Stored after successful authentication</li>
+<li><strong>Notification task handle</strong> - <code>JoinHandle</code> stored so it can be aborted on disconnect, preventing zombie tasks from stealing notifications</li>
+<li><strong>Token store</strong> - Optional <code>Arc&lt;dyn TokenStore&gt;</code> for persisting auth tokens after privileged commands succeed</li>
 </ul>
 <h4 id="notification-task"><a class="header" href="#notification-task">Notification Task</a></h4>
 <p>A background task per connected device listens for BLE notifications and dispatches them:</p>
@@ -252,7 +255,6 @@
     AuthNotify["Auth Notify&lt;br/&gt;(ACKs)"]
     DataNotify["Data Notify&lt;br/&gt;(ACKs, Settings, Alarms)"]
     SensorNotify["Sensor Notify&lt;br/&gt;(Temp, Humidity)"]
-    Battery["Battery Level&lt;br/&gt;(GATT)"]
     EventChannel["broadcast::Sender&lt;br/&gt;&lt;ClockEvent&gt;"]
     AckMap["Oneshot Senders&lt;br/&gt;(pending ACKs)"]
     DataChannel["mpsc::Sender&lt;br/&gt;(pending data)"]
@@ -260,37 +262,46 @@
     NotifyTask --&gt; AuthNotify
     NotifyTask --&gt; DataNotify
     NotifyTask --&gt; SensorNotify
-    NotifyTask --&gt; Battery
     AuthNotify --&gt; AckMap
     DataNotify --&gt; AckMap
     DataNotify --&gt; DataChannel
     SensorNotify --&gt; EventChannel
-    Battery --&gt; EventChannel
 </pre>
 
+<blockquote>
+<p><strong>Note</strong>: Battery is <strong>not</strong> sourced from GATT notifications. The GATT Battery Service (<code>0x2A19</code>) returns an unreliable 99% on the CGD1. Battery data comes exclusively from advertising packets, cached via <code>KnownDeviceStore</code>. See <a href="./sensors.html">Sensors &amp; Battery</a> for details.</p>
+</blockquote>
 <h4 id="request-response-pattern"><a class="header" href="#request-response-pattern">Request-Response Pattern</a></h4>
 <p>Commands that expect an ACK use a <code>oneshot::channel</code>. The pending request is registered <strong>before</strong> the command frame is sent to prevent a race condition where the ACK arrives before the receiver is set up:</p>
 <ol>
-<li><code>prepare_ack(command)</code> — Registers a <code>oneshot::Sender</code> in the pending map</li>
-<li><code>transport.write_frame(command, payload)</code> — Sends the command</li>
-<li><code>wait_ack(receiver, timeout)</code> — Waits for the ACK with a 10-second timeout</li>
+<li><code>prepare_ack(command)</code> - Registers a <code>oneshot::Sender</code> in the pending map</li>
+<li><code>transport.write_frame(command, payload)</code> - Sends the command</li>
+<li><code>wait_ack(receiver, timeout)</code> - Waits for the ACK with a 10-second timeout</li>
 </ol>
 <p>Multi-packet responses (e.g., <code>read_alarms</code>, <code>read_settings</code>) use an <code>mpsc::Sender</code> instead, allowing the notification task to forward data packets as they arrive.</p>
 <h3 id="reconnection"><a class="header" href="#reconnection">Reconnection</a></h3>
 <p>If the device disconnects unexpectedly, the library attempts reconnection with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped). After a successful BLE reconnect, the full state recovery sequence is performed:</p>
 <ol>
+<li><strong>Transport cleanup</strong> - <code>transport.disconnect()</code> to clear stale connection state</li>
 <li><strong>BLE Reconnect</strong> via <code>transport.connect(address)</code></li>
 <li><strong>GATT Re-subscription</strong> for Auth Notify, Data Notify, and Sensor Notify</li>
 <li><strong>Re-authentication</strong> using the stored token</li>
-<li><strong>Flag reset</strong> — <code>is_authenticated</code> set to <code>true</code></li>
+<li><strong>Flag reset</strong> - <code>is_authenticated</code> set to <code>true</code></li>
 </ol>
 <p><code>ClockEvent::Disconnected</code> and <code>ClockEvent::Reconnected</code> are broadcast to subscribers.</p>
+<h3 id="knowndevicestore"><a class="header" href="#knowndevicestore">KnownDeviceStore</a></h3>
+<p>The <code>KnownDeviceStore</code> persists known device MAC addresses and battery levels:</p>
+<ul>
+<li><strong><code>known_devices.json</code></strong> - List of previously seen device MAC addresses, used to populate the controller dropdown on startup.</li>
+<li><strong><code>battery_cache.json</code></strong> - Map of MAC address to battery level (u8), populated from advertising scans. Loaded on startup into the controller’s <code>scan_battery_cache</code>.</li>
+</ul>
+<p>Both files reside in the platform-dependent data directory (e.g., <code>~/.local/share/cgd1-rs/</code> on Linux).</p>
 <h3 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h3>
 <p>The library uses structured error types:</p>
 <ul>
-<li><strong><code>TransportError</code></strong> — BLE-level errors (not connected, characteristic not found, timeout, etc.)</li>
-<li><strong><code>ClockError</code></strong> — Library-level errors (auth failed, command rejected, timeout, invalid alarm slot, parse errors, IO errors)</li>
-<li><strong><code>AuthFailedError</code></strong> — Authentication failure with context (reason, is_new_token, token_path)</li>
+<li><strong><code>TransportError</code></strong> - BLE-level errors (not connected, characteristic not found, timeout, etc.)</li>
+<li><strong><code>ClockError</code></strong> - Library-level errors (auth failed, command rejected, timeout, invalid alarm slot, parse errors, IO errors)</li>
+<li><strong><code>AuthFailedError</code></strong> - Authentication failure with context (reason, is_new_token, token_path)</li>
 </ul>
 <p>All errors implement <code>std::error::Error</code> and <code>Display</code>. The CLI additionally uses <code>miette::Diagnostic</code> for rich terminal output.</p>
 <h3 id="newtypes"><a class="header" href="#newtypes">Newtypes</a></h3>

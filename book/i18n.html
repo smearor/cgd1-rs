@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>CLI Tool - cgd1-rs User Guide</title>
+        <title>Internationalization - cgd1-rs User Guide</title>
 
 
         <!-- Custom HTML head -->
@@ -177,195 +177,133 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="cli-tool"><a class="header" href="#cli-tool">CLI Tool</a></h1>
-<p>The <code>cgd1</code> command-line tool provides access to all device operations through subcommands. It uses <code>clap</code> for argument parsing and <code>miette</code> for rich error diagnostics.</p>
-<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<pre><code class="language-bash">cargo install --path cgd1-rs-cli
-</code></pre>
-<h2 id="global-options"><a class="header" href="#global-options">Global Options</a></h2>
-<pre><code>Options:
-  -v, --verbose...  Verbosity level (-v, -vv, -vvv)
-      --backend &lt;BACKEND&gt;  BLE backend: `btleplug` (real hardware) or `virtual` (in-memory) [default: btleplug]
-  -h, --help         Print help
-  -V, --version      Print version
-</code></pre>
-<p>The <code>--backend virtual</code> flag uses an in-memory simulation instead of real BLE hardware. This is useful for testing and demos without a device.</p>
-<h2 id="subcommands"><a class="header" href="#subcommands">Subcommands</a></h2>
-<h3 id="scan"><a class="header" href="#scan">scan</a></h3>
-<p>Scan for nearby CGD1 devices.</p>
-<pre><code class="language-bash">cgd1 scan --duration 10
-</code></pre>
+                        <h1 id="internationalization-i18n"><a class="header" href="#internationalization-i18n">Internationalization (i18n)</a></h1>
+<p>The <code>cgd1-rs-controller</code> GTK 4 application supports UI translation via the <a href="https://projectfluent.org/">Fluent</a> localization system. Translation files (<code>.ftl</code>) are embedded into the binary at compile time using <code>rust-embed</code>, so no external files are needed at runtime.</p>
+<h2 id="supported-languages"><a class="header" href="#supported-languages">Supported Languages</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Flag</th><th>Default</th><th>Range</th><th>Description</th></tr>
+<tr><th>Language</th><th>Code</th><th>Status</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-d, --duration</code></td><td>10</td><td>1–600</td><td>Scan duration in seconds</td></tr>
+<tr><td>English</td><td><code>en</code></td><td>Fallback (all keys present)</td></tr>
+<tr><td>German</td><td><code>de</code></td><td>Complete</td></tr>
 </tbody>
 </table>
 </div>
-<p>Output includes MAC address, temperature, humidity, and battery from passive advertisements.</p>
-<h3 id="sync-time"><a class="header" href="#sync-time">sync-time</a></h3>
-<p>Synchronize the device clock to the current system time. This is the recommended first command after connecting, as it confirms the authentication token is accepted.</p>
-<pre><code class="language-bash">cgd1 sync-time AA:BB:CC:DD:EE:FF
+<p>The application auto-detects the system language at startup via <code>i18n_embed::DesktopLanguageRequester</code>. If the requested language is not available, it falls back to English.</p>
+<h2 id="selecting-a-language"><a class="header" href="#selecting-a-language">Selecting a Language</a></h2>
+<p>The language is determined by the system locale. You can override it via environment variables:</p>
+<pre><code class="language-bash"># English
+LANG=en ./target/debug/cgd1-controller
+
+# German
+LANG=de_DE.UTF-8 ./target/debug/cgd1-controller
+
+# Unsupported locale -&gt; falls back to English
+LANG=fr_FR.UTF-8 ./target/debug/cgd1-controller
 </code></pre>
-<h3 id="alarm-list"><a class="header" href="#alarm-list">alarm-list</a></h3>
-<p>Read all 16 alarm slots from the device.</p>
-<pre><code class="language-bash">cgd1 alarm-list AA:BB:CC:DD:EE:FF
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<h3 id="file-layout"><a class="header" href="#file-layout">File Layout</a></h3>
+<pre><code>cgd1-rs-controller/
+├── i18n.toml                          # i18n-embed configuration
+├── i18n/
+│   ├── en/
+│   │   └── cgd1-rs-controller.ftl     # English (fallback)
+│   └── de/
+│       └── cgd1-rs-controller.ftl     # German
+└── src/
+    └── i18n.rs                        # Loader, macro, helpers
 </code></pre>
-<h3 id="alarm-set"><a class="header" href="#alarm-set">alarm-set</a></h3>
-<p>Set or modify an alarm at a specific slot.</p>
-<pre><code class="language-bash">cgd1 alarm-set AA:BB:CC:DD:EE:FF 3 07:30 --repeat 3e --no-snooze
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Argument</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>address</code></td><td>Device MAC address</td></tr>
-<tr><td><code>slot</code></td><td>Slot index 0–15</td></tr>
-<tr><td><code>time</code></td><td>Alarm time in HH:MM format</td></tr>
-<tr><td><code>-r, --repeat</code></td><td>Day mask as hex (default: <code>7f</code> = every day)</td></tr>
-<tr><td><code>--no-snooze</code></td><td>Disable snooze</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="alarm-delete"><a class="header" href="#alarm-delete">alarm-delete</a></h3>
-<p>Delete an alarm at a specific slot.</p>
-<pre><code class="language-bash">cgd1 alarm-delete AA:BB:CC:DD:EE:FF 3
-</code></pre>
-<h3 id="settings-read"><a class="header" href="#settings-read">settings-read</a></h3>
-<p>Read all device settings.</p>
-<pre><code class="language-bash">cgd1 settings-read AA:BB:CC:DD:EE:FF
-</code></pre>
-<h3 id="settings-write"><a class="header" href="#settings-write">settings-write</a></h3>
-<p>Write device settings. Only specified fields are updated; unspecified fields are preserved from the device.</p>
-<pre><code class="language-bash">cgd1 settings-write AA:BB:CC:DD:EE:FF \
-    --volume 3 \
-    --brightness 80 \
-    --night-brightness 30 \
-    --timezone 60 \
-    --time-format 24 \
-    --temp-unit C \
-    --language en
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Values</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--volume</code></td><td>1–5</td><td>Sound volume</td></tr>
-<tr><td><code>--brightness</code></td><td>0–150 (multiple of 10)</td><td>Daytime brightness</td></tr>
-<tr><td><code>--night-brightness</code></td><td>0–150 (multiple of 10)</td><td>Nighttime brightness</td></tr>
-<tr><td><code>--timezone</code></td><td>-720 to +840</td><td>Timezone offset in minutes</td></tr>
-<tr><td><code>--time-format</code></td><td>12 or 24</td><td>Time display format</td></tr>
-<tr><td><code>--temp-unit</code></td><td>C or F</td><td>Temperature unit</td></tr>
-<tr><td><code>--language</code></td><td>en, zh, de, ja</td><td>Display language</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="brightness"><a class="header" href="#brightness">brightness</a></h3>
-<p>Set immediate brightness (preview, not persisted).</p>
-<pre><code class="language-bash">cgd1 brightness AA:BB:CC:DD:EE:FF 80
-</code></pre>
-<h3 id="ringtone-preview"><a class="header" href="#ringtone-preview">ringtone-preview</a></h3>
-<p>Play a preview beep sound on the device.</p>
-<pre><code class="language-bash">cgd1 ringtone-preview AA:BB:CC:DD:EE:FF --volume 3
-</code></pre>
-<h3 id="ringtone-upload"><a class="header" href="#ringtone-upload">ringtone-upload</a></h3>
-<p>Upload a custom ringtone from a PCM file.</p>
-<pre><code class="language-bash">cgd1 ringtone-upload AA:BB:CC:DD:EE:FF audio.pcm --signature CustomSlotA
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Argument</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>address</code></td><td>Device MAC address</td></tr>
-<tr><td><code>file</code></td><td>Path to 8-bit PCM audio file (8 kHz, mono)</td></tr>
-<tr><td><code>-s, --signature</code></td><td>Ringtone name or 4-byte hex (default: <code>CustomSlotA</code>)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="firmware"><a class="header" href="#firmware">firmware</a></h3>
-<p>Read the device firmware version.</p>
-<pre><code class="language-bash">cgd1 firmware AA:BB:CC:DD:EE:FF
-</code></pre>
-<h3 id="battery"><a class="header" href="#battery">battery</a></h3>
-<p>Read the device battery level.</p>
-<pre><code class="language-bash">cgd1 battery AA:BB:CC:DD:EE:FF
-</code></pre>
-<h3 id="monitor"><a class="header" href="#monitor">monitor</a></h3>
-<p>Monitor sensor data (temperature, humidity) in real-time.</p>
-<pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>-d, --duration</code></td><td>0</td><td>Duration in seconds (0 = indefinite)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="repl"><a class="header" href="#repl">repl</a></h3>
-<p>Start an interactive REPL session with a persistent connection. State changes (e.g., <code>settings-write</code>) are visible in subsequent commands (e.g., <code>settings-read</code>).</p>
-<pre><code class="language-bash">cgd1 repl --address AA:BB:CC:DD:EE:FF
-</code></pre>
-<p>If <code>--address</code> is omitted, use <code>connect &lt;mac&gt;</code> inside the REPL.</p>
-<p>Available REPL commands mirror the CLI subcommands (without the <code>cgd1</code> prefix):</p>
-<pre><code>cgd1&gt; help
-Available commands:
-  scan, sync-time, alarm-list, alarm-set, alarm-delete,
-  settings-read, settings-write, brightness, ringtone-preview,
-  ringtone-upload, firmware, battery, monitor, connect, disconnect, exit
-</code></pre>
-<h2 id="token-management"><a class="header" href="#token-management">Token Management</a></h2>
-<p>The CLI automatically manages authentication tokens via <code>FileTokenStore</code>. Tokens are stored per MAC address in the platform’s data directory:</p>
+<p>The <code>.ftl</code> filename must match the crate name (<code>cgd1-rs-controller</code>) — this is how the <code>fl!</code> macro resolves the domain at compile time.</p>
+<h3 id="core-module-srci18nrs"><a class="header" href="#core-module-srci18nrs">Core Module (<code>src/i18n.rs</code>)</a></h3>
+<p>The i18n module provides:</p>
 <ul>
-<li><strong>Linux</strong>: <code>~/.local/share/cgd1-rs/tokens/</code></li>
-<li><strong>macOS</strong>: <code>~/Library/Application Support/cgd1-rs/tokens/</code></li>
+<li><strong><code>fl!</code> macro</strong> — Compile-time-validated translation lookup. Missing keys cause build failures.</li>
+<li><strong><code>get()</code></strong> — Runtime lookup for dynamic keys (e.g. weekday names selected by index).</li>
+<li><strong><code>get_str()</code> / <code>get_int()</code></strong> — Runtime lookup with a single string/integer argument.</li>
+<li><strong><code>init()</code></strong> — Forces lazy initialization of the language loader. Called early in <code>main()</code>.</li>
 </ul>
-<p>A new token is generated on first connection and persisted only after <code>sync-time</code> succeeds. Subsequent connections reuse the stored token.</p>
-<p>If a token becomes invalid (e.g., the device was paired with a different app), delete the token file and run <code>sync-time</code> again to generate a new one.</p>
-<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
-<p>The CLI uses <code>miette</code> for rich error diagnostics. Errors include context, source spans, and suggestions:</p>
-<pre><code>Error: Authentication failed
-  → The device rejected the authentication token.
-  help: This may happen if the device was paired with a different app.
-        Delete the token file and try again:
-        rm ~/.local/share/cgd1-rs/tokens/AA_BB_CC_DD_EE_FF.bin
-</code></pre>
-<h2 id="verbosity"><a class="header" href="#verbosity">Verbosity</a></h2>
-<p>The <code>-v</code> flag controls log output:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Level</th><th>Output</th></tr>
-</thead>
-<tbody>
-<tr><td>(none)</td><td>Errors only</td></tr>
-<tr><td><code>-v</code></td><td>Warnings + errors</td></tr>
-<tr><td><code>-vv</code></td><td>Info + warnings + errors</td></tr>
-<tr><td><code>-vvv</code></td><td>Debug (full trace)</td></tr>
-</tbody>
-</table>
-</div>
+<h3 id="initialization"><a class="header" href="#initialization">Initialization</a></h3>
+<p>In <code>src/main.rs</code>:</p>
+<pre class="playground"><code class="language-rust">mod i18n;
+
+fn main() {
+    // ... tracing setup ...
+    i18n::init();
+    let app = app::ClockControllerApp::new(cli.backend);
+    app.run();
+}</code></pre>
+<h2 id="adding-a-new-language"><a class="header" href="#adding-a-new-language">Adding a New Language</a></h2>
+<ol>
+<li>Create a new directory: <code>cgd1-rs-controller/i18n/{lang}/</code> (e.g. <code>fr/</code>).</li>
+<li>Copy <code>cgd1-rs-controller/i18n/en/cgd1-rs-controller.ftl</code> to the new directory.</li>
+<li>Translate all values to the target language.</li>
+<li>Rebuild — the new language is automatically embedded via <code>rust-embed</code> and selected when the system locale matches.</li>
+</ol>
+<p>No changes to <code>i18n.toml</code> or source code are needed. The <code>rust-embed</code> macro scans the <code>i18n/</code> directory at compile time and includes all subdirectories.</p>
+<h2 id="translation-key-conventions"><a class="header" href="#translation-key-conventions">Translation Key Conventions</a></h2>
+<ul>
+<li>Use <code>kebab-case</code> for message IDs (e.g. <code>status-no-device-connected</code>).</li>
+<li>Arguments use <code>{ $name }</code> syntax in <code>.ftl</code> files.</li>
+<li>Group keys by feature area with comment headers (e.g. <code># Alarm editor</code>, <code># Audio editor</code>).</li>
+<li>Shared keys (e.g. <code>status-no-device-connected</code>, <code>button-read</code>) are defined once in the “Common status messages” section and reused across dialogs.</li>
+</ul>
+<h2 id="using-the-fl-macro-contributors"><a class="header" href="#using-the-fl-macro-contributors">Using the <code>fl!</code> Macro (Contributors)</a></h2>
+<h3 id="static-strings"><a class="header" href="#static-strings">Static strings</a></h3>
+<p>For strings with known keys at compile time:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use crate::fl;
+
+let label = Label::builder().label(&amp;fl!("status-disconnected")).build();
+<span class="boring">}</span></code></pre>
+<h3 id="strings-with-arguments"><a class="header" href="#strings-with-arguments">Strings with arguments</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>status.set_label(&amp;fl!("status-connected", addr = addr.to_string()));
+<span class="boring">}</span></code></pre>
+<p>Cast expressions must be parenthesized:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Correct
+status.set_label(&amp;fl!("status-devices-found", count = (found.len() as i64)));
+
+// Wrong — won't compile
+status.set_label(&amp;fl!("status-devices-found", count = found.len() as i64));
+<span class="boring">}</span></code></pre>
+<h3 id="dynamic-lookups"><a class="header" href="#dynamic-lookups">Dynamic lookups</a></h3>
+<p>For runtime-determined keys (e.g. weekday names looked up by index), use <code>get()</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use crate::i18n::get;
+
+let key = match weekday {
+    Mon =&gt; "weekday-mon",
+    Tue =&gt; "weekday-tue",
+    // ...
+};
+let day_name = get(key);
+<span class="boring">}</span></code></pre>
+<h3 id="what-not-to-translate"><a class="header" href="#what-not-to-translate">What not to translate</a></h3>
+<ul>
+<li><strong>Log messages</strong> (<code>tracing::debug!</code>, <code>warn!</code>, <code>info!</code>, <code>error!</code>) — developer-facing.</li>
+<li><strong>Error strings</strong> in <code>ClockError::Parse("device not found")</code> — internal error handling.</li>
+<li><strong>Ringtone names</strong> from <code>RingtoneSignature::name()</code> — device firmware identifiers.</li>
+<li><strong>Timezone labels</strong> in <code>common.rs</code> — technical identifiers (UTC offsets).</li>
+<li><strong>Sensor units</strong> (<code>°C</code>, <code>%</code>) — universal.</li>
+<li><strong>CLI help text</strong> — could be translated in a future phase using <code>clap</code>’s i18n support.</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="audio.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="controller.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="controller.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="websocket.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -375,11 +313,11 @@ Available commands:
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="audio.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="controller.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="controller.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="websocket.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

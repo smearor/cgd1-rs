@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-432b6975.js";
+            window.path_to_searchindex_js = "searchindex-edbdc84b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-97e4057d.js"></script>
+        <script src="toc-9af7901f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,7 +206,7 @@
 <li><strong>Alarm management</strong>: Read, set, and delete up to 16 alarms with day-of-week repeat masks and snooze</li>
 <li><strong>Device settings</strong>: Read and write volume, brightness, timezone, time format, temperature unit, language, night mode, and screen duration</li>
 <li><strong>Sensor monitoring</strong>: Real-time temperature and humidity via BLE notifications, plus passive advertisement parsing</li>
-<li><strong>Battery monitoring</strong>: Read battery level via the standard GATT battery service</li>
+<li><strong>Battery monitoring</strong>: Battery level from BLE advertising scans, persisted in a cache file for display on connect</li>
 <li><strong>Audio upload</strong>: Upload custom ringtones (8-bit PCM, 8 kHz, mono) via the block-based BLE protocol</li>
 <li><strong>Firmware query</strong>: Read the device firmware version string</li>
 <li><strong>Reconnection</strong>: Automatic reconnection with exponential backoff and full state recovery</li>
@@ -398,28 +398,31 @@ mdbook build
     BleTransport &lt;|.. VirtualClockTransport
 </pre>
 
-<p><strong><code>BtleplugTransport</code></strong> — Real hardware backend using the <code>btleplug</code> crate. Works on Linux (BlueZ), macOS (CoreBluetooth), and Windows.</p>
-<p><strong><code>MockBleTransport</code></strong> — In-memory mock with channels for advertisements and notifications. Used in unit tests.</p>
-<p><strong><code>VirtualClockTransport</code></strong> — Full in-memory simulation of the CGD1 device. Responds to commands with appropriate ACKs, maintains alarm/settings state, and emits sensor notifications. Used in integration tests for CLI and WebSocket server.</p>
+<p><strong><code>BtleplugTransport</code></strong> - Real hardware backend using the <code>btleplug</code> crate. Works on Linux (BlueZ), macOS (CoreBluetooth), and Windows.</p>
+<p><strong><code>MockBleTransport</code></strong> - In-memory mock with channels for advertisements and notifications. Used in unit tests.</p>
+<p><strong><code>VirtualClockTransport</code></strong> - Full in-memory simulation of the CGD1 device. Responds to commands with appropriate ACKs, maintains alarm/settings state, and emits sensor notifications. Used in integration tests for CLI and WebSocket server.</p>
 <h3 id="device-lifecycle"><a class="header" href="#device-lifecycle">Device Lifecycle</a></h3>
 <pre class="mermaid">flowchart LR
     Scan["ClockScanner&lt;br/&gt;.scan_active()"] --&gt; Connect["ClockManager&lt;br/&gt;.connect(mac)"]
     Connect --&gt; Auth["ClockDevice&lt;br/&gt;.authenticate(token)"]
-    Auth --&gt; SyncTime["ClockDevice&lt;br/&gt;.sync_time_now()"]
+    Auth --&gt; SyncTZ["ClockDevice&lt;br/&gt;.sync_timezone()"]
+    SyncTZ --&gt; SyncTime["ClockDevice&lt;br/&gt;.sync_time_now()"]
     SyncTime --&gt; Ready["Ready for commands"]
     Ready --&gt; Operate["read_alarms&lt;br/&gt;set_alarm&lt;br/&gt;read_settings&lt;br/&gt;write_settings&lt;br/&gt;upload_ringtone&lt;br/&gt;..."]
     Ready --&gt; Monitor["subscribe() →&lt;br/&gt;ClockEvent stream"]
 </pre>
 
+<p>The <code>connect_authenticate_and_sync</code> method performs all steps in sequence. <code>sync_timezone</code> reads the device settings, computes the local system UTC offset via <code>chrono::Local</code>, and writes the correct timezone before <code>sync_time</code> to avoid time display offsets (the device defaults to UTC+8 after factory reset).</p>
 <h3 id="clockdevice"><a class="header" href="#clockdevice">ClockDevice</a></h3>
 <p><code>ClockDevice</code> is the primary handle for interacting with a connected CGD1. It owns:</p>
 <ul>
-<li><strong>Transport reference</strong> — For sending commands and reading data</li>
-<li><strong>Pending ACK map</strong> — <code>HashMap&lt;u8, VecDeque&lt;oneshot::Sender&gt;&gt;</code> for matching ACKs to pending requests by command byte</li>
-<li><strong>Pending data response channel</strong> — <code>mpsc::Sender</code> for multi-packet responses (e.g., alarm read, settings read)</li>
-<li><strong>Event broadcast sender</strong> — <code>broadcast::Sender&lt;ClockEvent&gt;</code> for sensor, battery, and connection events</li>
-<li><strong>Auth token</strong> — Stored after successful authentication</li>
-<li><strong>Notification task</strong> — Background <code>tokio::task</code> that processes BLE notifications</li>
+<li><strong>Transport reference</strong> - For sending commands and reading data</li>
+<li><strong>Pending ACK map</strong> - <code>HashMap&lt;u8, VecDeque&lt;oneshot::Sender&gt;&gt;</code> for matching ACKs to pending requests by command byte</li>
+<li><strong>Pending data response channel</strong> - <code>mpsc::Sender</code> for multi-packet responses (e.g., alarm read, settings read)</li>
+<li><strong>Event broadcast sender</strong> - <code>broadcast::Sender&lt;ClockEvent&gt;</code> for sensor, battery, and connection events</li>
+<li><strong>Auth token</strong> - Stored after successful authentication</li>
+<li><strong>Notification task handle</strong> - <code>JoinHandle</code> stored so it can be aborted on disconnect, preventing zombie tasks from stealing notifications</li>
+<li><strong>Token store</strong> - Optional <code>Arc&lt;dyn TokenStore&gt;</code> for persisting auth tokens after privileged commands succeed</li>
 </ul>
 <h4 id="notification-task"><a class="header" href="#notification-task">Notification Task</a></h4>
 <p>A background task per connected device listens for BLE notifications and dispatches them:</p>
@@ -428,7 +431,6 @@ mdbook build
     AuthNotify["Auth Notify&lt;br/&gt;(ACKs)"]
     DataNotify["Data Notify&lt;br/&gt;(ACKs, Settings, Alarms)"]
     SensorNotify["Sensor Notify&lt;br/&gt;(Temp, Humidity)"]
-    Battery["Battery Level&lt;br/&gt;(GATT)"]
     EventChannel["broadcast::Sender&lt;br/&gt;&lt;ClockEvent&gt;"]
     AckMap["Oneshot Senders&lt;br/&gt;(pending ACKs)"]
     DataChannel["mpsc::Sender&lt;br/&gt;(pending data)"]
@@ -436,37 +438,46 @@ mdbook build
     NotifyTask --&gt; AuthNotify
     NotifyTask --&gt; DataNotify
     NotifyTask --&gt; SensorNotify
-    NotifyTask --&gt; Battery
     AuthNotify --&gt; AckMap
     DataNotify --&gt; AckMap
     DataNotify --&gt; DataChannel
     SensorNotify --&gt; EventChannel
-    Battery --&gt; EventChannel
 </pre>
 
+<blockquote>
+<p><strong>Note</strong>: Battery is <strong>not</strong> sourced from GATT notifications. The GATT Battery Service (<code>0x2A19</code>) returns an unreliable 99% on the CGD1. Battery data comes exclusively from advertising packets, cached via <code>KnownDeviceStore</code>. See <a href="#sensors--battery">Sensors &amp; Battery</a> for details.</p>
+</blockquote>
 <h4 id="request-response-pattern"><a class="header" href="#request-response-pattern">Request-Response Pattern</a></h4>
 <p>Commands that expect an ACK use a <code>oneshot::channel</code>. The pending request is registered <strong>before</strong> the command frame is sent to prevent a race condition where the ACK arrives before the receiver is set up:</p>
 <ol>
-<li><code>prepare_ack(command)</code> — Registers a <code>oneshot::Sender</code> in the pending map</li>
-<li><code>transport.write_frame(command, payload)</code> — Sends the command</li>
-<li><code>wait_ack(receiver, timeout)</code> — Waits for the ACK with a 10-second timeout</li>
+<li><code>prepare_ack(command)</code> - Registers a <code>oneshot::Sender</code> in the pending map</li>
+<li><code>transport.write_frame(command, payload)</code> - Sends the command</li>
+<li><code>wait_ack(receiver, timeout)</code> - Waits for the ACK with a 10-second timeout</li>
 </ol>
 <p>Multi-packet responses (e.g., <code>read_alarms</code>, <code>read_settings</code>) use an <code>mpsc::Sender</code> instead, allowing the notification task to forward data packets as they arrive.</p>
 <h3 id="reconnection"><a class="header" href="#reconnection">Reconnection</a></h3>
 <p>If the device disconnects unexpectedly, the library attempts reconnection with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped). After a successful BLE reconnect, the full state recovery sequence is performed:</p>
 <ol>
+<li><strong>Transport cleanup</strong> - <code>transport.disconnect()</code> to clear stale connection state</li>
 <li><strong>BLE Reconnect</strong> via <code>transport.connect(address)</code></li>
 <li><strong>GATT Re-subscription</strong> for Auth Notify, Data Notify, and Sensor Notify</li>
 <li><strong>Re-authentication</strong> using the stored token</li>
-<li><strong>Flag reset</strong> — <code>is_authenticated</code> set to <code>true</code></li>
+<li><strong>Flag reset</strong> - <code>is_authenticated</code> set to <code>true</code></li>
 </ol>
 <p><code>ClockEvent::Disconnected</code> and <code>ClockEvent::Reconnected</code> are broadcast to subscribers.</p>
+<h3 id="knowndevicestore"><a class="header" href="#knowndevicestore">KnownDeviceStore</a></h3>
+<p>The <code>KnownDeviceStore</code> persists known device MAC addresses and battery levels:</p>
+<ul>
+<li><strong><code>known_devices.json</code></strong> - List of previously seen device MAC addresses, used to populate the controller dropdown on startup.</li>
+<li><strong><code>battery_cache.json</code></strong> - Map of MAC address to battery level (u8), populated from advertising scans. Loaded on startup into the controller’s <code>scan_battery_cache</code>.</li>
+</ul>
+<p>Both files reside in the platform-dependent data directory (e.g., <code>~/.local/share/cgd1-rs/</code> on Linux).</p>
 <h3 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h3>
 <p>The library uses structured error types:</p>
 <ul>
-<li><strong><code>TransportError</code></strong> — BLE-level errors (not connected, characteristic not found, timeout, etc.)</li>
-<li><strong><code>ClockError</code></strong> — Library-level errors (auth failed, command rejected, timeout, invalid alarm slot, parse errors, IO errors)</li>
-<li><strong><code>AuthFailedError</code></strong> — Authentication failure with context (reason, is_new_token, token_path)</li>
+<li><strong><code>TransportError</code></strong> - BLE-level errors (not connected, characteristic not found, timeout, etc.)</li>
+<li><strong><code>ClockError</code></strong> - Library-level errors (auth failed, command rejected, timeout, invalid alarm slot, parse errors, IO errors)</li>
+<li><strong><code>AuthFailedError</code></strong> - Authentication failure with context (reason, is_new_token, token_path)</li>
 </ul>
 <p>All errors implement <code>std::error::Error</code> and <code>Display</code>. The CLI additionally uses <code>miette::Diagnostic</code> for rich terminal output.</p>
 <h3 id="newtypes"><a class="header" href="#newtypes">Newtypes</a></h3>
@@ -622,7 +633,7 @@ for device in &amp;devices {
 <tr><th>Field</th><th>Type</th><th>Scaling</th></tr>
 </thead>
 <tbody>
-<tr><td>MAC</td><td>6 bytes (reversed)</td><td>—</td></tr>
+<tr><td>MAC</td><td>6 bytes (reversed)</td><td>-</td></tr>
 <tr><td>Temperature</td><td>Int16 BE</td><td>/ 10 (°C)</td></tr>
 <tr><td>Humidity</td><td>UInt16 BE</td><td>/ 10 (%)</td></tr>
 <tr><td>Battery</td><td>UInt8</td><td>&amp; 0x7F (mask bit 7)</td></tr>
@@ -637,14 +648,31 @@ for device in &amp;devices {
     participant Transport as BleTransport
     participant CGD1 as CGD1 Device
 
-    App-&gt;&gt;Manager: connect(mac)
+    App-&gt;&gt;Manager: connect_authenticate_and_sync(mac, token)
     Manager-&gt;&gt;Transport: connect(address)
     Transport-&gt;&gt;CGD1: BLE connection
     CGD1--&gt;&gt;Transport: Connected
-    Transport--&gt;&gt;Manager: Ok
-    Manager--&gt;&gt;App: ClockDevice
+    Manager-&gt;&gt;Transport: subscribe(Auth/Data/Sensor Notify)
+    Manager-&gt;&gt;Manager: spawn notification task
+    Manager-&gt;&gt;Manager: set_token_store(token_store)
+    Manager-&gt;&gt;CGD1: authenticate(token)
+    CGD1--&gt;&gt;Manager: Auth ACKs
+    Manager-&gt;&gt;CGD1: sync_timezone()
+    CGD1--&gt;&gt;Manager: Settings response
+    Manager-&gt;&gt;CGD1: sync_time_now()
+    CGD1--&gt;&gt;Manager: TimeSync ACK
+    Manager--&gt;&gt;App: ClockDevice (ready)
 </pre>
 
+<p>The full <code>connect_authenticate_and_sync</code> flow performs:</p>
+<ol>
+<li><strong>BLE connect</strong> - <code>transport.connect(address)</code></li>
+<li><strong>Subscribe</strong> to Auth Notify, Data Notify, and Sensor Notify characteristics</li>
+<li><strong>Spawn notification task</strong> - Background task for processing BLE notifications</li>
+<li><strong>Authenticate</strong> - Two-step token handshake (Auth Init + Auth Confirm)</li>
+<li><strong>Sync timezone</strong> - Read device settings, compute local UTC offset, write correct timezone</li>
+<li><strong>Sync time</strong> - Send current Unix timestamp; token is persisted only after this succeeds</li>
+</ol>
 <h3 id="connecting-with-the-library"><a class="header" href="#connecting-with-the-library">Connecting with the Library</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -674,7 +702,21 @@ device_b.read_alarms().await?;
 </span><span class="boring">fn main() {
 </span>manager.disconnect(&amp;mac).await?;
 <span class="boring">}</span></code></pre>
-<p>This tears down the BLE connection and stops the notification task for that device.</p>
+<p>This aborts the notification task (via <code>JoinHandle::abort()</code>) and tears down the BLE connection. Aborting the notification task is critical - without it, a zombie task from a failed connection can steal notifications from a subsequent connection to the same device.</p>
+<h3 id="automatic-reconnection"><a class="header" href="#automatic-reconnection">Automatic Reconnection</a></h3>
+<p>When the BLE connection drops (e.g., device goes out of range, battery dies, or alarm triggers a disconnect), the notification task automatically attempts reconnection with exponential backoff:</p>
+<ol>
+<li><strong>Disconnect detected</strong> - The notification stream ends or a <code>CentralEvent::DeviceDisconnected</code> is received</li>
+<li><strong>Transport cleanup</strong> - <code>transport.disconnect()</code> clears the connection state to avoid <code>AlreadyConnected</code> errors on retry</li>
+<li><strong>Reconnect attempts</strong> - Up to 10 attempts with exponential backoff (1s, 2s, 4s, 8s, 16s, 32s capped)</li>
+<li><strong>BLE connect + subscribe</strong> - <code>reconnect_and_restore</code> reconnects and re-subscribes to all notify characteristics</li>
+<li><strong>Re-authentication</strong> - A separate task re-authenticates using the stored token (spawned concurrently so the notification loop can process ACKs)</li>
+<li><strong>State recovery</strong> - On success, <code>ClockEvent::Reconnected</code> is emitted</li>
+</ol>
+<p>The <code>connect()</code> call has a 10-second timeout to prevent hanging when the device is unavailable (e.g., during an alarm). The device typically becomes discoverable again ~15-20 seconds after an alarm-triggered disconnect.</p>
+<blockquote>
+<p><strong>Note</strong>: While the alarm is sounding, the CGD1 is not discoverable. Dismissing the alarm quickly allows faster reconnection.</p>
+</blockquote>
 <h3 id="virtual-backend-testing"><a class="header" href="#virtual-backend-testing">Virtual Backend (Testing)</a></h3>
 <p>For testing without hardware, use the <code>virtual</code> backend:</p>
 <pre><code class="language-bash">cgd1 --backend virtual scan
@@ -723,8 +765,9 @@ cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
 </ul>
 <h3 id="persistence-rule"><a class="header" href="#persistence-rule">Persistence Rule</a></h3>
 <blockquote>
-<p>A newly generated token is only persisted after a privileged command (e.g., <code>sync_time</code>) succeeds. An Auth Confirm ACK alone does not prove the token was accepted — the device may send an ACK even with a bad token.</p>
+<p>A newly generated token is only persisted after a privileged command (e.g., <code>sync_time</code>) succeeds. An Auth Confirm ACK alone does not prove the token was accepted - the device may send an ACK even with a bad token.</p>
 </blockquote>
+<p>If <code>sync_time</code> times out after successful Auth ACKs, the device has a previously stored token that doesn’t match. A factory reset is required - see <a href="#factory-reset">Troubleshooting: Factory Reset</a>.</p>
 <p>The <code>sync-time</code> CLI command uses <code>connect_with_store</code>, which persists the token only after <code>sync_time_now()</code> succeeds:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -767,6 +810,7 @@ device.set_token_store(store.clone() as Arc&lt;dyn TokenStore&gt;);
 device.authenticate(&amp;token_result).await?;
 
 // Token is confirmed only after a privileged command succeeds
+device.sync_timezone().await?; // optional but recommended
 device.sync_time_now().await?;
 
 if token_result.is_new() {
@@ -818,7 +862,7 @@ println!("Firmware: {}", firmware);
 <tr><td>4</td><td><code>0x10</code></td><td>Friday</td></tr>
 <tr><td>5</td><td><code>0x20</code></td><td>Saturday</td></tr>
 <tr><td>6</td><td><code>0x40</code></td><td>Sunday</td></tr>
-<tr><td>—</td><td><code>0x00</code></td><td>Once (no repeat)</td></tr>
+<tr><td>-</td><td><code>0x00</code></td><td>Once (no repeat)</td></tr>
 </tbody>
 </table>
 </div>
@@ -1065,10 +1109,14 @@ device.preview_ringtone(Some(Volume::new(3)?)).await?;
 <tbody>
 <tr><td>Passive</td><td>Temperature, humidity, battery</td><td>BLE advertisements (<code>FDCD</code>)</td><td>No</td></tr>
 <tr><td>Connected</td><td>Temperature, humidity (real-time)</td><td>Sensor Notify (<code>00000100-...</code>)</td><td>Yes</td></tr>
-<tr><td>Connected</td><td>Battery</td><td>GATT Battery Service (<code>0x180f</code> / <code>0x2a19</code>)</td><td>Yes</td></tr>
+<tr><td>Connected</td><td>Battery (cached from advertising)</td><td><code>KnownDeviceStore</code> battery cache</td><td>No (cached)</td></tr>
+<tr><td>On-demand</td><td>Battery (unreliable)</td><td>GATT Battery Service (<code>0x180f</code> / <code>0x2a19</code>)</td><td>Yes</td></tr>
 </tbody>
 </table>
 </div>
+<blockquote>
+<p><strong>Warning</strong>: The GATT Battery Service characteristic (<code>0x2A19</code>) consistently returns 99% on the CGD1 and is <strong>not reliable</strong>. The controller and recommended connect flow use advertising-based battery data exclusively. The <code>read_battery()</code> method remains available for CLI/WS diagnostic use but is not used in the connect flow.</p>
+</blockquote>
 <h2 id="passive-sensor-stream-advertising"><a class="header" href="#passive-sensor-stream-advertising">Passive Sensor Stream (Advertising)</a></h2>
 <p>The device broadcasts sensor data in BLE advertisement packets via Service Data under UUID <code>0xFDCD</code>.</p>
 <h3 id="format"><a class="header" href="#format">Format</a></h3>
@@ -1109,7 +1157,7 @@ device.preview_ringtone(Some(Volume::new(3)?)).await?;
 </table>
 </div>
 <h3 id="event-dispatch"><a class="header" href="#event-dispatch">Event Dispatch</a></h3>
-<p>The notification task parses sensor notifications and broadcasts <code>ClockEvent::SensorUpdate</code>:</p>
+<p>The notification task parses sensor notifications and broadcasts <code>ClockEvent::SensorUpdate</code>. Battery is <strong>not</strong> included in sensor notifications (the CGD1 sends only 5 bytes without battery data):</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub enum ClockEvent {
@@ -1121,14 +1169,41 @@ device.preview_ringtone(Some(Volume::new(3)?)).await?;
     Advertisement(AdvertisementData),
 }
 <span class="boring">}</span></code></pre>
-<h2 id="battery-connected"><a class="header" href="#battery-connected">Battery (Connected)</a></h2>
-<p>Battery level is read from the standard GATT Battery Service:</p>
+<p><code>ClockEvent::BatteryLevel</code> is sent from the controller’s connect handler using the advertising battery cache, not from sensor notifications.</p>
+<h2 id="battery-advertising-cache"><a class="header" href="#battery-advertising-cache">Battery (Advertising Cache)</a></h2>
+<p>The CGD1 only advertises battery data when <strong>not connected</strong> and the button is held for 3 seconds. The battery level is encoded in advertising TLV type <code>0x02</code> as a single byte (masked with <code>0x7F</code>).</p>
+<h3 id="knowndevicestore-battery-cache"><a class="header" href="#knowndevicestore-battery-cache">KnownDeviceStore Battery Cache</a></h3>
+<p>The <code>KnownDeviceStore</code> persists battery levels from advertising scans in a separate <code>battery_cache.json</code> file, keyed by MAC address:</p>
+<pre><code class="language-json">{"58:2d:34:82:cc:81": 31}
+</code></pre>
 <ul>
-<li><strong>Service UUID</strong>: <code>0x180f</code></li>
-<li><strong>Characteristic UUID</strong>: <code>0x2a19</code></li>
-<li><strong>Format</strong>: 1 byte (percentage 0–100)</li>
+<li><strong><code>save_battery(address, level)</code></strong> - Called by the controller’s scan callback when advertising battery data is received.</li>
+<li><strong><code>load_battery()</code></strong> - Called on startup to populate the in-memory <code>scan_battery_cache</code>.</li>
 </ul>
-<p>The library reads this characteristic and, when notifications are supported, subscribes for real-time battery updates. Battery changes are dispatched as <code>ClockEvent::BatteryLevel</code>.</p>
+<h3 id="connect-flow-integration"><a class="header" href="#connect-flow-integration">Connect Flow Integration</a></h3>
+<p>The controller’s connect handler reads the cached battery value from <code>scan_battery_cache</code> after a successful <code>connect_authenticate_and_sync</code> and sends <code>ClockEvent::BatteryLevel</code> to update the UI:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>if let Some(level) = scan_battery_cache.lock().unwrap().get(&amp;addr).copied() {
+    let _ = event_tx.send(ClockEvent::BatteryLevel {
+        level: BatteryLevel::new(level),
+    });
+}
+<span class="boring">}</span></code></pre>
+<h3 id="device-behavior-notes"><a class="header" href="#device-behavior-notes">Device Behavior Notes</a></h3>
+<ul>
+<li>The device <strong>stops advertising</strong> when connected, so battery data is only available passively.</li>
+<li>Advertising battery values can <strong>fluctuate</strong> between packets (e.g., 4%, 22%, 31% in the same scan window).</li>
+<li>Sensor notifications (5 bytes) do <strong>not</strong> contain battery data.</li>
+<li>Device settings responses do <strong>not</strong> contain battery data.</li>
+</ul>
+<h2 id="battery-gatt---diagnostic-only"><a class="header" href="#battery-gatt---diagnostic-only">Battery (GATT - Diagnostic Only)</a></h2>
+<p>The <code>read_battery()</code> method reads the standard GATT Battery Service characteristic (<code>0x2A19</code>). This is available for CLI and WebSocket diagnostic use but is <strong>not used in the controller connect flow</strong> because it consistently returns 99% on the CGD1.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Diagnostic use only - unreliable on CGD1
+let battery = device.read_battery().await?;
+<span class="boring">}</span></code></pre>
 <h2 id="cli-usage-2"><a class="header" href="#cli-usage-2">CLI Usage</a></h2>
 <h3 id="monitor-sensors"><a class="header" href="#monitor-sensors">Monitor sensors</a></h3>
 <pre><code class="language-bash">cgd1 monitor AA:BB:CC:DD:EE:FF --duration 60
@@ -1200,24 +1275,56 @@ println!("Battery: {} %", battery);
 </div>
 <h2 id="ringtone-signatures"><a class="header" href="#ringtone-signatures">Ringtone Signatures</a></h2>
 <h3 id="built-in-ringtones"><a class="header" href="#built-in-ringtones">Built-in Ringtones</a></h3>
+<p>The original Qingping/ClearGrass PCM ringtones have been replaced with audio from
+<a href="https://gitlab.com/ubports/development/core/lomiri-sounds">lomiri-sounds</a> (CC-BY-SA-3.0)
+and a chiptune remix by Dubmood (CC-BY-NC-SA-4.0). See
+<a href="https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md">LICENSE_RINGTONES.md</a>
+for full attribution and license details.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Signature</th><th>Name</th></tr>
+<tr><th>Signature</th><th>Name</th><th>Source</th><th>Copyright holder</th><th>License</th><th>PCM length</th></tr>
 </thead>
 <tbody>
-<tr><td><code>fdc366a5</code></td><td>Beep</td></tr>
-<tr><td><code>0961bb77</code></td><td>Digital Ringtone</td></tr>
-<tr><td><code>ba2c2c8c</code></td><td>Digital Ringtone 2</td></tr>
-<tr><td><code>ea2d4c02</code></td><td>Cuckoo</td></tr>
-<tr><td><code>791bacb3</code></td><td>Telephone Ringtone</td></tr>
-<tr><td><code>1d019fd6</code></td><td>Exotic Guitar</td></tr>
-<tr><td><code>6e70b659</code></td><td>Lively Piano</td></tr>
-<tr><td><code>8f004886</code></td><td>Story Piano</td></tr>
-<tr><td><code>26522519</code></td><td>Forest Piano</td></tr>
+<tr><td><code>fdc366a5</code></td><td>Beep</td><td>Alarm clock.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>95967</td></tr>
+<tr><td><code>0961bb77</code></td><td>Digital Ringtone</td><td>Mallet.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>18155</td></tr>
+<tr><td><code>ba2c2c8c</code></td><td>Digital Ringtone 2</td><td>Sintonia.ogg</td><td>2018, Mauricio Duarte</td><td>CC-BY-4.0</td><td>18462</td></tr>
+<tr><td><code>ea2d4c02</code></td><td>Cuckoo</td><td>Counterpoint.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>76522</td></tr>
+<tr><td><code>791bacb3</code></td><td>Telephone Ringtone</td><td>Call me.ogg</td><td>2018, Anonymous</td><td>CC0-1.0</td><td>95967</td></tr>
+<tr><td><code>1d019fd6</code></td><td>Exotic Guitar</td><td>Latin.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>6e70b659</code></td><td>Lively Piano</td><td>UBports.ogg</td><td>2018, Mauricio Duarte</td><td>CC-BY-4.0</td><td>96000</td></tr>
+<tr><td><code>8f004886</code></td><td>Story Piano</td><td>Melody piano.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>86043</td></tr>
+<tr><td><code>26522519</code></td><td>Forest Piano</td><td>Mangore.ogg</td><td>2018, Mauricio Duarte</td><td>CC-BY-4.0</td><td>69819</td></tr>
+<tr><td><code>4d6f6e6b</code></td><td>Monkey Island</td><td>monkey-island-8bit</td><td>Kalle Jonsson (Dubmood)</td><td>CC-BY-NC-SA-4.0</td><td>80000</td></tr>
+<tr><td><code>416c5379</code></td><td>Alarm Synth</td><td>Alarm synth.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>41724d62</code></td><td>Array Mbira</td><td>Array mbira.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>79033</td></tr>
+<tr><td><code>426c6973</code></td><td>Bliss</td><td>Bliss.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>47181</td></tr>
+<tr><td><code>43656c73</code></td><td>Celestial</td><td>Celestial.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>456e7472</code></td><td>Entropy</td><td>Entropy.ogg</td><td>2018, Mauricio Duarte</td><td>CC-BY-4.0</td><td>96000</td></tr>
+<tr><td><code>476c4d61</code></td><td>Glass Marimba</td><td>Glass marimba.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>48616c6f</code></td><td>Halo Pentatonic</td><td>Halo Pentatonic.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>87819</td></tr>
+<tr><td><code>4861726d</code></td><td>Harmonics</td><td>Harmonics.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>64230</td></tr>
+<tr><td><code>48617270</code></td><td>Harp Arp</td><td>Harp arp.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>50077</td></tr>
+<tr><td><code>4b6f746f</code></td><td>Koto Chords</td><td>Koto chords.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>53616b65</code></td><td>Sakenointi</td><td>sakenointi.ogg</td><td>2018, TMetso</td><td>CC-BY-4.0</td><td>78454</td></tr>
+<tr><td><code>53616d73</code></td><td>Sam’s Song</td><td>Sam’s Song.ogg</td><td>2013, Sam Hulick</td><td>CC-BY-SA-3.0</td><td>38147</td></tr>
+<tr><td><code>536f756c</code></td><td>Soul</td><td>Soul.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>53706172</code></td><td>Sparkle</td><td>Sparkle.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>71332</td></tr>
+<tr><td><code>53757072</code></td><td>Supreme</td><td>Supreme.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>91793</td></tr>
+<tr><td><code>53757275</code></td><td>Suru Arpeggio</td><td>Suru arpeggio.ogg</td><td>2013, Canonical Ltd.</td><td>CC-BY-SA-3.0</td><td>96000</td></tr>
+<tr><td><code>54696d65</code></td><td>Time Not Lost</td><td>Time not Lost.ogg</td><td>2018, Mauricio Duarte</td><td>CC-BY-4.0</td><td>95944</td></tr>
+<tr><td><code>576f6f64</code></td><td>Wooden Drive</td><td>Wooden Drive.ogg</td><td>2018, Amber Forest</td><td>CC-BY-3.0</td><td>56816</td></tr>
+<tr><td><code>958f8a83</code></td><td>Elysium</td><td>ELYSIUM.MOD</td><td>Jester</td><td>CC-BY-NC-SA-4.0</td><td>96000</td></tr>
 </tbody>
 </table>
 </div>
+<p><strong>Sources:</strong></p>
+<ul>
+<li>lomiri-sounds: https://gitlab.com/ubports/development/core/lomiri-sounds</li>
+<li>Upstream copyright file: https://gitlab.com/ubports/development/core/lomiri-sounds/-/blob/main/debian/copyright?ref_type=heads</li>
+<li>Dubmood (Monkey Island): chiptune remix, CC-BY-NC-SA-4.0</li>
+<li>Full attribution and license details: <a href="https://github.com/smearor/cgd1-rs/blob/main/LICENSE_RINGTONES.md">LICENSE_RINGTONES.md</a></li>
+</ul>
 <h3 id="custom-slots"><a class="header" href="#custom-slots">Custom Slots</a></h3>
 <p>Two alternating slot signatures are used for custom uploads:</p>
 <div class="table-wrapper">
@@ -1233,6 +1340,54 @@ println!("Battery: {} %", battery);
 </div>
 <blockquote>
 <p>Always alternate between slots when uploading new custom audio. The device may reject uploads if the target signature matches the currently active ringtone.</p>
+</blockquote>
+<h3 id="custom-ringtones-from-configcgd1-rsringtones"><a class="header" href="#custom-ringtones-from-configcgd1-rsringtones">Custom Ringtones from <code>~/.config/cgd1-rs/ringtones/</code></a></h3>
+<p>The GTK controller automatically discovers user-provided ringtone files placed in
+the XDG config directory:</p>
+<pre><code>~/.config/cgd1-rs/ringtones/*.pcm
+</code></pre>
+<p>Each <code>.pcm</code> file appears as a separate entry in the Audio Editor’s ringtone
+dropdown, using the filename (without extension) as the display name. WAV files
+with a <code>.pcm</code> extension are also accepted — the controller automatically
+extracts the raw PCM data from the <code>data</code> chunk if the file starts with
+<code>RIFF....WAVE</code>.</p>
+<h4 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h4>
+<ol>
+<li>
+<p><strong>Signature derivation</strong>: The controller computes a deterministic 4-byte
+signature by hashing the filename. The hash avoids collisions with all
+known built-in and slot signatures by incrementing a salt until a
+non-colliding value is found. The resulting signature is stored as a
+<code>RingtoneSignature::Custom([u8; 4])</code>.</p>
+</li>
+<li>
+<p><strong>Upload on Apply</strong>: When the user selects a custom ringtone and clicks
+“Apply”, the controller reads the PCM file from disk, uploads the audio
+to the device under the derived signature, and writes that signature to
+the device settings to activate it.</p>
+</li>
+<li>
+<p><strong>Read-back</strong>: When reading settings from the device, if the device
+reports a <code>Custom</code> signature that matches a known custom ringtone file,
+the dropdown automatically selects that entry. If the file no longer
+exists, the raw hex signature is displayed instead.</p>
+</li>
+</ol>
+<h4 id="adding-a-custom-ringtone"><a class="header" href="#adding-a-custom-ringtone">Adding a Custom Ringtone</a></h4>
+<pre><code class="language-bash"># Create the directory if it doesn't exist
+mkdir -p ~/.config/cgd1-rs/ringtones
+
+# Copy your PCM file (8-bit unsigned, 8 kHz, mono, max. 98 KB)
+cp my_ringtone.pcm ~/.config/cgd1-rs/ringtones/my_ringtone.pcm
+</code></pre>
+<p>Restart the controller (or re-open the Audio Editor panel) for the new
+ringtone to appear in the dropdown.</p>
+<blockquote>
+<p><strong>Note</strong>: Custom ringtones from the config directory use
+<code>RingtoneSignature::Custom</code> with a derived hash signature, not the
+fixed <code>CustomSlotA</code>/<code>CustomSlotB</code> slots. The two fixed slots remain
+available for manual uploads via the “Custom Upload” section of the
+Audio Editor.</p>
 </blockquote>
 <h2 id="upload-protocol"><a class="header" href="#upload-protocol">Upload Protocol</a></h2>
 <pre class="mermaid">sequenceDiagram
@@ -1265,14 +1420,14 @@ println!("Battery: {} %", battery);
     Note over CGD1: Device stores audio under signature
 </pre>
 
-<h3 id="step-0--prepare-the-payload"><a class="header" href="#step-0--prepare-the-payload">Step 0 — Prepare the Payload</a></h3>
+<h3 id="step-0---prepare-the-payload"><a class="header" href="#step-0---prepare-the-payload">Step 0 - Prepare the Payload</a></h3>
 <ol>
 <li>Decode/resample the source file to 8-bit unsigned PCM, 8000 Hz, mono</li>
 <li>Pad to a multiple of 512 bytes: first padding byte is <code>00</code> (end-of-audio marker), remaining are <code>FF</code></li>
 <li>Keep the total under ~98 KB</li>
 </ol>
 <p>The <code>validate_audio</code> function checks these constraints and returns an error if they are violated.</p>
-<h3 id="step-1--mtu-exchange"><a class="header" href="#step-1--mtu-exchange">Step 1 — MTU Exchange</a></h3>
+<h3 id="step-1---mtu-exchange"><a class="header" href="#step-1---mtu-exchange">Step 1 - MTU Exchange</a></h3>
 <p>Before uploading, an MTU exchange is performed to ensure the 130-byte packets (128 bytes audio + 2-byte header) fit within a single BLE packet:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1281,14 +1436,14 @@ if mtu &lt; 130 {
     return Err(ClockError::MtuTooSmall { mtu });
 }
 <span class="boring">}</span></code></pre>
-<h3 id="step-2--audio-init"><a class="header" href="#step-2--audio-init">Step 2 — Audio Init</a></h3>
+<h3 id="step-2---audio-init"><a class="header" href="#step-2---audio-init">Step 2 - Audio Init</a></h3>
 <p>Send <code>08 10 [Size 3B LE] [Signature 4B]</code> to Data Write.</p>
 <ul>
 <li><strong>Size</strong>: Padded audio length in bytes (Little Endian, 3 bytes)</li>
 <li><strong>Signature</strong>: Target ringtone slot signature</li>
 </ul>
 <p>Wait for ACK: <code>04 ff 10 [Status] [Payload]</code> (status <code>00</code> = success)</p>
-<h3 id="step-3--send-audio-data"><a class="header" href="#step-3--send-audio-data">Step 3 — Send Audio Data</a></h3>
+<h3 id="step-3---send-audio-data"><a class="header" href="#step-3---send-audio-data">Step 3 - Send Audio Data</a></h3>
 <ul>
 <li><strong>Packet format</strong>: <code>81 08 [Audio 128B]</code> (130 bytes on the wire)</li>
 <li>A trailing packet shorter than 128 bytes is padded with <code>FF</code></li>
@@ -1296,7 +1451,7 @@ if mtu &lt; 130 {
 <li>After every 4th packet (or the last packet), wait for block ACK: <code>04 ff 08 [Status] [Payload]</code></li>
 <li>Each packet is written with write-with-response</li>
 </ul>
-<h3 id="step-4--completion"><a class="header" href="#step-4--completion">Step 4 — Completion</a></h3>
+<h3 id="step-4---completion"><a class="header" href="#step-4---completion">Step 4 - Completion</a></h3>
 <p>After the last block ACK, the device stores the audio under the given signature. Select it as the active ringtone by writing the same signature in the settings payload (bytes 16–19).</p>
 <blockquote>
 <p><strong>Important</strong>: The transfer must own the connection. Alarm reads, settings reads, RSSI polling, or notification re-subscriptions issued in parallel can abort the upload. The library holds a mutex for the whole transfer.</p>
@@ -1558,17 +1713,17 @@ cargo build --release -p cgd1-rs-controller
 <h3 id="mainwindow"><a class="header" href="#mainwindow">MainWindow</a></h3>
 <p>The main window features a sidebar for device management and a tabbed content area. Each connected device gets its own tab showing:</p>
 <ul>
-<li><strong>Clock display</strong> — Seven-segment style time display using a custom font</li>
-<li><strong>Sensor cards</strong> — Temperature, humidity, and battery</li>
-<li><strong>Device info</strong> — Firmware version, MAC address</li>
+<li><strong>Clock display</strong> - Seven-segment style time display using a custom font</li>
+<li><strong>Sensor cards</strong> - Temperature, humidity, and battery</li>
+<li><strong>Device info</strong> - Firmware version, MAC address</li>
 </ul>
 <h3 id="dialog-system"><a class="header" href="#dialog-system">Dialog System</a></h3>
 <p>Instead of separate widget files, the controller uses a modular <code>dialog/</code> directory:</p>
 <ul>
-<li><strong><code>dialog/alarms.rs</code></strong> — Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle</li>
-<li><strong><code>dialog/audio.rs</code></strong> — Ringtone upload dialog with file picker and signature selection</li>
-<li><strong><code>dialog/info.rs</code></strong> — Device information dialog (firmware, battery, MAC)</li>
-<li><strong><code>dialog/settings.rs</code></strong> — Settings panel with sliders, spin buttons, and combo boxes for all device settings</li>
+<li><strong><code>dialog/alarms.rs</code></strong> - Alarm editor dialog with 16 slot rows, each showing time, repeat mask, and snooze toggle</li>
+<li><strong><code>dialog/audio.rs</code></strong> - Ringtone upload dialog with file picker and signature selection</li>
+<li><strong><code>dialog/info.rs</code></strong> - Device information dialog (firmware, battery, MAC)</li>
+<li><strong><code>dialog/settings.rs</code></strong> - Settings panel with sliders, spin buttons, and combo boxes for all device settings</li>
 </ul>
 <h3 id="display-module"><a class="header" href="#display-module">Display Module</a></h3>
 <p>The <code>display/</code> directory contains a custom seven-segment clock widget (<code>seven_segment.rs</code>) that renders the time using a DSEG7 font. The font files are bundled as assets:</p>
@@ -1609,9 +1764,48 @@ cargo build --release -p cgd1-rs-controller
 <span class="boring">}</span></code></pre>
 <h2 id="features-1"><a class="header" href="#features-1">Features</a></h2>
 <h3 id="device-scanning"><a class="header" href="#device-scanning">Device Scanning</a></h3>
-<p>The scan dialog shows nearby devices with their advertisement data (temperature, humidity, battery). Clicking a device initiates connection and authentication.</p>
+<p>The scan dialog shows nearby devices with their advertisement data (temperature, humidity, battery). Clicking a device initiates connection and authentication. The scan callback also persists battery data from advertising to <code>KnownDeviceStore</code> and updates the <code>scan_battery_cache</code>.</p>
+<h3 id="known-device-store"><a class="header" href="#known-device-store">Known Device Store</a></h3>
+<p>The controller maintains a <code>KnownDeviceStore</code> that persists:</p>
+<ul>
+<li><strong>Known device MAC addresses</strong> (<code>known_devices.json</code>) - Used to populate the device dropdown on startup and attempt automatic reconnection.</li>
+<li><strong>Battery levels</strong> (<code>battery_cache.json</code>) - Map of MAC address to battery percentage, updated during scans and loaded on startup.</li>
+</ul>
+<p>Both files are stored in the platform data directory (e.g., <code>~/.local/share/cgd1-rs/</code>).</p>
 <h3 id="sensor-monitoring"><a class="header" href="#sensor-monitoring">Sensor Monitoring</a></h3>
-<p>Real-time temperature and humidity are displayed via sensor cards that update from the <code>ClockEvent</code> stream. Battery level is shown with a percentage label.</p>
+<p>Real-time temperature and humidity are displayed via sensor cards that update from the <code>ClockEvent</code> stream. Battery level is shown with a percentage label and progress bar.</p>
+<h3 id="battery-display"><a class="header" href="#battery-display">Battery Display</a></h3>
+<p>The controller does <strong>not</strong> read battery from GATT (the CGD1’s Battery Service characteristic returns an unreliable 99%). Instead, battery data is sourced from BLE advertising scans:</p>
+<ol>
+<li><strong>On startup</strong>, <code>KnownDeviceStore::load_battery()</code> populates the in-memory <code>scan_battery_cache</code> from <code>battery_cache.json</code>.</li>
+<li><strong>During scans</strong>, the scan callback extracts battery from advertising TLV type <code>0x02</code>, updates <code>scan_battery_cache</code>, and persists via <code>KnownDeviceStore::save_battery()</code>.</li>
+<li><strong>On connect</strong>, the connect handler reads the cached battery value and sends <code>ClockEvent::BatteryLevel</code> to update the UI.</li>
+</ol>
+<p>The device only advertises battery data when <strong>not connected</strong> and the button is held for 3 seconds. Periodic scans (every 60 seconds when disconnected) keep the cache fresh.</p>
+<h3 id="bluetooth-icon-states"><a class="header" href="#bluetooth-icon-states">Bluetooth Icon States</a></h3>
+<p>The Bluetooth icon in the top-right corner reflects the connection state:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>State</th><th>CSS Class</th><th>Visual</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td>Disconnected</td><td><code>bluetooth-off</code></td><td>Dim gray, 40% opacity</td><td>Initial state, after manual disconnect, after connect failure</td></tr>
+<tr><td>Connecting / Reconnecting</td><td><code>bluetooth-blinking</code></td><td>Blinking animation (1s cycle)</td><td>During initial connect, during automatic reconnect</td></tr>
+<tr><td>Connected</td><td><em>(none)</em></td><td>Full color, solid</td><td>After successful connect or reconnect</td></tr>
+</tbody>
+</table>
+</div>
+<p>The icon transitions through these states as follows:</p>
+<ul>
+<li><strong>Initial</strong> → <code>bluetooth-off</code></li>
+<li><strong>Connect switch toggled on</strong> → <code>bluetooth-blinking</code></li>
+<li><strong>Connect succeeds</strong> → solid (remove <code>bluetooth-blinking</code> and <code>bluetooth-off</code>)</li>
+<li><strong>Connect fails</strong> → <code>bluetooth-off</code></li>
+<li><strong>Manual disconnect</strong> → <code>bluetooth-off</code></li>
+<li><strong><code>ClockEvent::Disconnected</code> (auto)</strong> → <code>bluetooth-blinking</code> (reconnect in progress)</li>
+<li><strong><code>ClockEvent::Reconnected</code></strong> → solid (remove <code>bluetooth-blinking</code> and <code>bluetooth-off</code>)</li>
+</ul>
 <h3 id="alarm-editing"><a class="header" href="#alarm-editing">Alarm Editing</a></h3>
 <p>The alarm editor dialog shows all 16 slots in a list. Each row displays:</p>
 <ul>
@@ -1625,15 +1819,15 @@ cargo build --release -p cgd1-rs-controller
 <h3 id="settings-panel"><a class="header" href="#settings-panel">Settings Panel</a></h3>
 <p>The settings dialog provides graphical controls for all device settings:</p>
 <ul>
-<li><strong>Volume</strong> — Slider (1–5)</li>
-<li><strong>Brightness</strong> — Slider (0–100, step 10)</li>
-<li><strong>Night brightness</strong> — Slider (0–100, step 10)</li>
-<li><strong>Night mode window</strong> — Hour/minute spin buttons for start and end</li>
-<li><strong>Timezone</strong> — Spin button (-720 to +840 minutes)</li>
-<li><strong>Time format</strong> — Combo box (12h / 24h)</li>
-<li><strong>Temperature unit</strong> — Combo box (°C / °F)</li>
-<li><strong>Language</strong> — Combo box (English, Chinese, German, Japanese)</li>
-<li><strong>Ringtone</strong> — Combo box with built-in and custom ringtones</li>
+<li><strong>Volume</strong> - Slider (1–5)</li>
+<li><strong>Brightness</strong> - Slider (0–100, step 10)</li>
+<li><strong>Night brightness</strong> - Slider (0–100, step 10)</li>
+<li><strong>Night mode window</strong> - Hour/minute spin buttons for start and end</li>
+<li><strong>Timezone</strong> - Spin button (-720 to +840 minutes)</li>
+<li><strong>Time format</strong> - Combo box (12h / 24h)</li>
+<li><strong>Temperature unit</strong> - Combo box (°C / °F)</li>
+<li><strong>Language</strong> - Combo box (English, Chinese, German, Japanese)</li>
+<li><strong>Ringtone</strong> - Combo box with built-in and custom ringtones</li>
 </ul>
 <p>Changes are applied immediately to the device.</p>
 <h3 id="ringtone-upload-1"><a class="header" href="#ringtone-upload-1">Ringtone Upload</a></h3>
@@ -1657,6 +1851,124 @@ cargo build --release -p cgd1-rs-controller
 <h2 id="platform-support"><a class="header" href="#platform-support">Platform Support</a></h2>
 <p>The GTK 4 controller requires Linux with GTK 4 development libraries. It is not supported on macOS or Windows.</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="internationalization-i18n"><a class="header" href="#internationalization-i18n">Internationalization (i18n)</a></h1>
+<p>The <code>cgd1-rs-controller</code> GTK 4 application supports UI translation via the <a href="https://projectfluent.org/">Fluent</a> localization system. Translation files (<code>.ftl</code>) are embedded into the binary at compile time using <code>rust-embed</code>, so no external files are needed at runtime.</p>
+<h2 id="supported-languages"><a class="header" href="#supported-languages">Supported Languages</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Language</th><th>Code</th><th>Status</th></tr>
+</thead>
+<tbody>
+<tr><td>English</td><td><code>en</code></td><td>Fallback (all keys present)</td></tr>
+<tr><td>German</td><td><code>de</code></td><td>Complete</td></tr>
+</tbody>
+</table>
+</div>
+<p>The application auto-detects the system language at startup via <code>i18n_embed::DesktopLanguageRequester</code>. If the requested language is not available, it falls back to English.</p>
+<h2 id="selecting-a-language"><a class="header" href="#selecting-a-language">Selecting a Language</a></h2>
+<p>The language is determined by the system locale. You can override it via environment variables:</p>
+<pre><code class="language-bash"># English
+LANG=en ./target/debug/cgd1-controller
+
+# German
+LANG=de_DE.UTF-8 ./target/debug/cgd1-controller
+
+# Unsupported locale -&gt; falls back to English
+LANG=fr_FR.UTF-8 ./target/debug/cgd1-controller
+</code></pre>
+<h2 id="architecture-2"><a class="header" href="#architecture-2">Architecture</a></h2>
+<h3 id="file-layout"><a class="header" href="#file-layout">File Layout</a></h3>
+<pre><code>cgd1-rs-controller/
+├── i18n.toml                          # i18n-embed configuration
+├── i18n/
+│   ├── en/
+│   │   └── cgd1-rs-controller.ftl     # English (fallback)
+│   └── de/
+│       └── cgd1-rs-controller.ftl     # German
+└── src/
+    └── i18n.rs                        # Loader, macro, helpers
+</code></pre>
+<p>The <code>.ftl</code> filename must match the crate name (<code>cgd1-rs-controller</code>) — this is how the <code>fl!</code> macro resolves the domain at compile time.</p>
+<h3 id="core-module-srci18nrs"><a class="header" href="#core-module-srci18nrs">Core Module (<code>src/i18n.rs</code>)</a></h3>
+<p>The i18n module provides:</p>
+<ul>
+<li><strong><code>fl!</code> macro</strong> — Compile-time-validated translation lookup. Missing keys cause build failures.</li>
+<li><strong><code>get()</code></strong> — Runtime lookup for dynamic keys (e.g. weekday names selected by index).</li>
+<li><strong><code>get_str()</code> / <code>get_int()</code></strong> — Runtime lookup with a single string/integer argument.</li>
+<li><strong><code>init()</code></strong> — Forces lazy initialization of the language loader. Called early in <code>main()</code>.</li>
+</ul>
+<h3 id="initialization"><a class="header" href="#initialization">Initialization</a></h3>
+<p>In <code>src/main.rs</code>:</p>
+<pre class="playground"><code class="language-rust">mod i18n;
+
+fn main() {
+    // ... tracing setup ...
+    i18n::init();
+    let app = app::ClockControllerApp::new(cli.backend);
+    app.run();
+}</code></pre>
+<h2 id="adding-a-new-language"><a class="header" href="#adding-a-new-language">Adding a New Language</a></h2>
+<ol>
+<li>Create a new directory: <code>cgd1-rs-controller/i18n/{lang}/</code> (e.g. <code>fr/</code>).</li>
+<li>Copy <code>cgd1-rs-controller/i18n/en/cgd1-rs-controller.ftl</code> to the new directory.</li>
+<li>Translate all values to the target language.</li>
+<li>Rebuild — the new language is automatically embedded via <code>rust-embed</code> and selected when the system locale matches.</li>
+</ol>
+<p>No changes to <code>i18n.toml</code> or source code are needed. The <code>rust-embed</code> macro scans the <code>i18n/</code> directory at compile time and includes all subdirectories.</p>
+<h2 id="translation-key-conventions"><a class="header" href="#translation-key-conventions">Translation Key Conventions</a></h2>
+<ul>
+<li>Use <code>kebab-case</code> for message IDs (e.g. <code>status-no-device-connected</code>).</li>
+<li>Arguments use <code>{ $name }</code> syntax in <code>.ftl</code> files.</li>
+<li>Group keys by feature area with comment headers (e.g. <code># Alarm editor</code>, <code># Audio editor</code>).</li>
+<li>Shared keys (e.g. <code>status-no-device-connected</code>, <code>button-read</code>) are defined once in the “Common status messages” section and reused across dialogs.</li>
+</ul>
+<h2 id="using-the-fl-macro-contributors"><a class="header" href="#using-the-fl-macro-contributors">Using the <code>fl!</code> Macro (Contributors)</a></h2>
+<h3 id="static-strings"><a class="header" href="#static-strings">Static strings</a></h3>
+<p>For strings with known keys at compile time:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use crate::fl;
+
+let label = Label::builder().label(&amp;fl!("status-disconnected")).build();
+<span class="boring">}</span></code></pre>
+<h3 id="strings-with-arguments"><a class="header" href="#strings-with-arguments">Strings with arguments</a></h3>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>status.set_label(&amp;fl!("status-connected", addr = addr.to_string()));
+<span class="boring">}</span></code></pre>
+<p>Cast expressions must be parenthesized:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Correct
+status.set_label(&amp;fl!("status-devices-found", count = (found.len() as i64)));
+
+// Wrong — won't compile
+status.set_label(&amp;fl!("status-devices-found", count = found.len() as i64));
+<span class="boring">}</span></code></pre>
+<h3 id="dynamic-lookups"><a class="header" href="#dynamic-lookups">Dynamic lookups</a></h3>
+<p>For runtime-determined keys (e.g. weekday names looked up by index), use <code>get()</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use crate::i18n::get;
+
+let key = match weekday {
+    Mon =&gt; "weekday-mon",
+    Tue =&gt; "weekday-tue",
+    // ...
+};
+let day_name = get(key);
+<span class="boring">}</span></code></pre>
+<h3 id="what-not-to-translate"><a class="header" href="#what-not-to-translate">What not to translate</a></h3>
+<ul>
+<li><strong>Log messages</strong> (<code>tracing::debug!</code>, <code>warn!</code>, <code>info!</code>, <code>error!</code>) — developer-facing.</li>
+<li><strong>Error strings</strong> in <code>ClockError::Parse("device not found")</code> — internal error handling.</li>
+<li><strong>Ringtone names</strong> from <code>RingtoneSignature::name()</code> — device firmware identifiers.</li>
+<li><strong>Timezone labels</strong> in <code>common.rs</code> — technical identifiers (UTC offsets).</li>
+<li><strong>Sensor units</strong> (<code>°C</code>, <code>%</code>) — universal.</li>
+<li><strong>CLI help text</strong> — could be translated in a future phase using <code>clap</code>’s i18n support.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="websocket-server"><a class="header" href="#websocket-server">WebSocket Server</a></h1>
 <p>The <code>cgd1-rs-ws</code> crate provides a WebSocket and REST server built on Axum. It exposes the full CGD1 device API over JSON for network integration (e.g., Home Assistant, web dashboards).</p>
 <h2 id="installation-3"><a class="header" href="#installation-3">Installation</a></h2>
@@ -1677,7 +1989,7 @@ cargo build --release -p cgd1-rs-controller
 </tbody>
 </table>
 </div>
-<h2 id="architecture-2"><a class="header" href="#architecture-2">Architecture</a></h2>
+<h2 id="architecture-3"><a class="header" href="#architecture-3">Architecture</a></h2>
 <pre class="mermaid">flowchart TB
     subgraph Server["cgd1-rs-ws"]
         State["ServerState&lt;br/&gt;(transport, manager, token_store)"]
@@ -1927,7 +2239,7 @@ sudo pacman -S gtk4
 <h2 id="audio-upload-notes"><a class="header" href="#audio-upload-notes">Audio Upload Notes</a></h2>
 <ul>
 <li>Audio uploads require a stable connection; parallel BLE operations can abort the transfer</li>
-<li>The MTU exchange is critical for audio uploads — without a sufficient MTU, packets would need fragmentation</li>
+<li>The MTU exchange is critical for audio uploads - without a sufficient MTU, packets would need fragmentation</li>
 <li>Maximum audio duration is approximately 12 seconds (~98 KB at 8 kHz, 8-bit mono)</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -2127,7 +2439,7 @@ sudo systemctl start cgd1-ws
 <p><strong>Symptom</strong>: <code>ClockEvent::Disconnected</code> events or <code>Error: Transport(Timeout)</code> during operations.</p>
 <p><strong>Solutions</strong>:</p>
 <ol>
-<li>Check battery level — low batteries can cause disconnections</li>
+<li>Check battery level - low batteries can cause disconnections</li>
 <li>Reduce distance between host and device</li>
 <li>Avoid 2.4 GHz Wi-Fi interference (switch to 5 GHz or change Wi-Fi channel)</li>
 <li>The library will attempt automatic reconnection with exponential backoff</li>
@@ -2155,6 +2467,18 @@ sudo systemctl start cgd1-ws
 </li>
 <li>Reconnect with <code>sync-time</code> to generate a new token</li>
 <li>Note: The official app and <code>cgd1-rs</code> cannot share the same token. Using one will invalidate the other’s token</li>
+</ol>
+<h3 id="sync-time-times-out-token-not-accepted"><a class="header" href="#sync-time-times-out-token-not-accepted"><code>sync-time</code> times out (token not accepted)</a></h3>
+<p><strong>Symptom</strong>: Authentication ACKs succeed (<code>04 ff 01 00 ..</code>, <code>04 ff 02 00 ..</code>), but <code>sync-time</code> receives no ACK and times out after 10 seconds.</p>
+<p><strong>Cause</strong>: The device sends Auth ACKs even with a bad token. The real token acceptance is only proven by a privileged command like <code>sync-time</code>. If <code>sync-time</code> times out, the device has a different token stored from a previous pairing (another app, a prior run with a different random token, etc.). The device requires an explicit factory reset before it accepts a new token.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Perform a factory reset on the CGD1 device (see <a href="#factory-reset">Factory Reset</a> below)</li>
+<li>Delete any stored token file for this device:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
+</code></pre>
+</li>
+<li>Reconnect - a new token will be generated and, after <code>sync-time</code> succeeds, persisted automatically</li>
 </ol>
 <h3 id="sync-time-succeeds-but-other-commands-fail"><a class="header" href="#sync-time-succeeds-but-other-commands-fail"><code>sync-time</code> succeeds but other commands fail</a></h3>
 <p><strong>Symptom</strong>: <code>sync-time</code> works, but <code>alarm-set</code> or <code>settings-write</code> returns errors.</p>
@@ -2216,6 +2540,33 @@ cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
 cgd1 --backend virtual alarm-list AA:BB:CC:DD:EE:FF
 </code></pre>
 <p>This works without any BLE hardware and is useful for testing CLI behavior, scripts, and the WebSocket server.</p>
+<h2 id="factory-reset"><a class="header" href="#factory-reset">Factory Reset</a></h2>
+<p>A factory reset clears the stored authentication token on the CGD1, allowing it to accept a new token. This is required when:</p>
+<ul>
+<li><code>sync-time</code> times out after successful Auth ACKs (token mismatch)</li>
+<li>The device was previously paired with the official Qingping app or another host</li>
+<li>A previous run generated a random token that was never persisted but the device stored it</li>
+</ul>
+<h3 id="step-by-step-instructions"><a class="header" href="#step-by-step-instructions">Step-by-Step Instructions</a></h3>
+<ol>
+<li><strong>Batteriefach öffnen</strong>: Öffnen Sie die Abdeckung auf der Rückseite des Geräts und entnehmen Sie die Batterien.</li>
+<li><strong>Gerät gedrückt halten</strong>: Drücken und halten Sie das gesamte Gehäuse von oben nach unten (die “Snooze/Licht”-Taste des Weckers drückt sich dadurch am Boden ein).</li>
+<li><strong>Batterien wiedereinsetzen</strong>: Setzen Sie die Batterien ein, während Sie das Gerät weiterhin kontinuierlich gedrückt halten.</li>
+<li><strong>Halten für 12 Sekunden</strong>: Halten Sie das Gerät für mindestens 12 Sekunden fixiert nach unten gedrückt.</li>
+<li><strong>Ergebnis prüfen</strong>: Sobald auf dem Display alle Zahlen als “8” aufleuchten, ist der Werksreset abgeschlossen. Lassen Sie das Gerät nun los.</li>
+</ol>
+<h3 id="after-the-reset"><a class="header" href="#after-the-reset">After the Reset</a></h3>
+<ol>
+<li>Delete any stale token files for this device:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
+</code></pre>
+</li>
+<li>Reconnect with <code>cgd1-rs</code> - a new random token will be generated</li>
+<li>After <code>sync-time</code> succeeds, the token is automatically persisted for future connections</li>
+</ol>
+<blockquote>
+<p><strong>Warning</strong>: Factory reset clears all device settings (alarms, brightness, volume, etc.) in addition to the auth token.</p>
+</blockquote>
 <h2 id="reporting-issues"><a class="header" href="#reporting-issues">Reporting Issues</a></h2>
 <p>If you encounter a bug or have a feature request, please open an issue on <a href="https://github.com/smearor/cgd1-rs/issues">GitHub</a>.</p>
 <p>Include:</p>

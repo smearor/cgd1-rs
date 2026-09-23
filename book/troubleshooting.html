@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-432b6975.js";
+            window.path_to_searchindex_js = "searchindex-edbdc84b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-97e4057d.js"></script>
+        <script src="toc-9af7901f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,7 +214,7 @@
 <p><strong>Symptom</strong>: <code>ClockEvent::Disconnected</code> events or <code>Error: Transport(Timeout)</code> during operations.</p>
 <p><strong>Solutions</strong>:</p>
 <ol>
-<li>Check battery level — low batteries can cause disconnections</li>
+<li>Check battery level - low batteries can cause disconnections</li>
 <li>Reduce distance between host and device</li>
 <li>Avoid 2.4 GHz Wi-Fi interference (switch to 5 GHz or change Wi-Fi channel)</li>
 <li>The library will attempt automatic reconnection with exponential backoff</li>
@@ -242,6 +242,18 @@
 </li>
 <li>Reconnect with <code>sync-time</code> to generate a new token</li>
 <li>Note: The official app and <code>cgd1-rs</code> cannot share the same token. Using one will invalidate the other’s token</li>
+</ol>
+<h3 id="sync-time-times-out-token-not-accepted"><a class="header" href="#sync-time-times-out-token-not-accepted"><code>sync-time</code> times out (token not accepted)</a></h3>
+<p><strong>Symptom</strong>: Authentication ACKs succeed (<code>04 ff 01 00 ..</code>, <code>04 ff 02 00 ..</code>), but <code>sync-time</code> receives no ACK and times out after 10 seconds.</p>
+<p><strong>Cause</strong>: The device sends Auth ACKs even with a bad token. The real token acceptance is only proven by a privileged command like <code>sync-time</code>. If <code>sync-time</code> times out, the device has a different token stored from a previous pairing (another app, a prior run with a different random token, etc.). The device requires an explicit factory reset before it accepts a new token.</p>
+<p><strong>Solutions</strong>:</p>
+<ol>
+<li>Perform a factory reset on the CGD1 device (see <a href="#factory-reset">Factory Reset</a> below)</li>
+<li>Delete any stored token file for this device:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
+</code></pre>
+</li>
+<li>Reconnect - a new token will be generated and, after <code>sync-time</code> succeeds, persisted automatically</li>
 </ol>
 <h3 id="sync-time-succeeds-but-other-commands-fail"><a class="header" href="#sync-time-succeeds-but-other-commands-fail"><code>sync-time</code> succeeds but other commands fail</a></h3>
 <p><strong>Symptom</strong>: <code>sync-time</code> works, but <code>alarm-set</code> or <code>settings-write</code> returns errors.</p>
@@ -303,6 +315,33 @@ cgd1 --backend virtual sync-time AA:BB:CC:DD:EE:FF
 cgd1 --backend virtual alarm-list AA:BB:CC:DD:EE:FF
 </code></pre>
 <p>This works without any BLE hardware and is useful for testing CLI behavior, scripts, and the WebSocket server.</p>
+<h2 id="factory-reset"><a class="header" href="#factory-reset">Factory Reset</a></h2>
+<p>A factory reset clears the stored authentication token on the CGD1, allowing it to accept a new token. This is required when:</p>
+<ul>
+<li><code>sync-time</code> times out after successful Auth ACKs (token mismatch)</li>
+<li>The device was previously paired with the official Qingping app or another host</li>
+<li>A previous run generated a random token that was never persisted but the device stored it</li>
+</ul>
+<h3 id="step-by-step-instructions"><a class="header" href="#step-by-step-instructions">Step-by-Step Instructions</a></h3>
+<ol>
+<li><strong>Batteriefach öffnen</strong>: Öffnen Sie die Abdeckung auf der Rückseite des Geräts und entnehmen Sie die Batterien.</li>
+<li><strong>Gerät gedrückt halten</strong>: Drücken und halten Sie das gesamte Gehäuse von oben nach unten (die “Snooze/Licht”-Taste des Weckers drückt sich dadurch am Boden ein).</li>
+<li><strong>Batterien wiedereinsetzen</strong>: Setzen Sie die Batterien ein, während Sie das Gerät weiterhin kontinuierlich gedrückt halten.</li>
+<li><strong>Halten für 12 Sekunden</strong>: Halten Sie das Gerät für mindestens 12 Sekunden fixiert nach unten gedrückt.</li>
+<li><strong>Ergebnis prüfen</strong>: Sobald auf dem Display alle Zahlen als “8” aufleuchten, ist der Werksreset abgeschlossen. Lassen Sie das Gerät nun los.</li>
+</ol>
+<h3 id="after-the-reset"><a class="header" href="#after-the-reset">After the Reset</a></h3>
+<ol>
+<li>Delete any stale token files for this device:
+<pre><code class="language-bash">rm ~/.local/share/cgd1-rs/AA_BB_CC_DD_EE_FF
+</code></pre>
+</li>
+<li>Reconnect with <code>cgd1-rs</code> - a new random token will be generated</li>
+<li>After <code>sync-time</code> succeeds, the token is automatically persisted for future connections</li>
+</ol>
+<blockquote>
+<p><strong>Warning</strong>: Factory reset clears all device settings (alarms, brightness, volume, etc.) in addition to the auth token.</p>
+</blockquote>
 <h2 id="reporting-issues"><a class="header" href="#reporting-issues">Reporting Issues</a></h2>
 <p>If you encounter a bug or have a feature request, please open an issue on <a href="https://github.com/smearor/cgd1-rs/issues">GitHub</a>.</p>
 <p>Include:</p>
