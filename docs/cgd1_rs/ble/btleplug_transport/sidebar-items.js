@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["BtleplugTransport"],"type":["EventStream","NotificationStream"]};
+window.SIDEBAR_ITEMS = {"fn":["format_hex"],"struct":["BtleplugTransport"]};

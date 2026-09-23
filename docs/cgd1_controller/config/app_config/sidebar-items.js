@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["default_blink_on_connect"],"struct":["AppConfig"]};

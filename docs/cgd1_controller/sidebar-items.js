@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["main"],"mod":["app","dialog","display","window"],"struct":["Cli"]};
+window.SIDEBAR_ITEMS = {"fn":["main"],"macro":[["fl",1]],"mod":["app","config","device_runtime_state","dialog","display","i18n","next_alarm","window"],"struct":["Cli"]};

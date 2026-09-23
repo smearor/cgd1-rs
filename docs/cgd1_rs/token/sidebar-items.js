@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["auth_token","file_store","result","store"]};
+window.SIDEBAR_ITEMS = {"mod":["auth_token","file_store","known_devices","result","store"]};

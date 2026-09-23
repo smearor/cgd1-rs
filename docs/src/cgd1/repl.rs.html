@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `cgd1-rs-cli/src/repl.rs`."><title>repl.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="cgd1" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.0 (88d9e12ae 2026-08-18)" data-channel="1.98.0" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">cgd1/</div>repl.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>std::sync::Arc;
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `cgd1-rs-cli/src/repl.rs`."><title>repl.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="cgd1" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">cgd1/</div>repl.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="kw">use </span>std::sync::Arc;
 <a href=#2 id=2 data-nosnippet>2</a>
 <a href=#3 id=3 data-nosnippet>3</a><span class="kw">use </span>cgd1_rs::AlarmEntry;
 <a href=#4 id=4 data-nosnippet>4</a><span class="kw">use </span>cgd1_rs::Backend;
@@ -111,7 +111,7 @@
 <a href=#111 id=111 data-nosnippet>111</a>        state.connect(<span class="kw-2">&amp;</span>mac).<span class="kw">await</span><span class="question-mark">?</span>;
 <a href=#112 id=112 data-nosnippet>112</a>    }
 <a href=#113 id=113 data-nosnippet>113</a>
-<a href=#114 id=114 data-nosnippet>114</a>    <span class="macro">println!</span>(<span class="string">"cgd1 REPL — type 'help' for commands, 'exit' to quit."</span>);
+<a href=#114 id=114 data-nosnippet>114</a>    <span class="macro">println!</span>(<span class="string">"cgd1 REPL - type 'help' for commands, 'exit' to quit."</span>);
 <a href=#115 id=115 data-nosnippet>115</a>
 <a href=#116 id=116 data-nosnippet>116</a>    <span class="kw">loop </span>{
 <a href=#117 id=117 data-nosnippet>117</a>        <span class="kw">let </span>prompt = <span class="kw">match </span>state.connection {
@@ -306,125 +306,130 @@
 <a href=#306 id=306 data-nosnippet>306</a>            time_format,
 <a href=#307 id=307 data-nosnippet>307</a>            temp_unit,
 <a href=#308 id=308 data-nosnippet>308</a>            language,
-<a href=#309 id=309 data-nosnippet>309</a>        } =&gt; {
-<a href=#310 id=310 data-nosnippet>310</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#311 id=311 data-nosnippet>311</a>            <span class="kw">let </span><span class="kw-2">mut </span>settings = device.read_settings().<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#312 id=312 data-nosnippet>312</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(vol) = volume {
-<a href=#313 id=313 data-nosnippet>313</a>                settings = settings.with_volume(vol)<span class="question-mark">?</span>;
-<a href=#314 id=314 data-nosnippet>314</a>            }
-<a href=#315 id=315 data-nosnippet>315</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(b) = brightness {
-<a href=#316 id=316 data-nosnippet>316</a>                settings = settings.with_brightness(b)<span class="question-mark">?</span>;
-<a href=#317 id=317 data-nosnippet>317</a>            }
-<a href=#318 id=318 data-nosnippet>318</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(nb) = night_brightness {
-<a href=#319 id=319 data-nosnippet>319</a>                settings = settings.with_night_brightness(nb)<span class="question-mark">?</span>;
-<a href=#320 id=320 data-nosnippet>320</a>            }
-<a href=#321 id=321 data-nosnippet>321</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = timezone {
-<a href=#322 id=322 data-nosnippet>322</a>                settings = settings.with_timezone(tz)<span class="question-mark">?</span>;
-<a href=#323 id=323 data-nosnippet>323</a>            }
-<a href=#324 id=324 data-nosnippet>324</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(tf) = time_format {
-<a href=#325 id=325 data-nosnippet>325</a>                settings = settings.with_time_format(tf);
-<a href=#326 id=326 data-nosnippet>326</a>            }
-<a href=#327 id=327 data-nosnippet>327</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(tu) = temp_unit {
-<a href=#328 id=328 data-nosnippet>328</a>                settings = settings.with_temperature_unit(tu);
-<a href=#329 id=329 data-nosnippet>329</a>            }
-<a href=#330 id=330 data-nosnippet>330</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(lang) = language {
-<a href=#331 id=331 data-nosnippet>331</a>                settings = settings.with_language(lang);
-<a href=#332 id=332 data-nosnippet>332</a>            }
-<a href=#333 id=333 data-nosnippet>333</a>            device.write_settings(<span class="kw-2">&amp;</span>settings).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#334 id=334 data-nosnippet>334</a>            <span class="macro">println!</span>(<span class="string">"Settings updated."</span>);
-<a href=#335 id=335 data-nosnippet>335</a>        }
-<a href=#336 id=336 data-nosnippet>336</a>        Commands::AlarmList { address } =&gt; {
-<a href=#337 id=337 data-nosnippet>337</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#338 id=338 data-nosnippet>338</a>            <span class="kw">let </span>slots = device.read_alarms().<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#339 id=339 data-nosnippet>339</a>            <span class="kw">if </span>slots.is_empty() {
-<a href=#340 id=340 data-nosnippet>340</a>                <span class="macro">println!</span>(<span class="string">"No alarms set."</span>);
-<a href=#341 id=341 data-nosnippet>341</a>                <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-<a href=#342 id=342 data-nosnippet>342</a>            }
-<a href=#343 id=343 data-nosnippet>343</a>            <span class="macro">println!</span>(<span class="string">"{:&lt;6} {:&lt;8} {:&lt;3} {:&lt;3} {:&lt;6} {:&lt;6}"</span>, <span class="string">"Slot"</span>, <span class="string">"Enabled"</span>, <span class="string">"HH"</span>, <span class="string">"MM"</span>, <span class="string">"Days"</span>, <span class="string">"Snooze"</span>);
-<a href=#344 id=344 data-nosnippet>344</a>            <span class="kw">for </span>slot <span class="kw">in </span><span class="kw-2">&amp;</span>slots {
-<a href=#345 id=345 data-nosnippet>345</a>                <span class="macro">println!</span>(
-<a href=#346 id=346 data-nosnippet>346</a>                    <span class="string">"{:&lt;6} {:&lt;8} {:02}   {:02}   0x{:02x}  {}"</span>,
-<a href=#347 id=347 data-nosnippet>347</a>                    slot.index.value(),
-<a href=#348 id=348 data-nosnippet>348</a>                    <span class="kw">if </span>slot.entry.enabled() { <span class="string">"yes" </span>} <span class="kw">else </span>{ <span class="string">"no" </span>},
-<a href=#349 id=349 data-nosnippet>349</a>                    slot.entry.hour(),
-<a href=#350 id=350 data-nosnippet>350</a>                    slot.entry.minute(),
-<a href=#351 id=351 data-nosnippet>351</a>                    slot.entry.repeat_mask().value(),
-<a href=#352 id=352 data-nosnippet>352</a>                    <span class="kw">if </span>slot.entry.snooze() { <span class="string">"yes" </span>} <span class="kw">else </span>{ <span class="string">"no" </span>},
-<a href=#353 id=353 data-nosnippet>353</a>                );
-<a href=#354 id=354 data-nosnippet>354</a>            }
-<a href=#355 id=355 data-nosnippet>355</a>        }
-<a href=#356 id=356 data-nosnippet>356</a>        Commands::AlarmSet {
-<a href=#357 id=357 data-nosnippet>357</a>            address,
-<a href=#358 id=358 data-nosnippet>358</a>            slot,
-<a href=#359 id=359 data-nosnippet>359</a>            time,
-<a href=#360 id=360 data-nosnippet>360</a>            repeat,
-<a href=#361 id=361 data-nosnippet>361</a>            no_snooze,
-<a href=#362 id=362 data-nosnippet>362</a>        } =&gt; {
-<a href=#363 id=363 data-nosnippet>363</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#364 id=364 data-nosnippet>364</a>            <span class="kw">let </span>entry = AlarmEntry::new(time, repeat, <span class="bool-val">true</span>, !no_snooze);
-<a href=#365 id=365 data-nosnippet>365</a>            device.set_alarm(<span class="kw-2">&amp;</span>entry, slot).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#366 id=366 data-nosnippet>366</a>            <span class="macro">println!</span>(<span class="string">"Alarm set at slot {}."</span>, slot.value());
-<a href=#367 id=367 data-nosnippet>367</a>        }
-<a href=#368 id=368 data-nosnippet>368</a>        Commands::AlarmDelete { address, slot } =&gt; {
-<a href=#369 id=369 data-nosnippet>369</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#370 id=370 data-nosnippet>370</a>            device.delete_alarm(slot).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#371 id=371 data-nosnippet>371</a>            <span class="macro">println!</span>(<span class="string">"Alarm deleted at slot {}."</span>, slot.value());
+<a href=#309 id=309 data-nosnippet>309</a>            ringtone,
+<a href=#310 id=310 data-nosnippet>310</a>        } =&gt; {
+<a href=#311 id=311 data-nosnippet>311</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
+<a href=#312 id=312 data-nosnippet>312</a>            <span class="kw">let </span><span class="kw-2">mut </span>settings = device.read_settings().<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#313 id=313 data-nosnippet>313</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(vol) = volume {
+<a href=#314 id=314 data-nosnippet>314</a>                settings = settings.with_volume(vol)<span class="question-mark">?</span>;
+<a href=#315 id=315 data-nosnippet>315</a>            }
+<a href=#316 id=316 data-nosnippet>316</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(b) = brightness {
+<a href=#317 id=317 data-nosnippet>317</a>                settings = settings.with_brightness(b)<span class="question-mark">?</span>;
+<a href=#318 id=318 data-nosnippet>318</a>            }
+<a href=#319 id=319 data-nosnippet>319</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(nb) = night_brightness {
+<a href=#320 id=320 data-nosnippet>320</a>                settings = settings.with_night_brightness(nb)<span class="question-mark">?</span>;
+<a href=#321 id=321 data-nosnippet>321</a>            }
+<a href=#322 id=322 data-nosnippet>322</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(tz) = timezone {
+<a href=#323 id=323 data-nosnippet>323</a>                settings = settings.with_timezone(tz)<span class="question-mark">?</span>;
+<a href=#324 id=324 data-nosnippet>324</a>            }
+<a href=#325 id=325 data-nosnippet>325</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(tf) = time_format {
+<a href=#326 id=326 data-nosnippet>326</a>                settings = settings.with_time_format(tf);
+<a href=#327 id=327 data-nosnippet>327</a>            }
+<a href=#328 id=328 data-nosnippet>328</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(tu) = temp_unit {
+<a href=#329 id=329 data-nosnippet>329</a>                settings = settings.with_temperature_unit(tu);
+<a href=#330 id=330 data-nosnippet>330</a>            }
+<a href=#331 id=331 data-nosnippet>331</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(lang) = language {
+<a href=#332 id=332 data-nosnippet>332</a>                settings = settings.with_language(lang);
+<a href=#333 id=333 data-nosnippet>333</a>            }
+<a href=#334 id=334 data-nosnippet>334</a>            <span class="kw">if let </span><span class="prelude-val">Some</span>(rt) = ringtone {
+<a href=#335 id=335 data-nosnippet>335</a>                <span class="macro">println!</span>(<span class="string">"Setting ringtone signature to: {rt}"</span>);
+<a href=#336 id=336 data-nosnippet>336</a>                settings = settings.with_ringtone_signature(rt);
+<a href=#337 id=337 data-nosnippet>337</a>            }
+<a href=#338 id=338 data-nosnippet>338</a>            device.write_settings(<span class="kw-2">&amp;</span>settings).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#339 id=339 data-nosnippet>339</a>            <span class="macro">println!</span>(<span class="string">"Settings updated."</span>);
+<a href=#340 id=340 data-nosnippet>340</a>        }
+<a href=#341 id=341 data-nosnippet>341</a>        Commands::AlarmList { address } =&gt; {
+<a href=#342 id=342 data-nosnippet>342</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
+<a href=#343 id=343 data-nosnippet>343</a>            <span class="kw">let </span>slots = device.read_alarms().<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#344 id=344 data-nosnippet>344</a>            <span class="kw">if </span>slots.is_empty() {
+<a href=#345 id=345 data-nosnippet>345</a>                <span class="macro">println!</span>(<span class="string">"No alarms set."</span>);
+<a href=#346 id=346 data-nosnippet>346</a>                <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+<a href=#347 id=347 data-nosnippet>347</a>            }
+<a href=#348 id=348 data-nosnippet>348</a>            <span class="macro">println!</span>(<span class="string">"{:&lt;6} {:&lt;8} {:&lt;3} {:&lt;3} {:&lt;6} {:&lt;6}"</span>, <span class="string">"Slot"</span>, <span class="string">"Enabled"</span>, <span class="string">"HH"</span>, <span class="string">"MM"</span>, <span class="string">"Days"</span>, <span class="string">"Snooze"</span>);
+<a href=#349 id=349 data-nosnippet>349</a>            <span class="kw">for </span>slot <span class="kw">in </span><span class="kw-2">&amp;</span>slots {
+<a href=#350 id=350 data-nosnippet>350</a>                <span class="macro">println!</span>(
+<a href=#351 id=351 data-nosnippet>351</a>                    <span class="string">"{:&lt;6} {:&lt;8} {:02}   {:02}   0x{:02x}  {}"</span>,
+<a href=#352 id=352 data-nosnippet>352</a>                    slot.index.value(),
+<a href=#353 id=353 data-nosnippet>353</a>                    <span class="kw">if </span>slot.entry.enabled() { <span class="string">"yes" </span>} <span class="kw">else </span>{ <span class="string">"no" </span>},
+<a href=#354 id=354 data-nosnippet>354</a>                    slot.entry.hour(),
+<a href=#355 id=355 data-nosnippet>355</a>                    slot.entry.minute(),
+<a href=#356 id=356 data-nosnippet>356</a>                    slot.entry.repeat_mask().value(),
+<a href=#357 id=357 data-nosnippet>357</a>                    <span class="kw">if </span>slot.entry.snooze() { <span class="string">"yes" </span>} <span class="kw">else </span>{ <span class="string">"no" </span>},
+<a href=#358 id=358 data-nosnippet>358</a>                );
+<a href=#359 id=359 data-nosnippet>359</a>            }
+<a href=#360 id=360 data-nosnippet>360</a>        }
+<a href=#361 id=361 data-nosnippet>361</a>        Commands::AlarmSet {
+<a href=#362 id=362 data-nosnippet>362</a>            address,
+<a href=#363 id=363 data-nosnippet>363</a>            slot,
+<a href=#364 id=364 data-nosnippet>364</a>            time,
+<a href=#365 id=365 data-nosnippet>365</a>            repeat,
+<a href=#366 id=366 data-nosnippet>366</a>            no_snooze,
+<a href=#367 id=367 data-nosnippet>367</a>        } =&gt; {
+<a href=#368 id=368 data-nosnippet>368</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
+<a href=#369 id=369 data-nosnippet>369</a>            <span class="kw">let </span>entry = AlarmEntry::new(time, repeat, <span class="bool-val">true</span>, !no_snooze);
+<a href=#370 id=370 data-nosnippet>370</a>            device.set_alarm(<span class="kw-2">&amp;</span>entry, slot).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#371 id=371 data-nosnippet>371</a>            <span class="macro">println!</span>(<span class="string">"Alarm set at slot {}."</span>, slot.value());
 <a href=#372 id=372 data-nosnippet>372</a>        }
-<a href=#373 id=373 data-nosnippet>373</a>        Commands::Brightness { address, value } =&gt; {
+<a href=#373 id=373 data-nosnippet>373</a>        Commands::AlarmDelete { address, slot } =&gt; {
 <a href=#374 id=374 data-nosnippet>374</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#375 id=375 data-nosnippet>375</a>            device.set_brightness(value).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#376 id=376 data-nosnippet>376</a>            <span class="macro">println!</span>(<span class="string">"Brightness set to {}."</span>, value);
+<a href=#375 id=375 data-nosnippet>375</a>            device.delete_alarm(slot).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#376 id=376 data-nosnippet>376</a>            <span class="macro">println!</span>(<span class="string">"Alarm deleted at slot {}."</span>, slot.value());
 <a href=#377 id=377 data-nosnippet>377</a>        }
-<a href=#378 id=378 data-nosnippet>378</a>        Commands::RingtonePreview { address, volume } =&gt; {
+<a href=#378 id=378 data-nosnippet>378</a>        Commands::Brightness { address, value } =&gt; {
 <a href=#379 id=379 data-nosnippet>379</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#380 id=380 data-nosnippet>380</a>            device.preview_ringtone(volume).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#381 id=381 data-nosnippet>381</a>            <span class="macro">println!</span>(<span class="string">"Ringtone preview started."</span>);
+<a href=#380 id=380 data-nosnippet>380</a>            device.set_brightness(value).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#381 id=381 data-nosnippet>381</a>            <span class="macro">println!</span>(<span class="string">"Brightness set to {}."</span>, value);
 <a href=#382 id=382 data-nosnippet>382</a>        }
-<a href=#383 id=383 data-nosnippet>383</a>        Commands::RingtoneUpload { address, file, signature } =&gt; {
+<a href=#383 id=383 data-nosnippet>383</a>        Commands::RingtonePreview { address, volume } =&gt; {
 <a href=#384 id=384 data-nosnippet>384</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#385 id=385 data-nosnippet>385</a>            <span class="kw">let </span>data = std::fs::read(<span class="kw-2">&amp;</span>file).map_err(|e| CliError::AudioReadFailed {
-<a href=#386 id=386 data-nosnippet>386</a>                path: file.clone(),
-<a href=#387 id=387 data-nosnippet>387</a>                reason: e.to_string(),
-<a href=#388 id=388 data-nosnippet>388</a>            })<span class="question-mark">?</span>;
-<a href=#389 id=389 data-nosnippet>389</a>            device.upload_ringtone(<span class="kw-2">&amp;</span>data, signature.bytes()).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#390 id=390 data-nosnippet>390</a>            <span class="macro">println!</span>(<span class="string">"Ringtone uploaded: {signature}"</span>);
-<a href=#391 id=391 data-nosnippet>391</a>        }
-<a href=#392 id=392 data-nosnippet>392</a>        Commands::Monitor { address, duration } =&gt; {
-<a href=#393 id=393 data-nosnippet>393</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
-<a href=#394 id=394 data-nosnippet>394</a>            <span class="kw">crate</span>::command::monitor::run_monitor(device, duration).<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#395 id=395 data-nosnippet>395</a>        }
-<a href=#396 id=396 data-nosnippet>396</a>    }
-<a href=#397 id=397 data-nosnippet>397</a>    <span class="prelude-val">Ok</span>(())
-<a href=#398 id=398 data-nosnippet>398</a>}
-<a href=#399 id=399 data-nosnippet>399</a>
-<a href=#400 id=400 data-nosnippet>400</a><span class="doccomment">/// Get the connected device for the given address, or error.
-<a href=#401 id=401 data-nosnippet>401</a></span><span class="kw">fn </span>require_device&lt;<span class="lifetime">'a</span>&gt;(state: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>ReplState, address: <span class="kw-2">&amp;</span>MacAddress) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="kw-2">&amp;</span><span class="lifetime">'a </span>ClockDevice, CliError&gt; {
-<a href=#402 id=402 data-nosnippet>402</a>    <span class="kw">match </span>state.device() {
-<a href=#403 id=403 data-nosnippet>403</a>        <span class="prelude-val">Some</span>(device) <span class="kw">if </span>device.address() == address =&gt; <span class="prelude-val">Ok</span>(device),
-<a href=#404 id=404 data-nosnippet>404</a>        <span class="prelude-val">Some</span>(device) =&gt; <span class="prelude-val">Err</span>(CliError::Core(ClockError::Parse(<span class="macro">format!</span>(<span class="string">"connected to {}, but command targets {address}"</span>, device.address())))),
-<a href=#405 id=405 data-nosnippet>405</a>        <span class="prelude-val">None </span>=&gt; <span class="prelude-val">Err</span>(CliError::Core(ClockError::Parse(<span class="string">"not connected. Use `connect &lt;mac&gt;` first."</span>.into()))),
-<a href=#406 id=406 data-nosnippet>406</a>    }
-<a href=#407 id=407 data-nosnippet>407</a>}
-<a href=#408 id=408 data-nosnippet>408</a>
-<a href=#409 id=409 data-nosnippet>409</a><span class="doccomment">/// Print REPL help.
-<a href=#410 id=410 data-nosnippet>410</a></span><span class="kw">fn </span>print_help() {
-<a href=#411 id=411 data-nosnippet>411</a>    <span class="macro">println!</span>(<span class="string">"REPL commands:"</span>);
-<a href=#412 id=412 data-nosnippet>412</a>    <span class="macro">println!</span>(<span class="string">"  connect &lt;mac&gt;          Connect to a device"</span>);
-<a href=#413 id=413 data-nosnippet>413</a>    <span class="macro">println!</span>(<span class="string">"  disconnect             Disconnect from current device"</span>);
-<a href=#414 id=414 data-nosnippet>414</a>    <span class="macro">println!</span>(<span class="string">"  scan [-d &lt;secs&gt;]       Scan for devices"</span>);
-<a href=#415 id=415 data-nosnippet>415</a>    <span class="macro">println!</span>(<span class="string">"  exit | quit            Exit the REPL"</span>);
-<a href=#416 id=416 data-nosnippet>416</a>    <span class="macro">println!</span>();
-<a href=#417 id=417 data-nosnippet>417</a>    <span class="macro">println!</span>(<span class="string">"Device commands (require connection):"</span>);
-<a href=#418 id=418 data-nosnippet>418</a>    <span class="macro">println!</span>(<span class="string">"  sync-time &lt;mac&gt;        Synchronize device clock"</span>);
-<a href=#419 id=419 data-nosnippet>419</a>    <span class="macro">println!</span>(<span class="string">"  firmware &lt;mac&gt;         Read firmware version"</span>);
-<a href=#420 id=420 data-nosnippet>420</a>    <span class="macro">println!</span>(<span class="string">"  battery &lt;mac&gt;          Read battery level"</span>);
-<a href=#421 id=421 data-nosnippet>421</a>    <span class="macro">println!</span>(<span class="string">"  settings-read &lt;mac&gt;    Read device settings"</span>);
-<a href=#422 id=422 data-nosnippet>422</a>    <span class="macro">println!</span>(<span class="string">"  settings-write &lt;mac&gt; [options]"</span>);
-<a href=#423 id=423 data-nosnippet>423</a>    <span class="macro">println!</span>(<span class="string">"  alarm-list &lt;mac&gt;       List alarms"</span>);
-<a href=#424 id=424 data-nosnippet>424</a>    <span class="macro">println!</span>(<span class="string">"  alarm-set &lt;mac&gt; &lt;slot&gt; &lt;HH:MM&gt; [options]"</span>);
-<a href=#425 id=425 data-nosnippet>425</a>    <span class="macro">println!</span>(<span class="string">"  alarm-delete &lt;mac&gt; &lt;slot&gt;"</span>);
-<a href=#426 id=426 data-nosnippet>426</a>    <span class="macro">println!</span>(<span class="string">"  brightness &lt;mac&gt; &lt;0-150&gt;"</span>);
-<a href=#427 id=427 data-nosnippet>427</a>    <span class="macro">println!</span>(<span class="string">"  ringtone-preview &lt;mac&gt; [-v &lt;vol&gt;]"</span>);
-<a href=#428 id=428 data-nosnippet>428</a>    <span class="macro">println!</span>(<span class="string">"  monitor &lt;mac&gt; [-d &lt;secs&gt;]"</span>);
-<a href=#429 id=429 data-nosnippet>429</a>}
+<a href=#385 id=385 data-nosnippet>385</a>            device.preview_ringtone(volume).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#386 id=386 data-nosnippet>386</a>            <span class="macro">println!</span>(<span class="string">"Ringtone preview started."</span>);
+<a href=#387 id=387 data-nosnippet>387</a>        }
+<a href=#388 id=388 data-nosnippet>388</a>        Commands::RingtoneUpload { address, file, signature } =&gt; {
+<a href=#389 id=389 data-nosnippet>389</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
+<a href=#390 id=390 data-nosnippet>390</a>            <span class="kw">let </span>data = std::fs::read(<span class="kw-2">&amp;</span>file).map_err(|e| CliError::AudioReadFailed {
+<a href=#391 id=391 data-nosnippet>391</a>                path: file.clone(),
+<a href=#392 id=392 data-nosnippet>392</a>                reason: e.to_string(),
+<a href=#393 id=393 data-nosnippet>393</a>            })<span class="question-mark">?</span>;
+<a href=#394 id=394 data-nosnippet>394</a>            device.upload_ringtone(<span class="kw-2">&amp;</span>data, signature.bytes()).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#395 id=395 data-nosnippet>395</a>            <span class="macro">println!</span>(<span class="string">"Ringtone uploaded: {signature}"</span>);
+<a href=#396 id=396 data-nosnippet>396</a>        }
+<a href=#397 id=397 data-nosnippet>397</a>        Commands::Monitor { address, duration } =&gt; {
+<a href=#398 id=398 data-nosnippet>398</a>            <span class="kw">let </span>device = require_device(state, <span class="kw-2">&amp;</span>address)<span class="question-mark">?</span>;
+<a href=#399 id=399 data-nosnippet>399</a>            <span class="kw">crate</span>::command::monitor::run_monitor(device, duration).<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#400 id=400 data-nosnippet>400</a>        }
+<a href=#401 id=401 data-nosnippet>401</a>    }
+<a href=#402 id=402 data-nosnippet>402</a>    <span class="prelude-val">Ok</span>(())
+<a href=#403 id=403 data-nosnippet>403</a>}
+<a href=#404 id=404 data-nosnippet>404</a>
+<a href=#405 id=405 data-nosnippet>405</a><span class="doccomment">/// Get the connected device for the given address, or error.
+<a href=#406 id=406 data-nosnippet>406</a></span><span class="kw">fn </span>require_device&lt;<span class="lifetime">'a</span>&gt;(state: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>ReplState, address: <span class="kw-2">&amp;</span>MacAddress) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="kw-2">&amp;</span><span class="lifetime">'a </span>ClockDevice, CliError&gt; {
+<a href=#407 id=407 data-nosnippet>407</a>    <span class="kw">match </span>state.device() {
+<a href=#408 id=408 data-nosnippet>408</a>        <span class="prelude-val">Some</span>(device) <span class="kw">if </span>device.address() == address =&gt; <span class="prelude-val">Ok</span>(device),
+<a href=#409 id=409 data-nosnippet>409</a>        <span class="prelude-val">Some</span>(device) =&gt; <span class="prelude-val">Err</span>(CliError::Core(ClockError::Parse(<span class="macro">format!</span>(<span class="string">"connected to {}, but command targets {address}"</span>, device.address())))),
+<a href=#410 id=410 data-nosnippet>410</a>        <span class="prelude-val">None </span>=&gt; <span class="prelude-val">Err</span>(CliError::Core(ClockError::Parse(<span class="string">"not connected. Use `connect &lt;mac&gt;` first."</span>.into()))),
+<a href=#411 id=411 data-nosnippet>411</a>    }
+<a href=#412 id=412 data-nosnippet>412</a>}
+<a href=#413 id=413 data-nosnippet>413</a>
+<a href=#414 id=414 data-nosnippet>414</a><span class="doccomment">/// Print REPL help.
+<a href=#415 id=415 data-nosnippet>415</a></span><span class="kw">fn </span>print_help() {
+<a href=#416 id=416 data-nosnippet>416</a>    <span class="macro">println!</span>(<span class="string">"REPL commands:"</span>);
+<a href=#417 id=417 data-nosnippet>417</a>    <span class="macro">println!</span>(<span class="string">"  connect &lt;mac&gt;          Connect to a device"</span>);
+<a href=#418 id=418 data-nosnippet>418</a>    <span class="macro">println!</span>(<span class="string">"  disconnect             Disconnect from current device"</span>);
+<a href=#419 id=419 data-nosnippet>419</a>    <span class="macro">println!</span>(<span class="string">"  scan [-d &lt;secs&gt;]       Scan for devices"</span>);
+<a href=#420 id=420 data-nosnippet>420</a>    <span class="macro">println!</span>(<span class="string">"  exit | quit            Exit the REPL"</span>);
+<a href=#421 id=421 data-nosnippet>421</a>    <span class="macro">println!</span>();
+<a href=#422 id=422 data-nosnippet>422</a>    <span class="macro">println!</span>(<span class="string">"Device commands (require connection):"</span>);
+<a href=#423 id=423 data-nosnippet>423</a>    <span class="macro">println!</span>(<span class="string">"  sync-time &lt;mac&gt;        Synchronize device clock"</span>);
+<a href=#424 id=424 data-nosnippet>424</a>    <span class="macro">println!</span>(<span class="string">"  firmware &lt;mac&gt;         Read firmware version"</span>);
+<a href=#425 id=425 data-nosnippet>425</a>    <span class="macro">println!</span>(<span class="string">"  battery &lt;mac&gt;          Read battery level"</span>);
+<a href=#426 id=426 data-nosnippet>426</a>    <span class="macro">println!</span>(<span class="string">"  settings-read &lt;mac&gt;    Read device settings"</span>);
+<a href=#427 id=427 data-nosnippet>427</a>    <span class="macro">println!</span>(<span class="string">"  settings-write &lt;mac&gt; [options]"</span>);
+<a href=#428 id=428 data-nosnippet>428</a>    <span class="macro">println!</span>(<span class="string">"  alarm-list &lt;mac&gt;       List alarms"</span>);
+<a href=#429 id=429 data-nosnippet>429</a>    <span class="macro">println!</span>(<span class="string">"  alarm-set &lt;mac&gt; &lt;slot&gt; &lt;HH:MM&gt; [options]"</span>);
+<a href=#430 id=430 data-nosnippet>430</a>    <span class="macro">println!</span>(<span class="string">"  alarm-delete &lt;mac&gt; &lt;slot&gt;"</span>);
+<a href=#431 id=431 data-nosnippet>431</a>    <span class="macro">println!</span>(<span class="string">"  brightness &lt;mac&gt; &lt;0-150&gt;"</span>);
+<a href=#432 id=432 data-nosnippet>432</a>    <span class="macro">println!</span>(<span class="string">"  ringtone-preview &lt;mac&gt; [-v &lt;vol&gt;]"</span>);
+<a href=#433 id=433 data-nosnippet>433</a>    <span class="macro">println!</span>(<span class="string">"  monitor &lt;mac&gt; [-d &lt;secs&gt;]"</span>);
+<a href=#434 id=434 data-nosnippet>434</a>}
 </code></pre></div></section></main></body></html>

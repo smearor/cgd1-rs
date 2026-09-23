@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["ALARMS_PER_PACKET","DEFAULT_VIRTUAL_MACS","VIRTUAL_FIRMWARE"],"struct":["VirtualClockTransport"]};
+window.SIDEBAR_ITEMS = {"constant":["ALARMS_PER_PACKET","DEFAULT_VIRTUAL_MACS","VIRTUAL_FIRMWARE"],"struct":["VirtualClockTransport","VirtualConnection"]};

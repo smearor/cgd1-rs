@@ -1,9 +1,9 @@
 (function() {
-    const implementors = Object.fromEntries([["cgd1_controller",[["impl ObjectImpl for <a class=\"struct\" href=\"cgd1_controller/display/seven_segment/imp/struct.SevenSegmentDisplay.html\" title=\"struct cgd1_controller::display::seven_segment::imp::SevenSegmentDisplay\">SevenSegmentDisplay</a>",0]]]]);
+    const implementors = Object.fromEntries([["cgd1_controller",[["impl ObjectImpl for <a class=\"struct\" href=\"cgd1_controller/dialog/sensor_overview_editor/imp/struct.DeviceRowItem.html\" title=\"struct cgd1_controller::dialog::sensor_overview_editor::imp::DeviceRowItem\">DeviceRowItem</a>",0],["impl ObjectImpl for <a class=\"struct\" href=\"cgd1_controller/display/seven_segment/imp/struct.SevenSegmentDisplay.html\" title=\"struct cgd1_controller::display::seven_segment::imp::SevenSegmentDisplay\">SevenSegmentDisplay</a>",0]]]]);
     if (window.register_implementors) {
         window.register_implementors(implementors);
     } else {
         window.pending_implementors = implementors;
     }
 })()
-//{"start":59,"fragment_lengths":[257]}
+//{"start":59,"fragment_lengths":[491]}

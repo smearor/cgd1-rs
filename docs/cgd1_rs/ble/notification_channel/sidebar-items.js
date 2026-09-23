@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["NotificationChannel"],"type":["NotificationStream","SharedNotificationChannel"]};

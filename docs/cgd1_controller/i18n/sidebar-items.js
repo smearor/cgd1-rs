@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get","get_int","get_str","init","loader"],"static":["LOADER"],"struct":["Localizations"]};

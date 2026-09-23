@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["alarms","audio","info","settings"]};
+window.SIDEBAR_ITEMS = {"mod":["alarm_editor","audio","common","display_editor","info","region_editor","sensor_overview_editor","time_entry"]};

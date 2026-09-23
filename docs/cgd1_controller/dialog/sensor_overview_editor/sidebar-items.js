@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["build_column_view","build_text_column","populate_model"],"mod":["imp"],"struct":["DeviceRowItem","SensorOverviewWidget"]};

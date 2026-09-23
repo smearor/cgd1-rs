@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["ack","battery_level","empty","sensor_update","ws"]};
+window.SIDEBAR_ITEMS = {"mod":["ack","alarm_triggered","battery_level","empty","sensor_update","ws"]};

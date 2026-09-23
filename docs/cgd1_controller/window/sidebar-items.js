@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["WINDOW_CSS"],"fn":["create_header_bar"],"struct":["MainWindow"]};
+window.SIDEBAR_ITEMS = {"constant":["WINDOW_CSS"],"fn":["battery_icon_name","create_header_bar","set_battery_icon"],"struct":["MainWindow"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["advertisement","backend","btleplug_transport","characteristic","mock_transport","sensor_notification","transport","transport_state","virt"]};
+window.SIDEBAR_ITEMS = {"mod":["advertisement","backend","btleplug_transport","characteristic","device_entry","mock_transport","notification","notification_channel","sensor_notification","transport","transport_state","virt"]};

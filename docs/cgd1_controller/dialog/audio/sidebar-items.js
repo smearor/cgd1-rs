@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["AudioDialog"]};
+window.SIDEBAR_ITEMS = {"constant":["RINGTONE_SIGNATURES"],"fn":["audio_frame","audio_row","builtin_ringtone_pcm","derive_custom_signature","extract_pcm_from_wav","scan_custom_ringtones"],"struct":["AudioEditorWidget"]};

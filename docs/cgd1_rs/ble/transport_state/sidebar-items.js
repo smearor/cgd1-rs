@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["TransportState"]};
+window.SIDEBAR_ITEMS = {"struct":["DeviceConnection","ScanState"]};
