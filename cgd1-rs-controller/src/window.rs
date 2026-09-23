@@ -1208,8 +1208,15 @@ impl MainWindow {
                                                     continue;
                                                 }
                                                 debug!(%addr, mode = ?mode, minute, "time-based blink triggered");
-                                                if let Err(e) = blink_device.set_brightness(Brightness::new(80).unwrap_or(Brightness::MAX)).await {
-                                                    warn!(%addr, error = %e, "time-based blink: failed to set brightness");
+                                                // Repeat set_brightness every 200ms for ~1.5s so the
+                                                // device's internal preview timer is continuously reset,
+                                                // keeping the blink visible (same mechanism as connect-blink).
+                                                for _ in 0..8 {
+                                                    if let Err(e) = blink_device.set_brightness(Brightness::new(80).unwrap_or(Brightness::MAX)).await {
+                                                        warn!(%addr, error = %e, "time-based blink: failed to set brightness");
+                                                        break;
+                                                    }
+                                                    tokio::time::sleep(Duration::from_millis(200)).await;
                                                 }
                                             }
                                         }
